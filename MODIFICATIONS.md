@@ -848,21 +848,24 @@ npx pnpm run start
      - 耗时巨大的视频感知哈希（Phashes）、切片预览（Previews）、雪碧图（Sprites）、标记切片（Markers）、视频转码（Transcodes）全数移至 Phase 2（慢速补充队列）；
      - 即使用户在生成时勾选了全部选项，第一阶段全库视频封面依然会在数秒内最先瞬间刷满，绝不阻塞。
 
-### 任务三十：视频感知哈希值与切片预览全局默认关闭，标记预览默认开启
+### 任务三十一：扫描与生成任务默认配置严格对齐图 1 与图 2 状态
 - **目标文件**：
   - `ui/v2.5/src/components/Settings/Tasks/LibraryTasks.tsx`
   - `ui/v2.5/src/components/Dialogs/GenerateDialog.tsx`
   - `data/config.yml`
-- **问题剖析**：
-  - Stash 原生代码中，在生成（Generate）任务弹窗与设置页中将 `phashes: true`（视频感知哈希值）与 `previews: true`（切片预览）默认开启，导致点击生成时误启动了上万次抽帧的查重计算与耗时数小时的视频转码；
-  - 用户需要将视频感知哈希值与切片预览默认设为关闭，同时保留「标记预览（Markers）」默认开启。
-- **机制与实现方案**：
-  1. **前端生成默认选项校准**：
-     - 在 `LibraryTasks.tsx` 的 `getDefaultGenerateOptions()` 中，保留 `covers: true`、`imageThumbnails: true` 和 `markers: true`；将 `phashes`、`previews`、`sprites` 均设为 `false`；
-     - 在 `LibraryTasks.tsx` 的 `getDefaultScanOptions()` 中，将 `scanGeneratePreviews` 与 `scanGenerateSprites` 设为 `false`；
-     - 在 `GenerateDialog.tsx`（列表页快捷生成弹窗）的 `getDefaultOptions()` 中，同步配置 `markers: true`，并将 `phashes` 与 `previews` 设为 `false`；
-  2. **用户本地配置文件同步校准**：
-     - 在 `data/config.yml` 的 `ui.taskDefaults.generate` 中，同步配置 `markers: true`、`covers: true`，并将 `phashes: false`、`previews: false`、`sprites: false` 落盘持久化。
+- **具体对齐状态**：
+  1. **收藏库 - 扫描（图 1）**：
+     - `生成短片封面`：**开启 (`true`)**
+     - `生成预览`：**开启 (`true`)**
+     - `生成图片的缩略图`：**开启 (`true`)**
+     - 其余选项（时间轴预览小图、感知识别码、图像感知哈希值、图像短片预览图、重新扫描文件）：**全部关闭 (`false`)**
+  2. **生成的内容 - 生成（图 2）**：
+     - `短片封面`：**开启 (`true`)**
+     - `预览`：**开启 (`true`)**
+     - `图像缩略图`：**开启 (`true`)**
+     - 其余选项（时间轴预览小图、标记预览、标记屏幕截图、视频感知哈希值、热图速度资料、图像片段预览、图像感知哈希值、覆盖现有文件）：**全部关闭 (`false`)**
+  3. **架构保障**：
+     - 得益于任务二十七与二十九的双阶段（Two-Phase）调度机制，开启切片预览后，第一阶段全库视频封面缩略图依然会在数秒内极速涌入前端，长耗时的切片预览则无缝排入第二阶段后台静默补充，完全兼顾快速展示与完整体验。
 
 ---
 
