@@ -19,8 +19,6 @@ const (
 	// thumbnailQuality = 5
 
 	screenshotQuality = 2
-
-	screenshotDurationProportion = 0.2
 )
 
 type ScreenshotOptions struct {
