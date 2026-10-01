@@ -1,5 +1,7 @@
 # 定制版 Stash 镜像：自动构建与客户端部署
 
+[![Docker Image](https://github.com/lemon-o/stash/actions/workflows/docker-image.yml/badge.svg?branch=custom-ui)](https://github.com/lemon-o/stash/actions/workflows/docker-image.yml)
+
 本目录提供「开箱即用」的部署文件。镜像由 GitHub Actions 在每次推送时自动构建，
 客户端只需 `docker pull` 即可部署，无需在本地准备 Go / Node 编译环境。
 
@@ -7,25 +9,33 @@
 - 支持架构：`linux/amd64`、`linux/arm64`
 - 流水线文件：[`.github/workflows/docker-image.yml`](../.github/workflows/docker-image.yml)
 
+当前可用标签（均已实测双架构、可免登录拉取）：
+
+| 标签 | 指向 |
+| :--- | :--- |
+| `latest` / `custom-ui` / `edge` | 最新一次 `custom-ui` 分支构建 |
+| `sha-36cc77b` | 固定到某个提交 |
+
 ---
 
-## 1. 一次性准备（仓库维护者必做）
+## 1. 镜像可见性（当前已确认公开，无需操作）
 
-GHCR 上的镜像**默认是私有的**，即使仓库本身是公开的。所以第一次构建成功后，
-必须手动把镜像可见性改成公开，客户端才能免登录拉取：
+仓库是公开仓库，用 `GITHUB_TOKEN` 推送的镜像**默认即为公开**，客户端可以免登录拉取。
+2026-10-01 已实测确认：不带任何凭据请求 `https://ghcr.io/v2/lemon-o/stash/manifests/latest`
+可以直接拿到多架构清单（`linux/amd64` + `linux/arm64`）。
 
-1. 打开 <https://github.com/lemon-o/stash> ，右侧边栏找到 **Packages**，点进刚发布的 `stash` 包；
+只有在下面这些情况才需要处理可见性 —— 拉取时报 `unauthorized` / `denied`：
+
+1. 打开 <https://github.com/lemon-o/stash> ，右侧边栏找到 **Packages**，点进 `stash` 包；
    （或直接访问 <https://github.com/users/lemon-o/packages/container/package/stash>）
 2. 点击 **Package settings**；
 3. 拉到底部 **Danger Zone** → **Change visibility** → 选择 **Public**，按提示输入包名确认。
 
-改完之后，用一台没登录 GitHub 的机器验证：
+验证命令（在任意一台没登录 GitHub 的机器上）：
 
 ```bash
 docker pull ghcr.io/lemon-o/stash:latest
 ```
-
-如果这一步报 `unauthorized` 或 `denied`，就是可见性还没改成 Public。
 
 ---
 
@@ -101,7 +111,8 @@ docker compose pull && docker compose up -d
    点 **Run workflow**，分支选 `custom-ui`，可顺便填一个自定义标签。
 
 构建过程：两个架构在各自的运行器上并行构建 → 各自按 digest 推送 → 合并成多架构清单。
-首次（无缓存）大约 20~40 分钟，之后有缓存会快很多。
+实测耗时：冷缓存约 12 分钟（amd64 约 12 分钟、arm64 约 9 分钟，两者并行），
+publish 合并只需十几秒。有缓存后更快。
 
 ---
 
@@ -139,7 +150,7 @@ docker build \
 ## 6. 常见问题
 
 **Q：`docker pull` 提示 `unauthorized` / `denied`？**
-镜像还是私有可见性，按第 1 节改成 Public。
+镜像被设置成了私有可见性，按第 1 节改回 Public。
 
 **Q：ARM 设备（树莓派、ARM 群晖、Apple Silicon）能跑吗？**
 可以，镜像包含 `linux/arm64`。如果第一次构建时 arm64 那一格失败了，
