@@ -858,51 +858,46 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 		}
 	}
 
-	if t.ScanGeneratePreviews {
-		progress.AddTotal(1)
-		previewsFn := func(ctx context.Context) {
-			options := getGeneratePreviewOptions(GeneratePreviewOptionsInput{})
-
-			generator := &generate.Generator{
-				Encoder:      mgr.FFMpeg,
-				FFMpegConfig: mgr.Config,
-				LockManager:  mgr.ReadLockManager,
-				MarkerPaths:  g.paths.SceneMarkers,
-				ScenePaths:   g.paths.Scene,
-				Overwrite:    overwrite,
-			}
-
-			taskPreview := GeneratePreviewTask{
-				Scene:               *s,
-				ImagePreview:        t.ScanGenerateImagePreviews,
-				Options:             options,
-				Overwrite:           overwrite,
-				fileNamingAlgorithm: g.fileNamingAlgorithm,
-				generator:           generator,
-			}
-			taskPreview.Start(ctx)
-			progress.Increment()
-		}
-
-		if g.sequentialScanning {
-			previewsFn(ctx)
-		} else {
-			g.taskQueue.Add(fmt.Sprintf("Generating preview for %s", path), previewsFn)
-		}
-	}
-
+	// 同步生成封面图：扫描到一个视频就立即处理该视频的封面图，避免排队滞后
 	if t.ScanGenerateCovers {
 		progress.AddTotal(1)
-		g.taskQueue.Add(fmt.Sprintf("Generating cover for %s", path), func(ctx context.Context) {
-			taskCover := GenerateCoverTask{
-				repository: mgr.Repository,
-				Scene:      *s,
-				Overwrite:  overwrite,
-			}
-			taskCover.Start(ctx)
-			progress.Increment()
-		})
+		taskCover := GenerateCoverTask{
+			repository: mgr.Repository,
+			Scene:      *s,
+			Overwrite:  overwrite,
+		}
+		taskCover.Start(ctx)
+		progress.Increment()
 	}
+
+	// 同步生成切片预览：扫描到一个视频就立即处理该视频的切片预览，避免排队滞后
+	if t.ScanGeneratePreviews {
+		progress.AddTotal(1)
+		options := getGeneratePreviewOptions(GeneratePreviewOptionsInput{})
+
+		generator := &generate.Generator{
+			Encoder:      mgr.FFMpeg,
+			FFMpegConfig: mgr.Config,
+			LockManager:  mgr.ReadLockManager,
+			MarkerPaths:  g.paths.SceneMarkers,
+			ScenePaths:   g.paths.Scene,
+			Overwrite:    overwrite,
+		}
+
+		taskPreview := GeneratePreviewTask{
+			Scene:               *s,
+			ImagePreview:        t.ScanGenerateImagePreviews,
+			Options:             options,
+			Overwrite:           overwrite,
+			fileNamingAlgorithm: g.fileNamingAlgorithm,
+			generator:           generator,
+		}
+		taskPreview.Start(ctx)
+		progress.Increment()
+	}
+
+	// 边扫描边添加：每处理完一个视频的封面与切片预览，立即通过节流通知前端实时呈现
+	mgr.scanSubs.notifyThrottled(1 * time.Second)
 
 	return nil
 }

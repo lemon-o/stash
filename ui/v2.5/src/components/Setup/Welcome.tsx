@@ -2,14 +2,20 @@ import React, { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { Alert, Button, Card, Container, Form } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
-import { useConfigureUI, useSystemStatus } from "src/core/StashService";
-import { useHistory } from "react-router-dom";
+import {
+  mutateMetadataScan,
+  mutateRunPluginTask,
+  useConfigureUI,
+  useSystemStatus,
+} from "src/core/StashService";
+import { useHistory, useLocation } from "react-router-dom";
 import { useConfigurationContext } from "src/hooks/Config";
 import { Icon } from "../Shared/Icon";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { faQuestionCircle } from "@fortawesome/free-solid-svg-icons";
 import { releaseNotes } from "src/docs/en/ReleaseNotes";
 import { ExternalLink } from "../Shared/ExternalLink";
+import { useToast } from "src/hooks/Toast";
 
 const DiscordLink = (
   <ExternalLink href="https://discord.gg/2TsNFKt">Discord</ExternalLink>
@@ -26,13 +32,26 @@ const SuccessStep: React.FC<{
 }> = ({ configuration, systemStatus }) => {
   const intl = useIntl();
   const history = useHistory();
+  const location = useLocation<{
+    hasAddedDirectories?: boolean;
+    stashes?: GQL.StashConfigInput[];
+  }>();
+  const Toast = useToast();
 
   const [mutateDownloadFFMpeg] = GQL.useDownloadFfMpegMutation();
   const [saveUI] = useConfigureUI();
 
   const [downloadFFmpeg, setDownloadFFmpeg] = useState(true);
+  const [isFinishing, setIsFinishing] = useState(false);
 
   const status = systemStatus?.systemStatus;
+
+  const contextStashes = configuration?.general?.stashes ?? [];
+  const stateStashes = location.state?.stashes ?? [];
+  const effectiveStashes =
+    contextStashes.length > 0 ? contextStashes : stateStashes;
+  const hasDirectories =
+    location.state?.hasAddedDirectories || effectiveStashes.length > 0;
 
   async function markReleaseNotesSeen() {
     try {
@@ -51,13 +70,59 @@ const SuccessStep: React.FC<{
   }
 
   async function onFinishClick() {
-    await markReleaseNotesSeen();
+    setIsFinishing(true);
+    try {
+      await markReleaseNotesSeen();
 
-    if ((!status?.ffmpegPath || !status?.ffprobePath) && downloadFFmpeg) {
-      await mutateDownloadFFMpeg();
+      if ((!status?.ffmpegPath || !status?.ffprobePath) && downloadFFmpeg) {
+        try {
+          await mutateDownloadFFMpeg();
+        } catch (e) {
+          console.error("Download ffmpeg failed:", e);
+        }
+      }
+
+      if (hasDirectories) {
+        try {
+          const scanPaths =
+            effectiveStashes.length > 0
+              ? effectiveStashes.map((s) => s.path)
+              : undefined;
+
+          await mutateMetadataScan({
+            paths: scanPaths,
+            scanGenerateCovers: true,
+            scanGeneratePreviews: true,
+            scanGenerateSprites: false,
+            scanGenerateThumbnails: true,
+          });
+          try {
+            await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
+          } catch (_e) {
+            // ignore if plugin is disabled or loading
+          }
+          Toast.success(
+            intl.formatMessage(
+              { id: "config.tasks.added_job_to_queue" },
+              {
+                operation_name: intl.formatMessage({
+                  id: "actions.scan",
+                }),
+              }
+            )
+          );
+        } catch (err) {
+          console.error("Auto scan failed:", err);
+          Toast.error(err);
+        }
+        // 自动触发扫描后，立即跳转至任务队列界面实时查看进度
+        history.replace("/settings?tab=tasks");
+      } else {
+        history.replace("/settings?tab=library");
+      }
+    } finally {
+      setIsFinishing(false);
     }
-
-    history.replace("/settings?tab=library");
   }
 
   return (
@@ -66,21 +131,32 @@ const SuccessStep: React.FC<{
         <h2>
           <FormattedMessage id="setup.success.your_system_has_been_created" />
         </h2>
-        <p>
-          <FormattedMessage id="setup.success.next_config_step_one" />
-        </p>
-        <p>
-          <FormattedMessage
-            id="setup.success.next_config_step_two"
-            values={{
-              code: (chunks: string) => <code>{chunks}</code>,
-              localized_task: intl.formatMessage({
-                id: "config.categories.tasks",
-              }),
-              localized_scan: intl.formatMessage({ id: "actions.scan" }),
-            }}
-          />
-        </p>
+        {hasDirectories ? (
+          <p className="lead">
+            <FormattedMessage
+              id="setup.success.auto_scan_notice"
+              defaultMessage="媒体目录已配置完成。点击下方按钮后，系统将自动开始为您扫描媒体库，并立即跳转至任务队列实时查看扫描进度。"
+            />
+          </p>
+        ) : (
+          <>
+            <p>
+              <FormattedMessage id="setup.success.next_config_step_one" />
+            </p>
+            <p>
+              <FormattedMessage
+                id="setup.success.next_config_step_two"
+                values={{
+                  code: (chunks: string) => <code>{chunks}</code>,
+                  localized_task: intl.formatMessage({
+                    id: "config.categories.tasks",
+                  }),
+                  localized_scan: intl.formatMessage({ id: "actions.scan" }),
+                }}
+              />
+            </p>
+          </>
+        )}
         {!status?.ffmpegPath || !status?.ffprobePath ? (
           <>
             <Alert variant="warning text-center">
@@ -148,8 +224,19 @@ const SuccessStep: React.FC<{
       </section>
       <section className="mt-5">
         <div className="d-flex justify-content-center">
-          <Button variant="success mx-2 p-5" onClick={() => onFinishClick()}>
-            <FormattedMessage id="actions.finish" />
+          <Button
+            variant="success mx-2 p-5"
+            disabled={isFinishing}
+            onClick={() => onFinishClick()}
+          >
+            <FormattedMessage
+              id={
+                hasDirectories
+                  ? "setup.success.finish_and_scan"
+                  : "actions.finish"
+              }
+              defaultMessage={hasDirectories ? "完成并开始扫描" : "完成"}
+            />
           </Button>
         </div>
       </section>

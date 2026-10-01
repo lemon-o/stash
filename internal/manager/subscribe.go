@@ -3,11 +3,13 @@ package manager
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 type subscriptionManager struct {
 	subscriptions []chan bool
 	mutex         sync.Mutex
+	lastNotify    time.Time
 }
 
 func (m *subscriptionManager) subscribe(ctx context.Context) <-chan bool {
@@ -38,7 +40,30 @@ func (m *subscriptionManager) notify() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
+	m.lastNotify = time.Now()
 	for _, s := range m.subscriptions {
-		s <- true
+		select {
+		case s <- true:
+		default:
+		}
+	}
+}
+
+// notifyThrottled triggers a notification at most once per minInterval to support live streaming updates during scan
+func (m *subscriptionManager) notifyThrottled(minInterval time.Duration) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	now := time.Now()
+	if now.Sub(m.lastNotify) < minInterval {
+		return
+	}
+	m.lastNotify = now
+
+	for _, s := range m.subscriptions {
+		select {
+		case s <- true:
+		default:
+		}
 	}
 }

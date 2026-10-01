@@ -648,6 +648,53 @@ npx pnpm run start
   4. **全系统硬编码英文字符全面组件化汉化**：
      - 全面使用 `<FormattedMessage>` 与 `intl.formatMessage` 封装各对话框与组件，并在 `zh-CN.json` 与 `en-GB.json` 中统一注册国际化键值，实现系统全域无死角中文覆盖。
 
+### 任务二十三：初始向导完成后添加目录自动扫描与消除手动扫描提示
+- **目标文件**：
+  - `ui/v2.5/src/components/Setup/Setup.tsx`
+  - `ui/v2.5/src/components/Setup/Welcome.tsx`
+  - `ui/v2.5/src/locales/zh-CN.json`
+  - `ui/v2.5/src/locales/en-GB.json`
+- **机制与需求剖析**：
+  1. 原版逻辑中，当用户在配置向导（Setup Wizard）中添加媒体目录并点击确认创建系统后，进入完成界面 `/welcome`；
+  2. 该页面生硬地提示用户手动前往设置与任务页面进行扫描（“接下来你将被重定向到配置页面... 当你对这些设置满意后，可以通过点击【任务】，然后点击【扫描】来开始扫描你的内容入库”）；
+  3. 用户点击底部的【完成】按钮后，仅仅被重定向至 `/settings?tab=library`，仍需用户手动翻找任务页面并点击扫描，链路割裂；
+  4. 用户需求：若向导中已添加媒体目录，后续不再提示任何手动扫描的说明文案，而是直接转为全自动化扫描并直达任务进度队列。
+- **机制与实现方案**：
+  1. **跨页面多重目录状态透传与精准感知**：
+     - 在 `Setup.tsx` 的 `createSystem()` 成功执行时，向 `/welcome` 路由注入包含 `hasAddedDirectories` 与 `stashes` 的路由状态；
+     - 结合 Apollo Client 缓存的 `configuration.general.stashes`，双重保底精确判定当前向导是否配置了媒体库目录。
+  2. **智能消除手动扫描文案与动态按钮**：
+     - 若检测到已添加目录（`hasDirectories === true`），动态隐藏原先提示用户“手动前往配置与任务页面扫描”的说明段落，替换为明确清晰的自动处理告知（`setup.success.auto_scan_notice`）；
+     - 底部主操作按钮文案自适应变更为「完成并开始扫描」（`setup.success.finish_and_scan`）。
+  3. **一键自动触发扫描与直达任务队列**：
+     - 用户点击「完成并开始扫描」时，系统自动调用 `mutateMetadataScan(...)`（带路径、默认不生成雪碧图、生成封面与预览）并协同触发集合插件任务；
+     - 触发成功后通过 Toast 给出队列添加通知，并直接跳转路由至 `/settings?tab=tasks`，让用户第一时间直观看到扫描进度，全流程无缝衔接；
+     - 若未配置目录，则平滑降级保留原先指引前往媒体库设置的交互。
+
+### 任务二十四：流式边扫描边入库、单视频封面与切片预览同步生成
+- **目标文件**：
+  - `internal/manager/task_scan.go`
+  - `internal/manager/subscribe.go`
+  - `pkg/scene/scan.go`
+  - `ui/v2.5/src/core/createClient.ts`
+- **机制与问题根源剖析**：
+  1. **封面与切片预览异步排队导致严重滞后**：
+     - 原版 Stash 在扫描视频时，`ScanFile` 仅将视频基本信息写入数据库，而将 `ScanGenerateCovers`（封面图）和 `ScanGeneratePreviews`（切片预览）作为任务推入异步后台队列 `taskQueue`；
+     - 导致主扫描线程瞬间遍历扫完所有文件，而海量的封面图与切片切片任务堆积在后台队列末端迟迟未能处理，用户进入列表时看到的全部是无封面的白板卡片；
+  2. **扫描完成前全局阻塞无实时通知**：
+     - 后端仅在整个扫描作业全部跑完（`taskQueue.Close()`）后，才触发一次 `subscriptions.notify()`；
+     - 前端仅在收到 `ScanCompleteSubscribe` 时才刷新缓存，导致在扫描过程中页面完全静态，无法感知新入库的视频；
+  3. **插件钩子与封面时序倒挂**：
+     - `Scene.Create.Post` 钩子在入库时立即注册，并在封面图生成之前就触发执行，导致 `auto_group` 插件自动创建集合时无法拿到刚入库短片的封面图。
+- **机制与实现方案**：
+  1. **单视频封面图与切片预览同步生成机制**：
+     - 重构 `task_scan.go` 中的 `sceneGenerators.Generate`：当扫描到一个视频并入库后，**立即就地同步触发**该视频的防黑帧静态封面图生成（`taskCover.Start(ctx)`）与 15 秒切片预览生成（`taskPreview.Start(ctx)`），杜绝任何异步任务排队堆积；
+  2. **插件后置钩子时序调整**：
+     - 重构 `pkg/scene/scan.go`，确保在 `ScanGenerator.Generate` 同步生成封面与预览完成后，才触发 `SceneCreatePost` 钩子，保证 `auto_group` 自动创建集合时短片已有高清封面图可用；
+  3. **流式实时推送与平滑刷新（边扫描边呈现）**：
+     - 在 `subscribe.go` 中引入安全非阻塞通信与节流通知机制 `notifyThrottled(1 * time.Second)`；每当单个视频处理完毕（数据库、封面图、切片预览俱全），立即节流通知订阅者；
+     - 前端 `createClient.ts` 监听 `ScanCompleteSubscribe`，收到流式增量通知时调用 `client.refetchQueries({ include: "active" })`，平滑无感地将最新入库且带有封面与预览的视频实时呈现在当前页面上。
+
 ---
 
 *文档更新时间：2026-10-01*  

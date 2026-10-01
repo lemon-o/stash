@@ -190,14 +190,14 @@ export const createClient = () => {
     cache,
   });
 
-  // Watch for scan/clean tasks and reset cache when they complete
+  // Watch for scan/clean tasks and refresh active queries smoothly when new items are added
   client
     .subscribe<GQL.ScanCompleteSubscribeSubscription>({
       query: GQL.ScanCompleteSubscribeDocument,
     })
     .subscribe({
       next: () => {
-        client.resetStore();
+        client.refetchQueries({ include: "active" });
       },
     });
 

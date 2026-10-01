@@ -1088,7 +1088,10 @@ export const Setup: React.FC = () => {
       } catch (_e) {
         // ignore if not ready
       }
-      history.replace("/welcome");
+      history.replace("/welcome", {
+        hasAddedDirectories: (setupInput.stashes?.length ?? 0) > 0,
+        stashes: setupInput.stashes,
+      });
     } catch (e) {
       if (e instanceof Error && e.message) {
         setSetupError(e.message);

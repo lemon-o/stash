@@ -1769,5 +1769,7 @@
   "actions.loading_image": "正在加载图片...",
   "fail": "失败报错",
   "ignore": "忽略跳过",
-  "overwrite": "覆盖更新"
+  "overwrite": "覆盖更新",
+  "setup.success.auto_scan_notice": "媒体目录已配置完成。点击下方按钮后，系统将自动开始为您扫描媒体库，并立即跳转至任务队列实时查看扫描进度。",
+  "setup.success.finish_and_scan": "完成并开始扫描"
 }

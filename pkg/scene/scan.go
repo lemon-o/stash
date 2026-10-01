@@ -105,6 +105,8 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 		}
 	}
 
+	isNew := len(existing) == 0
+	var newScene models.Scene
 	if len(existing) > 0 {
 		updateExisting := oldFile != nil
 		if err := h.associateExisting(ctx, existing, videoFile, updateExisting); err != nil {
@@ -112,15 +114,13 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 		}
 	} else {
 		// create a new scene
-		newScene := models.NewScene()
+		newScene = models.NewScene()
 
 		logger.Infof("%s doesn't exist. Creating new scene...", f.Base().Path)
 
 		if err := h.CreatorUpdater.Create(ctx, &newScene, []models.FileID{videoFile.ID}); err != nil {
 			return fmt.Errorf("creating new scene: %w", err)
 		}
-
-		h.PluginCache.RegisterPostHooks(ctx, newScene.ID, hook.SceneCreatePost, nil, nil)
 
 		existing = []*models.Scene{&newScene}
 	}
@@ -146,6 +146,11 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 				// just log if cover generation fails. We can try again on rescan
 				logger.Errorf("Error generating content for %s: %v", videoFile.Path, err)
 			}
+		}
+
+		// 封面图与切片预览生成完成后，再触发插件后置钩子（确保 auto_group 归类与提取集合封面时已有短片封面）
+		if isNew {
+			h.PluginCache.ExecutePostHooks(ctx, newScene.ID, hook.SceneCreatePost, nil, nil)
 		}
 	})
 

@@ -1766,5 +1766,7 @@
   "actions.loading_image": "Loading image...",
   "fail": "Fail",
   "ignore": "Ignore",
-  "overwrite": "Overwrite"
+  "overwrite": "Overwrite",
+  "setup.success.auto_scan_notice": "Media directories configured. Click the button below to automatically scan your library and view real-time progress in the task queue.",
+  "setup.success.finish_and_scan": "Finish & Start Scan"
 }
