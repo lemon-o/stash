@@ -92,7 +92,7 @@ export const LibraryTasks: React.FC = () => {
   function getDefaultScanOptions(): GQL.ScanMetadataInput {
     return {
       scanGenerateCovers: true,
-      scanGeneratePreviews: true,
+      scanGeneratePreviews: false,
       scanGenerateImagePreviews: false,
       scanGenerateSprites: false,
       scanGeneratePhashes: false,
@@ -117,9 +117,9 @@ export const LibraryTasks: React.FC = () => {
     return {
       covers: true,
       sprites: false,
-      phashes: true,
-      previews: true,
-      markers: true,
+      phashes: false,
+      previews: false,
+      markers: false,
       markerScreenshots: false,
       interactiveHeatmapsSpeeds: false,
       clipPreviews: false,

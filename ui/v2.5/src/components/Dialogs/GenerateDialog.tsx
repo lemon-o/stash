@@ -33,10 +33,11 @@ export const GenerateDialog: React.FC<IGenerateDialog> = ({
 
   function getDefaultOptions(): GQL.GenerateMetadataInput {
     return {
+      covers: true,
       sprites: false,
-      phashes: true,
-      previews: true,
-      markers: true,
+      phashes: false,
+      previews: false,
+      markers: false,
       previewOptions: {
         previewSegments: 0,
         previewSegmentDuration: 0,
