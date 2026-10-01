@@ -206,13 +206,13 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 				// 第二阶段：在封面和缩略图就绪后，再后台处理耗时较长的切片预览任务
 				if len(j.input.SceneIDs) > 0 {
 					for _, s := range scenes {
-						j.queueScenePreviewJobs(ctx, g, s, queue)
+						j.queueSceneSlowJobs(ctx, g, s, queue)
 					}
 				}
 
 				if len(j.input.ImageIDs) > 0 {
 					for _, i := range images {
-						j.queueImagePreviewJob(g, i, queue)
+						j.queueImageSlowJob(g, i, queue)
 					}
 				}
 
@@ -221,7 +221,7 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 						imgs, _ := r.Image.FindByGalleryID(ctx, galleryID)
 						for _, img := range imgs {
 							_ = img.LoadFiles(ctx, r.Image)
-							j.queueImagePreviewJob(g, img, queue)
+							j.queueImageSlowJob(g, img, queue)
 						}
 					}
 				}
