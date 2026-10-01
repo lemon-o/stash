@@ -52,6 +52,23 @@ docker compose up -d
 
 浏览器打开 `http://<服务器IP>:9999`。
 
+### compose 文件里的可选项
+
+`docker-compose.yml` 是详解版：每一项配置都有注释说明，文件末尾还带 5 个默认关闭、按需打开的可选块。
+
+| 可选项 | 作用 | 需要注意 |
+| :--- | :--- | :--- |
+| 1. DLNA | 让 Stash 出现在局域网的 DLNA 设备列表中 | 要改用 `network_mode: host`，同时**必须注释掉 `ports` 段**（两者不能共存） |
+| 2. 硬件解码 | 用核显/独显转码，降低 CPU 占用 | 宿主机需有 `/dev/dri`，镜像内 ffmpeg 需支持；`group_add` 的 GID 要按宿主机 `getent group render` / `getent group video` 填，不能照抄 |
+| 3. 健康检查 | `docker ps` 中显示 healthy / unhealthy | 只标记状态，**不会自动重启**容器 |
+| 4. 资源上限 | 限制 CPU / 内存，避免扫描、转码时吃满宿主机 | — |
+| 5. 免重建换前端 | 挂载本地 `pnpm run build` 的产物，配合 `STASH_UI` 直接换界面，不用重建镜像 | 要分别往已有的 `volumes` 和 `environment` 列表里各加一行，别新写同名键 |
+
+文件注释里还写清了两个容易踩的点：
+
+- **只有 9 个 `STASH_*` 环境变量会被识别**（清单在文件内），名字写错会被静默忽略，不会报错；
+- **blob（场景封面、缩略图）默认存进数据库**，所以默认配置下 `./blobs` 这个挂载是闲置的。想让它们落盘、把数据库瘦下来，需要设 `STASH_BLOBS` 并在首次向导里把 blob 存储选成「文件系统」。
+
 ### 方式 B：docker run
 
 ```bash

@@ -1,57 +1,195 @@
-# Stash 定制版（极简纯暗黑 UI）Docker 部署文件
+# =============================================================================
+#  Stash 定制版（极简纯暗黑 UI）· Docker Compose 部署文件（详解版）
+# =============================================================================
 #
-# 镜像由 GitHub Actions 自动构建并发布到 GitHub 容器仓库：
-#   ghcr.io/lemon-o/stash:latest
+#  镜像   ghcr.io/lemon-o/stash        公开，免登录拉取
+#  架构   linux/amd64、linux/arm64    多架构清单，docker 会自动选对
+#  内置   ffmpeg、libvips、ca-certificates —— 宿主机不需要装任何依赖
 #
-# 使用方法：
-#   1. 把这个文件复制到你的服务器上任意一个空目录里；
-#   2. 在该目录执行 `docker compose up -d`；
-#   3. 浏览器打开 http://<服务器IP>:9999
+#  快速开始：
+#    1. 把本文件放到服务器上一个空目录，例如 /opt/stash/docker-compose.yml
+#    2. cd /opt/stash && docker compose up -d
+#    3. 浏览器打开 http://<服务器IP>:9999
 #
-# 更新镜像：
-#   docker compose pull && docker compose up -d
+#  更新镜像（数据不受影响）：
+#    docker compose pull && docker compose up -d
 #
-# 想固定某个版本，把 image 换成带版本号的标签即可，例如：
-#   image: ghcr.io/lemon-o/stash:sha-1c38437
+#  想固定版本、避免 latest 变动，把 image 换成带提交号的标签：
+#    image: ghcr.io/lemon-o/stash:sha-792937e
+#  全部可用标签见 https://github.com/lemon-o/stash/pkgs/container/stash
+#
+#  文件后半部分是可选增强项（DLNA、硬件解码、健康检查、资源上限、
+#  免重建换前端），默认全部关闭，需要时去掉对应注释即可。
+# =============================================================================
+
+# 项目名。固定成 stash，这样无论在哪个目录执行 docker compose，
+# 生成的容器/网络名字都一致（容器名另有 container_name 兜底）。
+name: stash
 
 services:
   stash:
     image: ghcr.io/lemon-o/stash:latest
     container_name: stash
+    # 除非手动 docker compose stop，否则一直重启；宿主机重启后也会自动拉起
     restart: unless-stopped
 
-    ## 容器内外端口必须与下面的 STASH_PORT 一致
+    # -------------------------------------------------------------------------
+    # 端口映射   宿主机端口 : 容器内端口
+    # 容器内端口必须与下面环境变量 STASH_PORT 的值一致。
+    # 想换成 8080 访问，就同时改成 "8080:9999" 和 STASH_PORT: "9999"。
+    # -------------------------------------------------------------------------
     ports:
       - "9999:9999"
-    ## 如果你要用 Stash 的 DLNA 功能，请注释掉上面的 ports，
-    ## 改用下面这行让容器直接使用宿主机网络
+
+    # -------------------------------------------------------------------------
+    # 环境变量
+    #
+    # Stash 只识别下面这份固定白名单（源码：internal/manager/config/init.go
+    # 里的 envBinds），写成别的 STASH_* 名字会被静默忽略：
+    #   STASH_STASH           媒体库根目录
+    #   STASH_GENERATED       生成内容（截图/预览/转码/雪碧图）
+    #   STASH_METADATA        元数据
+    #   STASH_CACHE           缓存
+    #   STASH_BLOBS           二进制大对象（封面、缩略图）
+    #   STASH_PORT            监听端口
+    #   STASH_HOST            监听地址
+    #   STASH_EXTERNAL_HOST   对外地址（走反向代理时填）
+    #   STASH_UI              外部前端目录（见文件末尾选项 5）
+    #
+    # 另外还有几个单独读取的：
+    #   STASH_CONFIG_FILE         配置文件路径（镜像已内置 /root/.stash/config.yml）
+    #   STASH_SQLITE_CACHE_SIZE   SQLite 缓存大小（字节）
+    #   STASH_HW_TEST_TIMEOUT     硬件解码能力探测超时
+    #   STASH_HW_DRI_DEVICE       硬件解码使用的 DRI 设备（默认 /dev/dri/renderD128）
+    # -------------------------------------------------------------------------
+    environment:
+      # 媒体库根目录。必须与下面 volumes 里挂到 /data 的那一行对应。
+      STASH_STASH: /data/
+      # 以下四个目录同样由 volumes 挂载进来
+      STASH_GENERATED: /generated/
+      STASH_METADATA: /metadata/
+      STASH_CACHE: /cache/
+      # 监听端口，必须与上面 ports 的容器侧端口一致
+      STASH_PORT: "9999"
+
+      # 时区。影响日志时间，以及扫描/生成等定时任务的实际触发时刻。
+      # 时区名参考 https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      TZ: Asia/Shanghai
+
+      # 二进制大对象（场景封面、图片缩略图）的存放位置。
+      # 不设置时 Stash 默认把 blob 存进数据库（./config/stash-go.sqlite），
+      # 这种情况下下面的 ./blobs 挂载是闲置的。
+      # 想让 blob 落到文件系统（数据库更小、可以单独备份或迁到别的盘），
+      # 取消下一行注释，并在首次向导里把 blob 存储选成「文件系统」：
+      # STASH_BLOBS: /blobs/
+      #
+      # 只监听本机（通常配合反向代理）时改成 127.0.0.1，默认监听全部网卡：
+      # STASH_HOST: 0.0.0.0
+      #
+      # 通过域名/反向代理访问时填对外地址，Stash 生成的绝对链接会用它：
+      # STASH_EXTERNAL_HOST: stash.example.com
+      #
+      # 库很大、内存充裕时可以调大 SQLite 缓存（单位字节）：
+      # STASH_SQLITE_CACHE_SIZE: "134217728"
+
+    # -------------------------------------------------------------------------
+    # 数据卷   宿主机目录 : 容器内路径
+    #
+    # 建议保持「左边是相对路径」的写法：所有数据都落在本文件同级的子目录里，
+    # 整个目录拷走就是一次完整备份，也不必操心宿主机目录权限。
+    # 换镜像、删容器、升级都不会动这些目录，数据 100% 保留。
+    #
+    # 如果宿主机目录权限报错（容器内以 root 运行），可以在宿主机执行：
+    #   sudo chown -R 0:0 ./config ./metadata ./cache ./blobs ./generated
+    # -------------------------------------------------------------------------
+    volumes:
+      # 配置、数据库(stash-go.sqlite)、刮削器与插件。
+      # 最需要备份的一项：删了它等于丢掉所有标签、元数据与用户设置。
+      - ./config:/root/.stash
+      # 你的媒体库。把左边换成宿主机上媒体文件的真实路径，例如 /mnt/nas/media。
+      # 要挂多个媒体目录就再加几行，例如 - /mnt/photos:/photos，
+      # 然后在 Stash 的「设置 → 媒体库」里把这些容器内路径添加为扫描路径。
+      # 若不需要在 Stash 里删除/重命名源文件，可以改成只读挂载更安全：
+      #   - /mnt/nas/media:/data:ro
+      - ./data:/data
+      # 元数据（备份、导出等）
+      - ./metadata:/metadata
+      # 缓存，可以随时删除，删了只会让下次访问变慢
+      - ./cache:/cache
+      # blob 落盘时使用（默认数据库存储时用不到，见上面 STASH_BLOBS 说明）
+      - ./blobs:/blobs
+      # 生成内容（截图、预览、转码、雪碧图）。可能非常大，适合放 SSD。
+      # 注意：这一项重新生成代价很高，别和 cache 一起随手删。
+      - ./generated:/generated
+      # 可选：免重建镜像直接换前端，需配合下面环境变量 STASH_UI 一起打开
+      # - ./ui-build:/ui:ro
+
+    # -------------------------------------------------------------------------
+    # 日志：单文件最大 2MB、最多保留 10 个，避免长期运行把磁盘写满
+    # -------------------------------------------------------------------------
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "10"
+
+    # =========================================================================
+    #  可选增强项。默认全部关闭，需要时去掉对应注释。
+    #  注意：选项 1 启用时必须同时注释掉上面的 ports 段。
+    # =========================================================================
+
+    # --- 选项 1：DLNA ---------------------------------------------------------
+    # Stash 的 DLNA 依赖组播/广播，容器需要直接使用宿主机网络。
+    # 启用时把上面的 ports 段整段注释掉，再加上这一行（两者不能共存）：
     # network_mode: host
 
-    logging:
-      driver: "json-file"
-      options:
-        max-file: "10"
-        max-size: "2m"
+    # --- 选项 2：硬件解码（Intel / AMD 核显或独显）----------------------------
+    # 需要宿主机存在 /dev/dri，且镜像内 ffmpeg 带 vaapi 支持。
+    # 先确认镜像里的能力：
+    #   docker compose exec stash ffmpeg -hwaccels
+    # 再查宿主机上 render / video 组的 GID，填到下面（各发行版不同，不能照抄）：
+    #   getent group render
+    #   getent group video
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "989"        # ← 换成 getent group render 得到的 GID
+    #   - "44"         # ← 换成 getent group video 得到的 GID
+    #
+    # 说明：本流水线构建的是通用镜像（不是 CUDA 版），NVIDIA 硬件转码需要
+    # 镜像内 ffmpeg 带 nvenc 且宿主机装好驱动，先用下面命令确认：
+    #   docker compose exec stash ffmpeg -encoders | grep nvenc
+    # 仓库里的 docker/build/x86_64/Dockerfile-CUDA 是上游的 CUDA 构建文件，
+    # 目前没有纳入自动构建。
 
-    environment:
-      - STASH_STASH=/data/
-      - STASH_GENERATED=/generated/
-      - STASH_METADATA=/metadata/
-      - STASH_CACHE=/cache/
-      - STASH_PORT=9999
-      ## 改成你所在的时区，例如 Asia/Shanghai、Europe/Berlin
-      - TZ=Asia/Shanghai
+    # --- 选项 3：健康检查 -----------------------------------------------------
+    # 镜像基于 Alpine，自带 busybox 的 wget，可直接用来探测。
+    # 若开启了登录鉴权，把地址换成 http://127.0.0.1:9999/login
+    # 注意：健康检查只把容器标成 healthy/unhealthy（docker ps 可见），
+    # 并不会自动重启；要自动恢复需要额外配合 autoheal 之类的工具。
+    # healthcheck:
+    #   test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9999/"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 30s
 
-    volumes:
-      ## 配置、数据库、刮削器与插件
-      - ./config:/root/.stash
-      ## 你的媒体库。把左边改成宿主机上媒体文件的真实路径
-      - ./data:/data
-      ## Stash 的元数据
-      - ./metadata:/metadata
-      ## 缓存
-      - ./cache:/cache
-      ## 二进制大对象（场景封面、图片等）
-      - ./blobs:/blobs
-      ## 生成内容（截图、预览、转码、雪碧图）
-      - ./generated:/generated
+    # --- 选项 4：资源上限 -----------------------------------------------------
+    # 扫描、生成预览、转码都可能短暂吃满 CPU，用上限保护宿主机上其他服务。
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "4.0"
+    #       memory: 4g
+
+    # --- 选项 5：免重建镜像直接换前端 -----------------------------------------
+    # 适合调试界面：在仓库的 ui/v2.5 里执行 pnpm run build，把产物目录挂进来，
+    # 再用 STASH_UI 指过去，改前端就不用重新构建镜像了。
+    # 下面两行要分别加进文件中已经存在的 volumes / environment 列表里
+    # （不要新写一个 volumes: 或 environment: 键，那会造成重复键）：
+    #
+    #   在 volumes 列表里加一行：
+    #     - ./ui-build:/ui:ro
+    #
+    #   在 environment 列表里加一行（路径与上面挂载的容器内路径一致）：
+    #     STASH_UI: /ui
