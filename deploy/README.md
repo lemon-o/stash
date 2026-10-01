@@ -110,19 +110,29 @@ docker compose pull && docker compose up -d
 想在本地验证镜像内容：
 
 ```bash
-# 在仓库根目录执行，注意是 docker/build/x86_64/Dockerfile
+# 在仓库根目录执行。注意用的是 fork 专用的 docker/build/custom/Dockerfile
+make docker-build-custom
+```
+
+等价的手写命令：
+
+```bash
 docker build \
   --build-arg GITHASH=$(git rev-parse --short HEAD) \
   --build-arg STASH_VERSION=$(git describe --tags --always) \
   -t stash-local:test \
-  -f docker/build/x86_64/Dockerfile .
+  -f docker/build/custom/Dockerfile .
 ```
 
-或者直接用 Makefile：
+> **为什么不用上游的 `docker/build/x86_64/Dockerfile`？**
+> 上游那行 `RUN npm install -g pnpm` 不锁版本，npm 会装到最新版 pnpm（12.x，依赖原生包
+> `@pnpm/exe.*`）。该版本启动后会按 `package.json` 的 `packageManager` 字段自动切换到
+> `pnpm@10.33.0`，而 `@pnpm/exe@10.33.0` 没有发布 Alpine(musl) 的原生二进制，构建会报
+> `ERR_PNPM_PNPM_ENGINE_NO_NATIVE_BINARY` 而中断。
+> `docker/build/custom/Dockerfile` 只把这一行改成 `npm install -g pnpm@10.33.0`
+> （该版本是纯 JavaScript 实现，Alpine 上可直接运行），其余与上游完全一致。
 
-```bash
-make docker-build
-```
+`make docker-build` 仍然保留，走的是上游 Dockerfile，会在上述 pnpm 步骤失败。
 
 ---
 

@@ -441,6 +441,14 @@ docker-build: build-info
 docker-cuda-build: build-info
 	docker build --build-arg GITHASH=$(GITHASH) --build-arg STASH_VERSION=$(STASH_VERSION) -t stash/cuda-build -f docker/build/x86_64/Dockerfile-CUDA .
 
+# fork-specific: same as docker-build, but uses docker/build/custom/Dockerfile which
+# pins pnpm to the version in ui/v2.5/package.json's packageManager field.
+# The upstream Dockerfile runs `npm install -g pnpm` unpinned, which on Alpine fails with
+# ERR_PNPM_PNPM_ENGINE_NO_NATIVE_BINARY. This is the same file the Docker Image workflow uses.
+.PHONY: docker-build-custom
+docker-build-custom: build-info
+	docker build --build-arg GITHASH=$(GITHASH) --build-arg STASH_VERSION=$(STASH_VERSION) -t stash/custom-build -f docker/build/custom/Dockerfile .
+
 # start the build container - for cross compilation
 # this is adapted from the github actions build.yml file
 .PHONY: start-compiler-container

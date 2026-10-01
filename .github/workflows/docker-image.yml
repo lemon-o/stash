@@ -10,8 +10,11 @@
 # 实现方式：两个架构各自在原生运行器上构建（amd64 用 x86 运行器，arm64 用 ARM 运行器），
 # 各自按 digest 推送，最后由 publish 作业合并成一个多架构清单。
 # 这样避免了 QEMU 模拟构建，速度快很多。
-# 注意：docker/build/x86_64/Dockerfile 里的 "x86_64" 只是历史目录名，
-# 其中的 node/golang/alpine 基础镜像与构建步骤都是多架构通用的。
+#
+# 构建文件是 docker/build/custom/Dockerfile —— 它基于上游的
+# docker/build/x86_64/Dockerfile，只把 pnpm 固定成 packageManager 指定的版本，
+# 否则在 Alpine 上会因缺少 @pnpm/exe 的 musl 原生二进制而失败，详见该文件头部注释。
+# "x86_64" 只是上游的历史目录名，其中的 node/golang/alpine 基础镜像都是多架构通用的。
 
 name: Docker Image
 
@@ -117,6 +120,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: 释放运行器磁盘空间
+        # 这个 Dockerfile 会在容器内安装前端依赖并编译整个 Go 项目，磁盘占用较大。
+        # 先删掉与本工作流无关的预装 SDK，避免 "no space left on device"；失败也不影响构建。
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/share/boost \
+            /usr/local/share/chromium \
+            /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
       - name: 配置 Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -132,7 +148,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: docker/build/x86_64/Dockerfile
+          file: docker/build/custom/Dockerfile
           platforms: ${{ matrix.platform }}
           build-args: |
             GITHASH=${{ needs.prepare.outputs.githash }}
