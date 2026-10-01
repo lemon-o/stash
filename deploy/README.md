@@ -101,18 +101,32 @@ docker compose pull && docker compose up -d
 
 三种方式，任选其一：
 
-1. **推送代码**：改动合并进 `custom-ui` 分支后 `git push`，自动开始构建；
-   （目前 `custom-ui` 是本仓库默认分支 `develop` 之外的分支，`push` 触发工作正常）
+1. **推送代码**：改动合并进 `custom-ui` 分支后 `git push`，自动开始构建。
+
+   > 只改文档（`*.md`、`docs/`、`deploy/`、`.github/`、`LICENSE`）时**会自动跳过构建**。
+   > 这些文件不会进入镜像，构建一次只是白等几分钟，还会在 GHCR 上多出一堆内容完全相同的新标签。
+
 2. **打标签发布正式版**：
+
    ```bash
    git tag v1.0.0-custom && git push origin v1.0.0-custom
    ```
+
+   产出的镜像标签：`1.0.0-custom`、`1.0`、`latest`、`sha-<短哈希>`。
+
+   > 标签推送**一定会构建**：GitHub 对标签推送不评估路径过滤
+   > （[actions/runner#3933](https://github.com/actions/runner/issues/3933)），
+   > 所以发布流程不会被上面的跳过规则影响。
+   > 标签名需符合语义化版本（`v1.2.3` 或 `v1.2.3-custom`）才会产出 `1.2.3` / `1.2`，
+   > 否则只会得到 `latest` 与 `sha-*`。
+
 3. **手动触发**：打开 [Actions → Docker Image](https://github.com/lemon-o/stash/actions/workflows/docker-image.yml)，
    点 **Run workflow**，分支选 `custom-ui`，可顺便填一个自定义标签。
 
+   > 手动触发**无条件构建**。改完 CI 想强制验证一次，或者需要重新发布一次镜像时，用它。
+
 构建过程：两个架构在各自的运行器上并行构建 → 各自按 digest 推送 → 合并成多架构清单。
-实测耗时：冷缓存约 12 分钟（amd64 约 12 分钟、arm64 约 9 分钟，两者并行），
-publish 合并只需十几秒。有缓存后更快。
+实测耗时：代码改动约 12 分钟（冷缓存，amd64 与 arm64 并行，取较慢的一方），publish 合并只需十几秒。
 
 ---
 

@@ -2,8 +2,10 @@
 #
 # 触发条件：
 #   - 推送到 custom-ui 分支   -> latest / custom-ui / edge / sha-xxxxxxx
-#   - 推送 v* 标签            -> 1.2.3 / 1.2 / latest
-#   - Actions 页面手动触发    -> 可选一个自定义标签（手动触发请选择 custom-ui 分支）
+#     （只改文档、部署说明或 .github 下的文件时会跳过，见下面的 paths-ignore）
+#   - 推送 v* 标签            -> 1.2.3 / 1.2 / latest（标签推送必定构建）
+#   - Actions 页面手动触发    -> 可选一个自定义标签（手动触发请选择 custom-ui 分支，
+#                                且必定构建，可用来强制验证 CI 改动）
 #
 # 产物：ghcr.io/lemon-o/stash，同时提供 linux/amd64 与 linux/arm64。
 #
@@ -24,6 +26,19 @@ on:
       - custom-ui
     tags:
       - "v*"
+    # 只改动下面这些文件时不构建镜像：它们都不会进入镜像，构建一次纯属白等几分钟，
+    # 还会在 GHCR 上多出一堆内容完全相同的新标签。
+    # 注意：GitHub 对「标签推送」不评估路径过滤（actions/runner#3933），
+    # 所以打版本号标签发布时一定会构建；手动触发（workflow_dispatch）同样无条件构建。
+    # 想只验证 CI 改动是否可用时，用 Actions 页面的 Run workflow 强制构建一次即可。
+    paths-ignore:
+      - "*.md"
+      - "**/*.md"
+      - "docs/**"
+      - "deploy/**"
+      - ".github/**"
+      - ".gitignore"
+      - "LICENSE"
   workflow_dispatch:
     inputs:
       tag:

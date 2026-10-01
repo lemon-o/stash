@@ -26,7 +26,7 @@
 
 ## 部署（Docker，推荐）
 
-本分支**只发布 Docker 镜像**，由 GitHub Actions 在每次推送时自动构建并推送到 GitHub 容器仓库（GHCR）。
+本分支**只发布 Docker 镜像**，由 GitHub Actions 在推送代码改动时自动构建并推送到 GitHub 容器仓库（GHCR）。
 镜像同时提供 `linux/amd64` 与 `linux/arm64`，客户端不需要任何 Go / Node 编译环境。
 
 | 项目 | 值 |
@@ -90,6 +90,9 @@ docker compose pull && docker compose up -d
 | `edge` | 推送到 `custom-ui` 分支 | 同上，表示「开发中」的定制版 |
 | `sha-1c38437` | 每次构建 | 固定到某个提交，适合固定版本部署 |
 | `1.2.3` / `1.2` | 推送 `v1.2.3` 标签 | 正式版本号 |
+
+只改动文档的推送不会触发构建；打版本标签与手动触发则一定会构建。
+细节与耗时见 [deploy/README.md](deploy/README.md)。
 
 > [!NOTE]
 > 仓库里 `docker/production/` 下的 compose 文件是**上游的文件**，拉取的是官方镜像
