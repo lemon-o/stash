@@ -848,21 +848,21 @@ npx pnpm run start
      - 耗时巨大的视频感知哈希（Phashes）、切片预览（Previews）、雪碧图（Sprites）、标记切片（Markers）、视频转码（Transcodes）全数移至 Phase 2（慢速补充队列）；
      - 即使用户在生成时勾选了全部选项，第一阶段全库视频封面依然会在数秒内最先瞬间刷满，绝不阻塞。
 
-### 任务三十：标记预览、视频感知哈希值与切片预览全局默认设为关闭
+### 任务三十：视频感知哈希值与切片预览全局默认关闭，标记预览默认开启
 - **目标文件**：
   - `ui/v2.5/src/components/Settings/Tasks/LibraryTasks.tsx`
   - `ui/v2.5/src/components/Dialogs/GenerateDialog.tsx`
   - `data/config.yml`
 - **问题剖析**：
-  - Stash 原生代码中，在生成（Generate）任务弹窗与设置页中将 `phashes: true`（视频感知哈希值）、`markers: true`（标记预览）、`previews: true`（切片预览）全部默认硬编码为开启；
-  - 导致用户初次点击「生成」或「选择性生成」时，如果不手动逐个关闭这些隐藏的重度选项，系统就会默认启动长达十几小时的 25 帧拼图计算和视频转码切片任务。
+  - Stash 原生代码中，在生成（Generate）任务弹窗与设置页中将 `phashes: true`（视频感知哈希值）与 `previews: true`（切片预览）默认开启，导致点击生成时误启动了上万次抽帧的查重计算与耗时数小时的视频转码；
+  - 用户需要将视频感知哈希值与切片预览默认设为关闭，同时保留「标记预览（Markers）」默认开启。
 - **机制与实现方案**：
-  1. **前端生成默认选项全面调整为轻量安全模式**：
-     - 在 `LibraryTasks.tsx` 的 `getDefaultGenerateOptions()` 中，将 `phashes`、`markers`、`previews`、`sprites` 均设为 `false`；仅保留 `covers: true` 与 `imageThumbnails: true`；
+  1. **前端生成默认选项校准**：
+     - 在 `LibraryTasks.tsx` 的 `getDefaultGenerateOptions()` 中，保留 `covers: true`、`imageThumbnails: true` 和 `markers: true`；将 `phashes`、`previews`、`sprites` 均设为 `false`；
      - 在 `LibraryTasks.tsx` 的 `getDefaultScanOptions()` 中，将 `scanGeneratePreviews` 与 `scanGenerateSprites` 设为 `false`；
-     - 在 `GenerateDialog.tsx`（列表页快捷生成弹窗）的 `getDefaultOptions()` 中，同步将 `phashes`、`markers`、`previews` 默认设为 `false`；
+     - 在 `GenerateDialog.tsx`（列表页快捷生成弹窗）的 `getDefaultOptions()` 中，同步配置 `markers: true`，并将 `phashes` 与 `previews` 设为 `false`；
   2. **用户本地配置文件同步校准**：
-     - 在 `data/config.yml` 的 `ui.taskDefaults.generate` 中，同步将 `phashes: false`、`previews: false`、`sprites: false`、`markers: false` 落盘持久化，确保页面刷新或新建任务时完全以轻量极速状态启动。
+     - 在 `data/config.yml` 的 `ui.taskDefaults.generate` 中，同步配置 `markers: true`、`covers: true`，并将 `phashes: false`、`previews: false`、`sprites: false` 落盘持久化。
 
 ---
 
