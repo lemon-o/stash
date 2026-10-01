@@ -90,7 +90,10 @@ export const MarkerWallItem: React.FC<
   }
 
   const video = props.photo.mediaType === "video";
-  const ImagePreview = video ? "video" : "img";
+  const { marker } = props.photo;
+  const poster = marker.screenshot ?? undefined;
+
+  const [isPlaying, setIsPlaying] = useState(false);
   const videoEl = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -98,12 +101,12 @@ export const MarkerWallItem: React.FC<
     if (active) {
       videoEl.current.play().catch(() => {});
     } else {
+      setIsPlaying(false);
       videoEl.current.pause();
       videoEl.current.currentTime = 0;
     }
   }, [active, video]);
 
-  const { marker } = props.photo;
   const title = wallItemTitle(marker);
   const tagNames = marker.tags.map((p) => p.name);
 
@@ -135,26 +138,58 @@ export const MarkerWallItem: React.FC<
           }}
         />
       )}
-      <ImagePreview
+      {/* 静态缩略图封面（始终作为底层基准，鼠标未悬停或移开时立即展示，彻底避免黑帧） */}
+      <img
         loading="lazy"
-        loop={video}
-        muted={!video || !playSound || !active}
-        autoPlay={false}
-        poster={video ? (marker.screenshot ?? undefined) : undefined}
-        preload="none"
-        playsInline={video}
-        key={props.photo.key}
-        src={props.photo.src}
+        src={video ? (poster || props.photo.src) : props.photo.src}
+        alt={props.photo.alt}
         width={width}
         height={height}
-        alt={props.photo.alt}
-        ref={video ? (videoEl as any) : undefined}
-        // having a click handler here results in multiple calls to handleClick
-        // due to having the same click handler on the parent div
-        onError={() => {
-          props.photo.onError?.(props.photo);
+        style={{
+          width,
+          height,
+          objectFit: "cover",
+          display: "block",
         }}
       />
+      {/* 悬停预览视频（仅在开始播放后显现，移出时立即隐藏恢复为静态封面） */}
+      {video && (
+        <video
+          loading="lazy"
+          loop
+          muted={!playSound || !active}
+          autoPlay={false}
+          poster={poster}
+          preload="none"
+          playsInline
+          key={props.photo.key}
+          src={props.photo.src}
+          width={width}
+          height={height}
+          alt={props.photo.alt}
+          ref={videoEl}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width,
+            height,
+            objectFit: "cover",
+            opacity: isPlaying ? 1 : 0,
+            pointerEvents: "none",
+            transition: isPlaying ? "opacity 0.2s ease" : "none",
+          }}
+          onPlaying={() => {
+            if (active) {
+              setIsPlaying(true);
+            }
+          }}
+          onError={() => {
+            setIsPlaying(false);
+            props.photo.onError?.(props.photo);
+          }}
+        />
+      )}
       <div className="lineargradient">
         <footer className="wall-item-footer">
           <Link to={props.photo.link} onClick={(e) => e.stopPropagation()}>

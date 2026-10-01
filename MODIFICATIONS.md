@@ -528,8 +528,89 @@ npx pnpm run start
      - 当原视频时长 **< 15 秒** 且格式为浏览器支持原生硬解的容器（MP4/WebM/MOV）与标准编码（H.264/AVC、VP8/VP9、AV1 等）时，鼠标悬停直接播放原视频流（`scene.paths.stream`），省去切片消耗与空间；
      - 当原视频时长 **≥ 15 秒** 或格式为特种编码（MKV、HEVC/H.265 无硬解、特殊音频等）时，自动播放 15 秒精彩切片预览（`scene.paths.preview`），若未生成切片则平滑回退，兼顾极速加载与画质表现。
 
+### 任务十七：播放器时间轴雪碧图未生成自适应隐藏与 Telegram 风格中心播放键
+- **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/ScenePlayerScrubber.tsx`
+  - `ui/v2.5/src/hooks/sprite.ts`
+  - `ui/v2.5/src/components/ScenePlayer/styles.scss`
+- **逻辑与样式重构**：
+  1. **未生成雪碧图（Sprites / VTT）时自适应彻底隐藏时间轴缩略条**：
+     - 在 `ScenePlayerScrubber.tsx` 与 `sprite.ts` 中引入安全空值检查：若短片尚未生成 VTT/Sprites，组件直接返回 `null`，不再占用播放器底部任何高度与渲染资源；
+  2. **Telegram 风格中心播放按钮重构**：
+     - 去除原生多余的矩形边框与描边，重构 `.vjs-big-play-button` 为 `64px × 64px` 圆形亚克力毛玻璃风格（`background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(12px)`）；
+     - 播放三角图标向右微调 `translateX(2px)` 实现几何绝对视觉居中；
+     - 视频暂停时自动浮现，鼠标悬停与点击具备平滑缩放动效（`scale(1.08)` / `scale(0.96)`）；
+  3. **倍速按钮（1x）位置漂移与重叠修复**：
+     - 锁定 `.vjs-playback-rate` 容器宽度为 `36px` 相对定位，内部文字徽标 `28px × 22px` 居中显示，彻底解决其与 `AD`（音频解说）图标重叠或悬浮溢出的漂移问题。
+
+### 任务十八：任务队列高对比度纯暗黑进度条与双百分比徽章重构
+- **目标文件**：
+  - `ui/v2.5/src/styles/_theme.scss`
+  - `ui/v2.5/src/components/Settings/Tasks/JobTable.tsx`
+  - `ui/v2.5/src/components/Settings/styles.scss`
+- **样式升级**：
+  - 彻底根除原版暗浅蓝灰混合导致的进度不可见问题；
+  - 进度槽底色（Track）改为深邃碳素黑 `#1c1c1c` + 内阴影，进度填充（Fill）采用醒目纯白高光 `#ffffff`；
+  - 条内数字进度采用纯黑粗体（`#0c0c0c`，`font-weight: 800`），保证高对比度清晰易读；
+  - 任务表格标题行右侧集成实时高亮百分比徽章（`job-progress-badge`），双重保证即便进度极小时也能第一时间掌握精确执行进度。
+
+### 任务十九：默认不生成雪碧图 / 缩略图（Sprites / VTT）逻辑重构
+- **目标文件**：
+  - `ui/v2.5/src/components/FrontPage/FrontPage.tsx`
+  - `ui/v2.5/src/components/Settings/StashConfiguration.tsx`
+  - `ui/v2.5/src/components/Settings/Tasks/LibraryTasks.tsx`
+  - `ui/v2.5/src/components/Settings/Tasks/ScanOptions.tsx`
+  - `ui/v2.5/src/components/Settings/Tasks/GenerateOptions.tsx`
+  - `ui/v2.5/src/components/Dialogs/GenerateDialog.tsx`
+- **逻辑重构**：
+  - 针对大视频或海量素材切雪碧图（Sprites）消耗大量 CPU/GPU 算力与磁盘空间的情况，全域将雪碧图默认生成策略由“开启”调整为“默认关闭”；
+  - **首页与媒体库自动扫描**：添加新目录时触发的初始扫描任务中，将 `scanGenerateSprites` 由 `true` 置为 `false`；
+  - **任务扫描与生成默认配置**：`LibraryTasks.tsx` 的 `getDefaultScanOptions()`（`scanGenerateSprites: false`）与 `getDefaultGenerateOptions()`（`sprites: false`）全面关闭；
+  - **弹窗与选项组件 Fallback**：`ScanOptions.tsx` 与 `GenerateOptions.tsx`、`GenerateDialog.tsx` 默认勾选态及解构 fallback 全部统一重置为 `false`；
+  - **按需手动开启**：保留用户在扫描/生成高级对话框中随时手动勾选生成 Sprites 的完整能力。
+
+### 任务二十：静态缩略图智能防黑帧与防空白帧机制
+- **目标文件**：
+  - `pkg/scene/generate/screenshot.go`
+  - `internal/manager/task_generate_screenshot.go`
+  - `data/plugins/auto_group/auto_group.py`
+  - `data/plugins/auto_group/auto_group.yml`
+- **问题剖析**：
+  - 原版 Stash 在抽取静态缩略图/封面（Screenshot/Cover）时硬编码采用固定的视频 20% 时长（`duration * 0.2`）；
+  - 遇到片头渐入、黑屏转场、暗光拍摄或静态色块过渡时，极易抓取到纯黑帧（Black Frame）、暗帧或单一纯色空白帧（Blank/Solid Frame），导致缩略图呈现为无意义的黑块。
+- **机制与实现方案**：
+  1. **双重统计学亮度与方差多维评估模型**：
+     - 对抓取的图像像素进行均匀网格采样，计算感知亮度均值（$\text{mean } Y$）、标准差（$\text{stddev } Y$）与色彩极值区间（$\max - \min$）；
+     - **黑帧拦截判定**：$\text{mean } Y < 20.0$ 且 $\max Y < 45.0$ 或 $\text{mean } Y < 15.0$ 判定为黑帧/严重暗帧；
+     - **空白帧拦截判定**：$\text{stddev } Y < 6.0$ 或 $(\max - \min) < 15.0$ 判定为单色无内容空白帧；
+     - **曝光质量加权评分**：引入曝光适度评分曲线 $\text{Score} = \text{stddev} \times \text{ExposureWeight}$，优先倾向光线充足且边缘细节对比度高的画面。
+  2. **多时间戳智能寻优梯度采样**：
+     - 若候选时间戳检测为黑帧或空白帧，自动在 20%、40%、60%、70%、50%、30%、80%、15%、10% 等时间戳中快速探测；
+     - 遇到优质明亮高反差画面立即收敛返回，兼顾零额外开销与最高出图质量。
+  3. **插件层无缝拦截与全库一键修复任务**：
+     - 在 `auto_group.py` 与 `Scene.Create.Post` 钩子中全面引入质量核验，短片入库时若存在黑帧自动重新抽取高质量画面更新；
+     - `auto_group.yml` 中新增独立任务卡片「优化短片缩略图（消除黑帧与空白帧）」，支持随时一键巡检并自动修复全库历史黑帧封面。
+
+### 任务二十一：墙面视图悬停离开后瞬间恢复静态缩略图（消除黑帧冻结缺陷）
+- **目标文件**：
+  - `ui/v2.5/src/components/Scenes/SceneWallPanel.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneMarkerWallPanel.tsx`
+  - `ui/v2.5/src/components/Wall/WallItem.tsx`
+- **问题根源剖析**：
+  - HTML5 规范中 `<video>` 元素的 `poster` 属性仅在视频尚未开始播放前显示；一旦调用过 `.play()` 或设置 `currentTime = 0`，浏览器便不会再重新显示 `poster` 静态海报，而是停留在当前定位帧（即 `currentTime = 0` 的首帧）；
+  - 动态切片预览、原片片头通常包含淡入淡出黑场或过渡黑帧，导致鼠标移开暂停后，卡片直接冻结在切片首帧黑屏上，覆盖了原本清晰的静态封面。
+- **机制与实现方案**：
+  1. **双层视差架构（Dual-Layer Architecture）**：
+     - 底层恒定渲染高清静态封面 `<img>`，保持常规文档流与物理占位；
+     - 顶层绝对定位叠加 `<video>` 元素，通过 `opacity` 与状态机精准受控；
+  2. **播放状态防抖与零黑帧过渡**：
+     - 未悬停或正在缓冲（未出画面）时，视频保持 `opacity: 0` 且不阻挡交互；
+     - 视频真正解码并触发 `onPlaying` 且确认当前仍处于悬停状态（`active == true`）时，平滑淡入视频画面；
+     - 鼠标离开卡片瞬间（`onMouseLeave`），立刻重置 `isPlaying = false`，视频 `opacity` 瞬时归零并暂停重置，底层静态海报 0ms 无缝呈现，彻底根除黑帧闪烁或冻结！
+
 ---
 
 *文档更新时间：2026-10-01*  
 *维护者：Antigravity & User Pair-Programming*
+
 

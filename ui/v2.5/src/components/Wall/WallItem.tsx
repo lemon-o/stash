@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import * as GQL from "src/core/generated-graphql";
 import TextUtils from "src/utils/text";
 import NavUtils from "src/utils/navigation";
-import cx from "classnames";
 import { SceneQueue } from "src/models/sceneQueue";
 import { useConfigurationContext } from "src/hooks/Config";
 import { markerTitle } from "src/core/markers";
@@ -39,6 +38,7 @@ const Preview: React.FC<{
   active: boolean;
 }> = ({ previews, config, active }) => {
   const videoEl = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isMissing, setIsMissing] = useState(false);
 
   const previewType = config?.interface?.wallPlayback;
@@ -52,6 +52,7 @@ const Preview: React.FC<{
     if (active) {
       video.play().catch(() => {});
     } else {
+      setIsPlaying(false);
       video.pause();
       video.currentTime = 0;
     }
@@ -65,9 +66,12 @@ const Preview: React.FC<{
       src={
         (previewType === "animation" && previews.animation) || previews.image
       }
+      style={{
+        display: "block",
+      }}
     />
   );
-  const video = (
+  const video = previews.video ? (
     <video
       disableRemotePlayback
       playsInline
@@ -77,20 +81,35 @@ const Preview: React.FC<{
       loop
       muted
       preload="none"
-      className={cx("wall-item-media", {
-        "wall-item-preview": previewType !== "video",
-      })}
+      className="wall-item-media"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        opacity: isPlaying ? 1 : 0,
+        pointerEvents: "none",
+        transition: isPlaying ? "opacity 0.2s ease" : "none",
+      }}
+      onPlaying={() => {
+        if (active) {
+          setIsPlaying(true);
+        }
+      }}
       onError={(error: React.SyntheticEvent<HTMLVideoElement>) => {
         // Error code 4 indicates media not found or unsupported
+        setIsPlaying(false);
         setIsMissing(error.currentTarget.error?.code === 4);
       }}
       ref={videoEl}
     />
-  );
+  ) : null;
 
-  if (isMissing) {
+  if (isMissing || !video) {
     // show the image if the video preview is unavailable
-    if (previews.image) {
+    if (previews.image || previews.animation) {
       return image;
     }
 
@@ -101,9 +120,6 @@ const Preview: React.FC<{
     );
   }
 
-  if (previewType === "video") {
-    return video;
-  }
   return (
     <>
       {image}

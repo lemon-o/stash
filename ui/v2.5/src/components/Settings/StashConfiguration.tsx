@@ -190,7 +190,7 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
                     paths: [cleanPath],
                     scanGenerateCovers: true,
                     scanGeneratePreviews: true,
-                    scanGenerateSprites: true,
+                    scanGenerateSprites: false,
                     scanGenerateThumbnails: true,
                   });
                   try {

@@ -111,6 +111,7 @@ export const SceneWallItem: React.FC<
     },
   };
 
+  const [isPlaying, setIsPlaying] = useState(false);
   const videoEl = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -118,6 +119,7 @@ export const SceneWallItem: React.FC<
     if (active) {
       videoEl.current.play().catch(() => {});
     } else {
+      setIsPlaying(false);
       videoEl.current.pause();
       videoEl.current.currentTime = 0;
     }
@@ -163,10 +165,46 @@ export const SceneWallItem: React.FC<
           }}
         />
       )}
-      {video ? (
-        <video {...previewProps} ref={videoEl} />
-      ) : (
-        <img {...previewProps} loading="lazy" />
+      {/* 静态缩略图封面（始终作为底层基准，鼠标未悬停或移开时立即展示，彻底避免黑帧） */}
+      <img
+        loading="lazy"
+        src={video ? (poster || props.photo.src) : props.photo.src}
+        alt={props.photo.alt}
+        width={width}
+        height={height}
+        style={{
+          width,
+          height,
+          objectFit: "cover",
+          display: "block",
+        }}
+      />
+      {/* 悬停预览视频（仅在开始播放后显现，移出时立即隐藏恢复为静态封面） */}
+      {video && (
+        <video
+          {...previewProps}
+          ref={videoEl}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width,
+            height,
+            objectFit: "cover",
+            opacity: isPlaying ? 1 : 0,
+            pointerEvents: "none",
+            transition: isPlaying ? "opacity 0.2s ease" : "none",
+          }}
+          onPlaying={() => {
+            if (active) {
+              setIsPlaying(true);
+            }
+          }}
+          onError={() => {
+            setIsPlaying(false);
+            props.photo.onError?.(props.photo);
+          }}
+        />
       )}
       <div className="lineargradient">
         <footer className="wall-item-footer">

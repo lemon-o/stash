@@ -111,7 +111,7 @@ const FrontPage: React.FC = PatchComponent("FrontPage", () => {
                     paths: [cleanPath],
                     scanGenerateCovers: true,
                     scanGeneratePreviews: true,
-                    scanGenerateSprites: true,
+                    scanGenerateSprites: false,
                     scanGenerateThumbnails: true,
                   });
                   try {

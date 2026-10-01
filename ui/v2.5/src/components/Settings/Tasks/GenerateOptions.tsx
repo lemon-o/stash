@@ -83,7 +83,7 @@ export const GenerateOptions: React.FC<IGenerateOptions> = ({
 
           <BooleanSetting
             id="sprite-task"
-            checked={options.sprites ?? true}
+            checked={options.sprites ?? false}
             headingID="dialogs.scene_gen.sprites"
             tooltipID="dialogs.scene_gen.sprites_tooltip"
             onChange={(v) => setOptions({ sprites: v })}
