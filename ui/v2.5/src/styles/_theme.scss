@@ -417,21 +417,32 @@ hr {
 
 // Top Navbar Minimalist Frameless Pure-Text Styling
 .top-nav {
-  background-color: #0c0c0c !important;
+  background-color: rgba(12, 12, 12, 0.96) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: none !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: none !important;
   display: flex !important;
   align-items: center !important;
-  height: 50px !important;
-  max-height: 50px !important;
-  min-height: 50px !important;
-  padding: 0 1.25rem !important;
+  z-index: 1030;
 
   @include media-breakpoint-up(xl) {
+    height: 50px !important;
+    max-height: 50px !important;
+    min-height: 50px !important;
+    padding: 0 1.25rem !important;
+
     .nav-menu-icon {
       display: none !important;
     }
+  }
+
+  @include media-breakpoint-down(lg) {
+    min-height: 50px;
+    height: auto;
+    padding: calc(env(safe-area-inset-top, 0px) + 0.25rem) 1rem 0.25rem 1rem !important;
+    flex-wrap: wrap !important;
   }
 
   .navbar-brand {
@@ -472,81 +483,149 @@ hr {
   }
 
   .navbar-collapse {
-    align-items: center !important;
-    height: 50px !important;
+    align-items: center;
 
     @include media-breakpoint-up(xl) {
       display: flex !important;
-      background: transparent !important;
-    }
-
-    .navbar-nav {
-      display: flex !important;
       align-items: center !important;
+      height: 50px !important;
+      background: transparent !important;
 
-      @include media-breakpoint-up(xl) {
+      .navbar-nav {
+        display: flex !important;
+        align-items: center !important;
         flex-direction: row !important;
         height: 50px !important;
         margin: 0 !important;
         padding: 0 !important;
       }
-    }
 
-    .nav-link {
-      display: flex !important;
-      align-items: center !important;
-      background: transparent !important;
-      border: none !important;
-      padding: 0 !important;
-      margin: 0 !important;
-
-      @include media-breakpoint-up(xl) {
-        height: 50px !important;
-      }
-
-      .btn.minimal {
+      .nav-link {
+        display: flex !important;
         align-items: center !important;
-        justify-content: center !important;
         background: transparent !important;
         border: none !important;
-        border-radius: 0;
-        box-shadow: none !important;
-        color: #888888 !important;
-        display: flex !important;
-        font-weight: 500;
+        padding: 0 !important;
         margin: 0 !important;
-        text-decoration: none !important;
-        transition: color 0.15s ease-in-out;
+        height: 50px !important;
 
-        @include media-breakpoint-up(xl) {
+        .btn.minimal {
+          align-items: center !important;
+          justify-content: center !important;
+          background: transparent !important;
+          border: none !important;
+          border-radius: 0;
+          box-shadow: none !important;
+          color: #888888 !important;
+          display: flex !important;
+          font-weight: 500;
+          margin: 0 !important;
+          text-decoration: none !important;
+          transition: color 0.15s ease-in-out;
           height: 50px !important;
           line-height: 50px !important;
           padding: 0 0.85rem !important;
+
+          span {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            line-height: 1;
+          }
+
+          &:hover,
+          &:focus {
+            background: transparent !important;
+            box-shadow: none !important;
+            color: #ffffff !important;
+            font-weight: 700;
+          }
         }
 
-        span {
-          display: flex;
-          align-items: center;
-          height: 100%;
-          line-height: 1;
-        }
-
-        &:hover,
-        &:focus {
+        &.active .btn.minimal,
+        .active > .btn.minimal,
+        .btn.minimal.active {
           background: transparent !important;
           box-shadow: none !important;
           color: #ffffff !important;
           font-weight: 700;
         }
       }
+    }
 
-      &.active .btn.minimal,
-      .active > .btn.minimal,
-      .btn.minimal.active {
-        background: transparent !important;
-        box-shadow: none !important;
-        color: #ffffff !important;
-        font-weight: 700;
+    @include media-breakpoint-down(lg) {
+      width: 100% !important;
+      flex-basis: 100% !important;
+      height: auto !important;
+      max-height: calc(100vh - 65px - env(safe-area-inset-top, 0px));
+      overflow-y: auto;
+      padding: 0.5rem 0 0.75rem 0;
+
+      .navbar-nav {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      .nav-link {
+        flex: 0 0 33.333% !important;
+        max-width: 33.333% !important;
+        padding: 4px !important;
+
+        @media (max-width: 400px) {
+          flex: 0 0 50% !important;
+          max-width: 50% !important;
+        }
+
+        .btn.minimal {
+          width: 100% !important;
+          min-height: 60px !important;
+          border-radius: 8px !important;
+          background: rgba(255, 255, 255, 0.04) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          padding: 8px 4px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: center !important;
+          color: #888888 !important;
+
+          &:active,
+          &:hover {
+            background: rgba(255, 255, 255, 0.12) !important;
+            color: #ffffff !important;
+          }
+
+          .nav-menu-icon {
+            font-size: 1.25rem !important;
+            margin-bottom: 6px !important;
+            color: #aaaaaa !important;
+            display: block !important;
+          }
+
+          span {
+            font-size: 0.82rem !important;
+            line-height: 1.2 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+        }
+
+        &.active .btn.minimal,
+        .active > .btn.minimal,
+        .btn.minimal.active {
+          background: rgba(255, 255, 255, 0.15) !important;
+          border-color: rgba(255, 255, 255, 0.25) !important;
+          color: #ffffff !important;
+
+          .nav-menu-icon {
+            color: #ffffff !important;
+          }
+        }
       }
     }
   }
@@ -778,6 +857,185 @@ hr {
       ) !important;
       background-size: 1rem 1rem !important;
     }
+  }
+}
+
+// =============================================================================
+// Comprehensive Mobile UI Responsive Adaptations
+// =============================================================================
+
+// 1. Mobile Global Card Grids (Scenes, Performers, Images, Studios, Tags, Groups)
+@media (max-width: 576px) {
+  .grid-card,
+  .scene-card.card,
+  .scene-marker-card.card,
+  .performer-card,
+  .image-card.card,
+  .studio-card,
+  .tag-card,
+  .group-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .row.justify-content-center {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .card-popovers {
+    margin-bottom: 6px;
+    gap: 4px;
+
+    .btn {
+      padding: 2px 6px;
+      font-size: 0.8rem;
+    }
+  }
+}
+
+// 2. Mobile Filter & Search Toolbar
+@media (max-width: 576px) {
+  .filtered-list-toolbar {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    gap: 6px;
+
+    .search-term-input {
+      width: 100% !important;
+      flex: 1 1 100% !important;
+      max-width: 100% !important;
+      margin-bottom: 2px !important;
+    }
+
+    .sort-by-select {
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      &::-webkit-scrollbar {
+        display: none;
+      }
+    }
+  }
+
+  .pagination-footer-container {
+    bottom: calc(env(safe-area-inset-bottom, 8px) + 4px) !important;
+
+    .pagination-footer {
+      padding: 0.25rem 0.5rem;
+
+      .pagination.btn-group .btn {
+        padding: 4px 10px;
+        min-height: 36px;
+        font-size: 0.85rem;
+      }
+    }
+  }
+}
+
+// 3. Mobile Navigation Tabs (Smooth Horizontal Swipeable Tabs)
+@media (max-width: 768px) {
+  .nav-tabs {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    margin-bottom: 1rem !important;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    .nav-item {
+      flex-shrink: 0;
+    }
+
+    .nav-link {
+      white-space: nowrap;
+      padding: 8px 14px;
+      font-size: 0.9rem;
+    }
+  }
+}
+
+// 4. Mobile Modals & Dialogs (Safe Viewport Boundaries)
+@media (max-width: 576px) {
+  .modal-dialog {
+    margin: 0.5rem;
+    max-width: calc(100% - 1rem);
+  }
+
+  .modal-content {
+    max-height: calc(100vh - 1.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+  }
+
+  .modal-body {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1 1 auto;
+  }
+}
+
+// 5. Mobile Tables (Self-contained horizontal scrolling)
+@media (max-width: 768px) {
+  .table-responsive,
+  .table-list,
+  .item-list-container > .table,
+  .scene-table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+// 6. iOS Auto-Zoom Prevention (Ensure inputs are at least 16px font-size)
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  input[type="password"],
+  input[type="email"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+// 7. Mobile Drawer Utilities Styling
+.mobile-nav-utilities {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  margin-top: 8px;
+  padding: 8px 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+  .btn.minimal {
+    color: #888888 !important;
+
+    &:hover,
+    &:active {
+      color: #ffffff !important;
+    }
+
+    .fa-icon,
+    svg {
+      font-size: 1.15rem;
+      color: inherit !important;
+    }
+  }
+
+  span.small {
+    font-size: 0.75rem;
+    color: #888888;
   }
 }
 

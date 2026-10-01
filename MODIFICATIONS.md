@@ -384,6 +384,48 @@
 
 ---
 
+### 任务十四：扫描任务进度条统计不准确与未完成显示 100% Bug 修复（基于媒体文件总数精准计量）
+
+* **机制与根本原因深度剖析**：
+  1. **目录文件夹误入进度计数（核心罪魁祸首）**：
+     - 在原版 `internal/manager/task_scan.go` 中，遍历文件树时遇到的每一个目录文件夹都会执行 `j.handleFolder(ctx, ff, progress)`；
+     - `handleFolder` 内部包含了 `defer progress.Increment()`，导致遍历到的所有文件夹都会使 `progress.processed` 计数累加；
+     - 然而入队计数 `j.count` 只统计真正的媒体文件（普通文件才会触发 `j.count++`，文件夹处理完直接 `return nil`）；
+     - 当遍历完成时调用 `progress.AddTotal(j.count)`，总数被设为媒体文件数，而已处理数 `progress.processed` 早已被海量文件夹占据。一旦文件夹数量 ≥ 媒体文件数量，进度条在第一个媒体文件还没扫描完时就已经飙升至 100%！即使文件夹少于文件数，也会在扫描刚过半时就提前耗尽配额到达 100%，并在后续很长的实际扫描过程中永久卡死在 100%。
+  2. **生成任务（封面/精灵图/哈希）多重重叠自增破坏基准**：
+     - 原逻辑中每一个视频的子生成任务（如 `ScanGenerateCovers`、`ScanGenerateSprites`、`ScanGeneratePhashes`）均独立调用了 `progress.AddTotal(1)` 与 `progress.Increment()`；
+     - 与此同时，主文件的扫描处理 `j.handleFile` 自身也带有一个 `defer progress.Increment()`；
+     - 导致单个视频的处理在 `processed` 计数上被重复自增 2~4 次，进度条配额被严重透支，导致百分比失真提前爆满。
+  3. **前端 ETA（预估剩余时间）数学公式严重错误**：
+     - 在 `JobTable.tsx` 中，原计算代码为：
+       `const estimatedLength = (nowMS - startMS) / job.progress;`
+       `etaStr = moment.duration(estimatedLength).humanize();`
+     - `(nowMS - startMS) / job.progress` 计算出来的数值是**任务预估总运行时长**，而不是剩余时长！
+     - 当进度到达 100%（`job.progress = 1.0`）时，`estimatedLength` 恰好等于已运行的全部时长（如运行了 8 分钟），而前端却将其作为“预估剩余时间”显示为 `100% · 预估剩余时间: 8 分钟`，造成了荒谬的“进度满了却还要剩余 8 分钟”的认知矛盾。
+* **目标文件**：
+  - `internal/manager/task_scan.go`
+  - `ui/v2.5/src/components/Settings/Tasks/JobTable.tsx`
+* **代码修改点**：
+  1. **后端建立媒体文件总数预读与基准锚定机制**：
+     - 新增 `countMediaFiles(ctx, paths, progress)` 轻量级预读函数，在扫描正式开始前以纯元数据秒级遍历（毫秒级完成，无数据库写入与文件 I/O 阻塞），精准统计所选路径下真正符合视频/图片/图库后缀与过滤规则的**媒体文件总数** `totalMediaFiles`；
+     - 扫描启动时立即调用 `progress.SetTotal(totalMediaFiles)` 和 `progress.SetProcessed(0)`，彻底消除 indeterminate 模糊阶段，让进度百分比一开始就拥有精准明确的物理分母；
+     - 队列遍历结束时，若存在扫描间隙文件变更，以实际队列数量动态校正总数（`if j.count > 0 && j.count != totalMediaFiles { progress.SetTotal(j.count) }`）。
+  2. **剥离文件夹与附属任务对进度的干扰，严格按媒体文件计算**：
+     - 彻底移除 `handleFolder` 中的 `progress.Increment()`，文件夹作为目录容器只建库更新，绝不计入媒体处理进度；
+     - 彻底移除 `sceneGenerators` 与 `imageGenerators`（封面缩略图、精灵图、哈希）中的 `progress.AddTotal(1)` 与 `progress.Increment()`；
+     - 确保**每一个媒体文件（`handleFile`）仅且只对应一次 `progress.Increment()`**，真正实现“已完成媒体文件数 / 总媒体文件数”的纯粹百分比计量。
+  3. **后端扫描全任务完成闭环**：
+     - 在 `ScanJob.Execute` 末尾，当主扫描、附属队列与所有后处理钩子完全执行完毕后，显式调用 `progress.SetProcessed(totalMediaFiles)` 与 `progress.SetPercent(1.0)`，保证 100% 只在真正完工时才触发。
+  4. **前端运行态防早熟与 ETA 真实剩余时长纠正**：
+     - 在 `JobTable.tsx` 中修正 ETA 数学公式：`remainingMS = Math.max(0, estimatedLength - elapsedMS)`，严格计算剩余耗时；当进度达到 100% 时剩余时长归零，不再显示多余时间；
+     - 在运行状态（`job.status === Running` 且 `job.progress < 1`）下，进度显示采用 `Math.min(99, Math.floor(progress))`，杜绝因为四舍五入导致还在运行中就显示 100% 的误报。
+* **效果**：
+  - 扫描启动后即刻获得准确的媒体文件总数（如 `1280 个媒体文件`），进度条平滑、匀速、真实地随着视频与图片的入库逐一递增（0% -> 1% -> 50% -> 99%）；
+  - 只要后台仍在扫描文件或执行任务，进度条绝不会提前卡死在 100%；
+  - 预估剩余时间（ETA）真实反映距离扫描完成所需的剩余时长，扫描彻底完成时瞬间打钩闭环。
+
+---
+
 ## 3. 本地开发热重载与生产联调指南
 
 无需在本地搭建庞大的 Go 和 SQLite/PostgreSQL 后端，可以通过 Vite 代理直接连接你现有的生产服务器（`https://stash.lemjoo.top`）：
@@ -883,6 +925,42 @@ npx pnpm run start
   2. **前端组件默认值兜底（React & VideoJS Plugin）**：
      - 在 `SettingsInterfacePanel.tsx` 中，将自动播放选项开关在无明确配置时的回退值由 `undefined` 设为 `true`；
      - 在 `ScenePlayer.tsx` 及 `autostart-button.ts` 中，将 `autostartVideo ?? false` 全面升级为 `autostartVideo ?? true`，确保进入短片播放详情页时默认自动起播。
+
+### 任务三十三：全面手机端与移动设备 UI 响应式适配
+- **目标文件**：
+  - `ui/v2.5/index.html`
+  - `ui/v2.5/src/index.scss`
+  - `ui/v2.5/src/styles/_theme.scss`
+  - `ui/v2.5/src/components/MainNavbar.tsx`
+  - `ui/v2.5/src/components/List/styles.scss`
+  - `ui/v2.5/src/components/ScenePlayer/styles.scss`
+- **问题与现状剖析**：
+  1. **导航栏高度死锁与移动端抽屉瘫痪**：此前极简单色黑主题为顶部导航栏强加了 `height: 50px !important; max-height: 50px !important;`，且对 `.navbar-collapse` 也强加了 50px 高度限制，导致移动端点击汉堡按钮时菜单根本无法展开，内容被裁切完全不可用；
+  2. **移动端设置与退出入口缺失**：手机端在小屏幕下隐藏了右侧工具图标，而汉堡抽屉菜单内又未包含设置、统计、帮助与退出按钮，导致手机用户根本无法进入系统设置；
+  3. **刘海屏与手势条安全区缺失**：缺乏 `viewport-fit=cover` 与 `env(safe-area-inset-*)` 适配，底部悬浮分页栏或抽屉容易与 iOS/Android 手势底条重叠；
+  4. **搜索与过滤栏移动端挤压**：手机竖屏宽度下，多项按钮与输入框挤在一起导致换行错乱甚至撑破视口横向滚动；
+  5. **iOS 输入自动放大（Auto-Zoom）缺陷**：iOS Safari 下输入框字体小于 16px 会强制将页面放大，破坏排版；
+  6. **卡片宽度与触摸面积适配**：部分卡片在移动端未自动 100% 满宽，视频播放器进度条触控面积偏小容易误触。
+- **机制与实现方案**：
+  1. **视口安全区全面适配（Safe-Area Insets & Viewport-Fit）**：
+     - 在 `index.html` 的 viewport 中追加 `viewport-fit=cover`；
+     - 在 `index.scss` 中将 `body` 及固定导航栏的外边距升级为 `calc($navbar-height + env(safe-area-inset-top, 0px))`、`env(safe-area-inset-bottom)` 等，彻底规避刘海屏与手势黑条遮挡；统一将导航栏固定在顶部，废除旧版竖屏下翻转至底部的混乱行为。
+  2. **响应式导航栏与毛玻璃抽屉菜单重构**：
+     - 解除 `< xl` 屏幕下的 50px 限制，桌面端保持 50px 水平极简栏，移动端支持随内容自适应高度；
+     - 展开菜单重构为精美 3 列（窄屏 2 列）触控卡片（微磨砂背景 + 图标置顶 + 标签清晰居中，最小高度 60px）；
+     - 在 `MainNavbar.tsx` 移动端折叠抽屉底部新增专用的移动端工具栏（包含「设置」、「统计」、「帮助」、「退出」），彻底解决手机端无法进入设置的问题。
+  3. **搜索与过滤工具栏移动端专属优化**：
+     - 在手机屏幕（`<= 576px`）下，搜索输入框强制自适应 `flex: 1 1 100%; width: 100%`，置顶单行全宽；
+     - 排序选项条（`sort-by-select`）开启横向平滑滚动防溢出；
+     - 底部浮动分页条适配安全区内边距，按钮按压面积提升至 36px+。
+  4. **全库网格卡片移动端 100% 优雅撑满**：
+     - 统一为 `.grid-card`、短片卡片、演员卡片、图片卡片、制片商卡片等配置移动端 `width: 100% !important; margin: 0 0 0.75rem 0`，配合 8px 视口内边距，呈现如原生 App 般舒适的单列信息流。
+  5. **移动端播放器触控优化与 iOS 体验防护**：
+     - 在手机端适当隐藏空间占比过大的非必需音量滑条（利用手机物理音量按键），保留核心全屏、时间、倍速与清晰度按钮；
+     - 将进度条触控热区（`vjs-progress-control`）增高至 24px，拖动更平滑跟手；
+     - 标签页（`.nav-tabs`）支持横向丝滑滑动手势，杜绝换行折叠；
+     - 限制移动端表单文本框文字不小于 16px，彻底根除 iOS 聚焦自动放大问题；
+     - 弹窗与对话框强制适配 `max-height: calc(100vh - 1.5rem - safe-area)` 配合滚动体，杜绝底部确定按钮被顶出屏幕。
 
 ---
 

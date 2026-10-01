@@ -1239,15 +1239,11 @@ ul.selectable-list {
 
 .pagination-footer-container {
   background-color: transparent;
-  bottom: $navbar-height;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
   margin: auto;
   pointer-events: none;
   position: sticky;
   z-index: 10;
-
-  @include media-breakpoint-up(sm) {
-    bottom: 0;
-  }
 }
 
 .pagination-footer {

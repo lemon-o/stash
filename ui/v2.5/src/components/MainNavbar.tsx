@@ -376,6 +376,61 @@ export const MainNavbar: React.FC = () => {
             </Nav.Link>
           ))}
         </MainNavbarMenuItems>
+        <div className="d-xl-none mobile-nav-utilities w-100">
+          <div className="d-flex justify-content-around align-items-center py-2">
+            <NavLink
+              exact
+              to="/settings"
+              onClick={handleDismiss}
+              className="d-flex flex-column align-items-center text-muted text-decoration-none"
+            >
+              <SettingsButton />
+              <span className="small mt-1">
+                {intl.formatMessage({ id: "settings" })}
+              </span>
+            </NavLink>
+            <NavLink
+              exact
+              to="/stats"
+              onClick={handleDismiss}
+              className="d-flex flex-column align-items-center text-muted text-decoration-none"
+            >
+              <Button className="minimal p-0 d-flex align-items-center justify-content-center">
+                <Icon icon={faChartColumn} />
+              </Button>
+              <span className="small mt-1">
+                {intl.formatMessage({ id: "statistics" })}
+              </span>
+            </NavLink>
+            <div
+              className="d-flex flex-column align-items-center text-muted cursor-pointer"
+              onClick={() => {
+                handleDismiss();
+                openManual();
+              }}
+            >
+              <Button className="minimal p-0 d-flex align-items-center justify-content-center">
+                <Icon icon={faQuestionCircle} />
+              </Button>
+              <span className="small mt-1">
+                {intl.formatMessage({ id: "help" })}
+              </span>
+            </div>
+            {SessionUtils.isLoggedIn() && (
+              <a
+                className="d-flex flex-column align-items-center text-muted text-decoration-none logout-button"
+                href={`${baseURL}logout`}
+              >
+                <Button className="minimal p-0 d-flex align-items-center justify-content-center">
+                  <Icon icon={faSignOutAlt} />
+                </Button>
+                <span className="small mt-1">
+                  {intl.formatMessage({ id: "actions.logout" })}
+                </span>
+              </a>
+            )}
+          </div>
+        </div>
       </Navbar.Collapse>
 
       <Navbar.Brand as="div" onClick={handleDismiss} className="d-flex align-items-center h-100">

@@ -57,13 +57,7 @@ body {
   -webkit-font-smoothing: antialiased;
   margin: 0;
   overflow-x: hidden;
-  padding: $navbar-height 0 0 0;
-
-  @include media-breakpoint-down(xs) {
-    @media (orientation: portrait) {
-      padding: 0.5rem 0 $navbar-height;
-    }
-  }
+  padding: calc(#{$navbar-height} + env(safe-area-inset-top, 0px)) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
 .main {
@@ -1098,15 +1092,9 @@ div.dropdown-menu {
 .top-nav {
   justify-content: start;
   padding: 0.25rem 1rem;
+  top: 0;
+  bottom: auto;
 
-  @include media-breakpoint-down(xs) {
-    padding: 0.25rem 2rem;
-
-    @media (orientation: portrait) {
-      bottom: 0;
-      top: auto;
-    }
-  }
   @include media-breakpoint-up(xl) {
     height: $navbar-height;
   }

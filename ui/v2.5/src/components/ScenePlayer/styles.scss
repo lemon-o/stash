@@ -867,8 +867,18 @@ $sceneTabWidth: 450px;
   }
   @media (max-width: 576px) {
     .vjs-control-bar {
-      .vjs-autostart-button {
-        display: none;
+      .vjs-autostart-button,
+      .vjs-volume-panel {
+        display: none !important;
+      }
+    }
+
+    .vjs-progress-control {
+      height: 24px !important;
+      top: -12px !important;
+
+      .vjs-progress-holder {
+        height: 6px !important;
       }
     }
   }
