@@ -55,3 +55,16 @@ stash
 dist
 
 docker
+
+####
+# Local-only artefacts, not copied by any Dockerfile
+# Keeps the build context small and speeds up `docker build`
+####
+
+.git
+.github
+.idea
+.vscode
+node_modules
+bin
+data

@@ -1,0 +1,57 @@
+# Stash 定制版（极简纯暗黑 UI）Docker 部署文件
+#
+# 镜像由 GitHub Actions 自动构建并发布到 GitHub 容器仓库：
+#   ghcr.io/lemon-o/stash:latest
+#
+# 使用方法：
+#   1. 把这个文件复制到你的服务器上任意一个空目录里；
+#   2. 在该目录执行 `docker compose up -d`；
+#   3. 浏览器打开 http://<服务器IP>:9999
+#
+# 更新镜像：
+#   docker compose pull && docker compose up -d
+#
+# 想固定某个版本，把 image 换成带版本号的标签即可，例如：
+#   image: ghcr.io/lemon-o/stash:sha-1c38437
+
+services:
+  stash:
+    image: ghcr.io/lemon-o/stash:latest
+    container_name: stash
+    restart: unless-stopped
+
+    ## 容器内外端口必须与下面的 STASH_PORT 一致
+    ports:
+      - "9999:9999"
+    ## 如果你要用 Stash 的 DLNA 功能，请注释掉上面的 ports，
+    ## 改用下面这行让容器直接使用宿主机网络
+    # network_mode: host
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    environment:
+      - STASH_STASH=/data/
+      - STASH_GENERATED=/generated/
+      - STASH_METADATA=/metadata/
+      - STASH_CACHE=/cache/
+      - STASH_PORT=9999
+      ## 改成你所在的时区，例如 Asia/Shanghai、Europe/Berlin
+      - TZ=Asia/Shanghai
+
+    volumes:
+      ## 配置、数据库、刮削器与插件
+      - ./config:/root/.stash
+      ## 你的媒体库。把左边改成宿主机上媒体文件的真实路径
+      - ./data:/data
+      ## Stash 的元数据
+      - ./metadata:/metadata
+      ## 缓存
+      - ./cache:/cache
+      ## 二进制大对象（场景封面、图片等）
+      - ./blobs:/blobs
+      ## 生成内容（截图、预览、转码、雪碧图）
+      - ./generated:/generated
