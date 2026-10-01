@@ -183,7 +183,7 @@ export const ListViewButtonGroup: React.FC<IListViewOptionsProps> = ({
   return (
     <>
       {displayModeOptions.length > 1 && (
-        <ButtonGroup>
+        <ButtonGroup className="display-mode-buttons">
           {displayModeOptions.map((option) => (
             <OverlayTrigger
               key={option}

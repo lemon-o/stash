@@ -111,8 +111,6 @@ export const PagedList: React.FC<
 
   return (
     <>
-      {pagination}
-      {paginationIndex}
       {content}
     </>
   );

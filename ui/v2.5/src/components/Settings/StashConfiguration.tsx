@@ -1,9 +1,11 @@
 import { faEllipsisV } from "@fortawesome/free-solid-svg-icons";
 import React, { useState } from "react";
 import { Button, Form, Row, Col, Dropdown } from "react-bootstrap";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { Icon } from "src/components/Shared/Icon";
 import * as GQL from "src/core/generated-graphql";
+import { mutateMetadataScan } from "src/core/StashService";
+import { useToast } from "src/hooks/Toast";
 import TextUtils from "src/utils/text";
 import { FolderSelectDialog } from "../Shared/FolderSelect/FolderSelectDialog";
 import { BooleanSetting } from "./Inputs";
@@ -99,6 +101,8 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
   stashes,
   setStashes,
 }) => {
+  const intl = useIntl();
+  const Toast = useToast();
   const [isCreating, setIsCreating] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
 
@@ -122,17 +126,36 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
       {isCreating ? (
         <FolderSelectDialog
           onClose={(v) => {
-            if (v)
+            if (v) {
+              const cleanPath = TextUtils.stripQuotes(v);
               setStashes([
                 ...stashes,
                 {
                   // the server strips out quotes from the library path
                   // do the same here to be present a consistent value
-                  path: TextUtils.stripQuotes(v),
+                  path: cleanPath,
                   excludeVideo: false,
                   excludeImage: false,
                 },
               ]);
+
+              // 增加目录后自动扫描一次
+              setTimeout(async () => {
+                try {
+                  await mutateMetadataScan({
+                    paths: [cleanPath],
+                  });
+                  Toast.success(
+                    intl.formatMessage(
+                      { id: "config.tasks.added_job_to_queue" },
+                      { operation_name: intl.formatMessage({ id: "actions.scan" }) }
+                    )
+                  );
+                } catch (err) {
+                  console.error("Auto scan failed:", err);
+                }
+              }, 700);
+            }
             setIsCreating(false);
           }}
         />

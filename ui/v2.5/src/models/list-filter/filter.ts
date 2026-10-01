@@ -35,7 +35,7 @@ interface IEncodedParams {
 
 const DEFAULT_PARAMS = {
   sortDirection: SortDirectionEnum.Asc,
-  displayMode: DisplayMode.Grid,
+  displayMode: DisplayMode.Wall,
   currentPage: 1,
   itemsPerPage: 40,
 };
@@ -51,10 +51,10 @@ export class ListFilterModel {
   public sortDirection: SortDirectionEnum = DEFAULT_PARAMS.sortDirection;
   public sortBy?: string;
   public displayMode: DisplayMode = DEFAULT_PARAMS.displayMode;
-  public zoomIndex: number = 1;
+  public zoomIndex: number = 2;
   public criteria: Array<Criterion> = [];
   public randomSeed = -1;
-  private defaultZoomIndex: number = 1;
+  private defaultZoomIndex: number = 2;
 
   public constructor(
     mode: FilterMode,
@@ -81,7 +81,9 @@ export class ListFilterModel {
         this.sortDirection = SortDirectionEnum.Desc;
       }
     }
-    this.displayMode = displayModeOptions[0];
+    this.displayMode = displayModeOptions.includes(DEFAULT_PARAMS.displayMode)
+      ? DEFAULT_PARAMS.displayMode
+      : displayModeOptions[0];
     if (options?.defaultZoomIndex !== undefined) {
       this.defaultZoomIndex = options.defaultZoomIndex;
       this.zoomIndex = options.defaultZoomIndex;
@@ -112,7 +114,7 @@ export class ListFilterModel {
     clone.currentPage = 1;
     clone.sortDirection = DEFAULT_PARAMS.sortDirection;
     clone.itemsPerPage = 0;
-    clone.zoomIndex = 1;
+    clone.zoomIndex = 2;
     clone.displayMode = DEFAULT_PARAMS.displayMode;
     return clone;
   }

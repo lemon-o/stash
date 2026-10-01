@@ -96,7 +96,8 @@ const intlFormats: CustomFormats = {
   },
 };
 
-const defaultLocale = "en-GB";
+const fallbackLocale = "en-GB";
+const defaultLocale = "zh-CN";
 
 function languageMessageString(language: string) {
   return language.replace(/-/, "");
@@ -144,10 +145,10 @@ export const App: React.FC = () => {
   const { data: systemStatusData } = useSystemStatus();
 
   const language =
-    config.data?.configuration?.interface?.language ?? defaultLocale;
+    config.data?.configuration?.interface?.language || defaultLocale;
   const intlLanguage = translateLanguageLocale(language);
 
-  // use en-GB as default messages if any messages aren't found in the chosen language
+  // use fallbackLocale (en-GB) as default messages if any messages aren't found in the chosen language
   const [messages, setMessages] = useState<Record<string, string>>();
   const [customMessages, setCustomMessages] = useState<NestedMessage>();
 
@@ -166,7 +167,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const setLocale = async () => {
-      const defaultMessageLanguage = languageMessageString(defaultLocale);
+      const defaultMessageLanguage = languageMessageString(fallbackLocale);
       const messageLanguage = languageMessageString(language);
 
       // register countries for the chosen language

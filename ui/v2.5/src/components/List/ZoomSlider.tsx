@@ -30,12 +30,12 @@ export function useZoomKeybinds(props: {
 }
 
 export interface IZoomSelectProps {
-  zoomIndex: number;
+  zoomIndex?: number;
   onChangeZoom: (v: number) => void;
 }
 
 export const ZoomSelect: React.FC<IZoomSelectProps> = ({
-  zoomIndex,
+  zoomIndex = 2,
   onChangeZoom,
 }) => {
   return (

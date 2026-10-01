@@ -66,27 +66,29 @@
 
   .zoom-slider {
     &::-webkit-slider-thumb {
-      background-color: $primary;
+      background-color: #ffffff;
+      border: 1px solid #555555;
     }
 
     &::-webkit-slider-runnable-track {
-      background-color: $body-bg;
+      background-color: #2a2a2a;
     }
 
     &:focus::-webkit-slider-runnable-track {
-      background-color: lighten($body-bg, 5%);
+      background-color: #2a2a2a;
     }
 
     &::-moz-range-thumb {
-      background-color: $primary;
+      background-color: #ffffff;
+      border: 1px solid #555555;
     }
 
     &::-moz-range-track {
-      background-color: $body-bg;
+      background-color: #2a2a2a;
     }
 
     &:focus::-moz-range-track {
-      background-color: lighten($body-bg, 5%);
+      background-color: #2a2a2a;
     }
   }
 }
@@ -792,7 +794,7 @@ ul.selectable-list {
     margin: 0;
 
     thead {
-      background-color: #202b33;
+      background-color: $body-bg;
       position: sticky;
       top: 0;
       z-index: 1;
@@ -966,32 +968,199 @@ ul.selectable-list {
 .filtered-list-toolbar {
   align-items: center;
   background-color: $body-bg;
-  gap: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   justify-content: center;
-
-  // offset the main padding
   margin-top: -0.5rem;
   padding-bottom: 0.5rem;
   padding-top: 0.5rem;
 
-  & > .btn-group {
-    flex-wrap: wrap;
+  // 1. Height deadlock: 32px for all direct child elements
+  > .btn-group,
+  > .input-group,
+  > .form-group,
+  > .search-term-input,
+  > .page-size-selector,
+  > .zoom-slider-container,
+  > .btn,
+  .btn-group {
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+  }
+
+  .btn {
+    align-items: center;
+    display: inline-flex;
+    height: 32px;
     justify-content: center;
-    row-gap: 0.5rem;
+    line-height: 30px;
+    max-height: 32px;
+    min-height: 32px;
+    padding-bottom: 0;
+    padding-top: 0;
+  }
 
-    &:first-child {
-      justify-content: flex-start;
-    }
+  // 2. Gap deadlock: 6px & break button adhesion
+  .btn-group {
+    align-items: center;
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 6px;
 
-    &:last-child {
-      justify-content: flex-end;
+    > .btn,
+    > .dropdown > .btn,
+    > .btn-group > .btn {
+      border-radius: $btn-border-radius !important;
+      margin-left: 0 !important;
     }
   }
 
-  // set the width of the zoom-slider-container to prevent buttons moving when
-  // the slider appears/disappears
+  .search-term-input {
+    height: 32px;
+    margin-bottom: 0;
+    max-height: 32px;
+    min-height: 32px;
+
+    .clearable-text-field {
+      align-items: center;
+      display: inline-flex;
+      height: 32px;
+      max-height: 32px;
+      min-height: 32px;
+    }
+
+    input {
+      box-sizing: border-box;
+      height: 32px;
+      line-height: 30px;
+      max-height: 32px;
+      min-height: 32px;
+      padding-bottom: 0;
+      padding-top: 0;
+    }
+  }
+
+  .sort-by-select {
+    align-items: center;
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    height: 32px;
+    max-height: 32px;
+    min-height: 32px;
+
+    .input-group-prepend {
+      height: 32px;
+      margin-right: 0;
+
+      > .btn {
+        align-items: center;
+        border-radius: $btn-border-radius !important;
+        display: inline-flex;
+        height: 32px;
+        line-height: 30px;
+        max-height: 32px;
+        min-height: 32px;
+      }
+    }
+
+    > .btn {
+      border-radius: $btn-border-radius !important;
+      margin-left: 0 !important;
+    }
+  }
+
+  .page-size-selector {
+    height: 32px;
+    max-height: 32px;
+    min-height: 32px;
+
+    select.form-control {
+      box-sizing: border-box;
+      height: 32px;
+      line-height: 30px;
+      max-height: 32px;
+      min-height: 32px;
+      padding: 0 0.5rem;
+    }
+  }
+
   .zoom-slider-container {
+    align-items: center;
+    display: inline-flex;
+    height: 32px;
+    max-height: 32px;
+    min-height: 32px;
     min-width: 60px;
+
+    input[type="range"] {
+      height: 32px;
+      margin: 0;
+    }
+  }
+
+  // 3. Absolute icon centering: 15px max
+  svg,
+  .fa-icon {
+    display: block;
+    margin: auto;
+    max-height: 15px;
+    max-width: 15px;
+  }
+
+  // 4. Standardize square buttons: 32px x 32px
+  .saved-filter-dropdown > .btn,
+  .saved-filter-list > .btn,
+  .filter-button,
+  .sort-by-select > .btn,
+  #more-menu,
+  .display-mode-select,
+  .btn-group > .btn:not(.dropdown-toggle) {
+    align-items: center;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    max-height: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0 !important;
+    width: 32px;
+  }
+
+  .filter-button:has(.badge) {
+    max-width: none;
+    min-width: 32px;
+    padding: 0 6px !important;
+    width: auto;
+  }
+
+  // 5. Mobile smooth horizontal scrolling
+  @media (max-width: 768px) {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+
+    > * {
+      flex-shrink: 0 !important;
+    }
+
+    .zoom-slider-container {
+      display: none !important;
+    }
+
+    &::-webkit-scrollbar {
+      height: 2px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: #2a2a2a;
+    }
   }
 }
 

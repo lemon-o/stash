@@ -82,9 +82,9 @@ const sortByOptions = [
     },
   ]);
 const displayModeOptions = [
+  DisplayMode.Wall,
   DisplayMode.Grid,
   DisplayMode.List,
-  DisplayMode.Wall,
   DisplayMode.Tagger,
 ];
 

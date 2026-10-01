@@ -33,8 +33,17 @@ export default defineConfig(() => {
       entries: "src/index.tsx",
     },
     server: {
+      host: true,
       port: 3000,
       cors: false,
+      proxy: {
+        "^/(graphql|api|login|logout|customlocales|css|javascript|image|scene|performer|studio|gallery|tag|group|blobs)": {
+          target: "http://localhost:9999",
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+        },
+      },
     },
     publicDir: "public",
     assetsInclude: ["**/*.md"],

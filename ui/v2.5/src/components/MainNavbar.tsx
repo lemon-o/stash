@@ -26,7 +26,6 @@ import {
   faBars,
   faChartColumn,
   faFilm,
-  faHeart,
   faImage,
   faImages,
   faMapMarkerAlt,
@@ -297,23 +296,22 @@ export const MainNavbar: React.FC = () => {
     return (
       <>
         <Nav.Link
-          className="nav-utility"
+          className="nav-utility d-flex align-items-center h-100"
           href="https://opencollective.com/stashapp"
           target="_blank"
           onClick={handleDismiss}
         >
           <Button
-            className="minimal donate"
+            className="minimal donate d-flex align-items-center h-100"
             title={intl.formatMessage({ id: "donate" })}
           >
-            <Icon icon={faHeart} />
-            <span className="d-none d-sm-inline">
+            <span>
               {intl.formatMessage(messages.donate)}
             </span>
           </Button>
         </Nav.Link>
         <NavLink
-          className="nav-utility"
+          className="nav-utility d-flex align-items-center h-100"
           exact
           to="/stats"
           onClick={handleDismiss}
@@ -326,7 +324,7 @@ export const MainNavbar: React.FC = () => {
           </Button>
         </NavLink>
         <NavLink
-          className="nav-utility"
+          className="nav-utility d-flex align-items-center h-100"
           exact
           to="/settings"
           onClick={handleDismiss}
@@ -334,7 +332,7 @@ export const MainNavbar: React.FC = () => {
           <SettingsButton />
         </NavLink>
         <Button
-          className="nav-utility minimal"
+          className="nav-utility minimal d-flex align-items-center h-100"
           onClick={() => openManual()}
           title={intl.formatMessage({ id: "help" })}
         >
@@ -364,13 +362,13 @@ export const MainNavbar: React.FC = () => {
               eventKey={href}
               as="div"
               key={href}
-              className="col-4 col-sm-3 col-md-2 col-lg-auto"
+              className="col-4 col-sm-3 col-md-2 col-lg-auto d-flex align-items-center h-100"
             >
               <LinkContainer activeClassName="active" exact to={href}>
-                <Button className="minimal p-4 p-xl-2 d-flex d-xl-inline-block flex-column justify-content-between align-items-center">
+                <Button className="minimal p-4 p-xl-0 d-flex flex-column flex-xl-row justify-content-center align-items-center h-100">
                   <Icon
                     {...{ icon }}
-                    className="nav-menu-icon d-block d-xl-inline mb-2 mb-xl-0"
+                    className="nav-menu-icon d-block d-xl-none mb-2 mb-xl-0"
                   />
                   <span>{intl.formatMessage(message)}</span>
                 </Button>
@@ -378,24 +376,19 @@ export const MainNavbar: React.FC = () => {
             </Nav.Link>
           ))}
         </MainNavbarMenuItems>
-        <Nav>
-          <MainNavbarUtilityItems>
-            {renderUtilityButtons()}
-          </MainNavbarUtilityItems>
-        </Nav>
       </Navbar.Collapse>
 
-      <Navbar.Brand as="div" onClick={handleDismiss}>
-        <Link to="/">
-          <Button className="minimal brand-link d-inline-block">Stash</Button>
+      <Navbar.Brand as="div" onClick={handleDismiss} className="d-flex align-items-center h-100">
+        <Link to="/" className="d-flex align-items-center h-100">
+          <Button className="minimal brand-link d-flex align-items-center h-100">Stash</Button>
         </Link>
       </Navbar.Brand>
 
-      <Nav className="navbar-buttons flex-row ml-auto order-xl-2">
+      <Nav className="navbar-buttons flex-row ml-auto order-xl-2 d-flex align-items-center h-100">
         {!!newPath && (
-          <div className="mr-2">
-            <Link to={newPath}>
-              <Button variant="primary" data-action="new">
+          <div className="mr-2 d-flex align-items-center">
+            <Link to={newPath} className="d-flex align-items-center">
+              <Button variant="primary" data-action="new" className="d-flex align-items-center justify-content-center">
                 <FormattedMessage id="new" defaultMessage="New" />
               </Button>
             </Link>

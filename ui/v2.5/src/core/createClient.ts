@@ -116,8 +116,8 @@ export const getPlatformURL = (path?: string) => {
   if (import.meta.env.DEV) {
     if (import.meta.env.VITE_APP_PLATFORM_URL) {
       url = new URL(import.meta.env.VITE_APP_PLATFORM_URL);
-    } else {
-      url.port = import.meta.env.VITE_APP_PLATFORM_PORT ?? "9999";
+    } else if (import.meta.env.VITE_APP_PLATFORM_PORT) {
+      url.port = import.meta.env.VITE_APP_PLATFORM_PORT;
     }
   }
 
@@ -153,13 +153,6 @@ export const createClient = () => {
   const errorLink = onError(({ networkError }) => {
     // handle graphql unauthorized error
     if (networkError && (networkError as ServerError).statusCode === 401) {
-      if (import.meta.env.DEV) {
-        alert(`\
-GraphQL server error: 401 Unauthorized
-Authentication cannot be used with the dev server, since the session authorization cookie cannot be sent cross-origin.
-Please disable it on the server and refresh the page.`);
-        return;
-      }
       // redirect to login page
       const newURL = new URL(
         getPlatformURL("login"),

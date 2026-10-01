@@ -44,9 +44,9 @@ const sortByOptions = ["date", ...MediaSortByOptions]
   ]);
 
 const displayModeOptions = [
+  DisplayMode.Wall,
   DisplayMode.Grid,
   DisplayMode.List,
-  DisplayMode.Wall,
 ];
 
 export const PerformerAgeCriterionOption =

@@ -43,7 +43,7 @@ const sortByOptions = [
       sfwMessageID: "o_count_sfw",
     },
   ]);
-const displayModeOptions = [DisplayMode.Grid, DisplayMode.Wall];
+const displayModeOptions = [DisplayMode.Wall, DisplayMode.Grid];
 
 export const PerformerAgeCriterionOption =
   createMandatoryNumberCriterionOption("performer_age");
