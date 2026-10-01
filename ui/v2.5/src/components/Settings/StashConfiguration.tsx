@@ -4,9 +4,16 @@ import { Button, Form, Row, Col, Dropdown } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
 import { Icon } from "src/components/Shared/Icon";
 import * as GQL from "src/core/generated-graphql";
-import { mutateMetadataScan } from "src/core/StashService";
+import {
+  getClient,
+  mutateConfigureGeneral,
+  mutateMetadataClean,
+  mutateMetadataScan,
+  mutateRunPluginTask,
+} from "src/core/StashService";
 import { useToast } from "src/hooks/Toast";
 import TextUtils from "src/utils/text";
+import { useHistory } from "react-router-dom";
 import { FolderSelectDialog } from "../Shared/FolderSelect/FolderSelectDialog";
 import { BooleanSetting } from "./Inputs";
 import { SettingSection } from "./SettingSection";
@@ -101,6 +108,7 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
   stashes,
   setStashes,
 }) => {
+  const history = useHistory();
   const intl = useIntl();
   const Toast = useToast();
   const [isCreating, setIsCreating] = useState(false);
@@ -111,7 +119,37 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
   }
 
   function onDelete(index: number) {
-    setStashes(stashes.filter((_v, i) => i !== index));
+    const deletedStash = stashes[index];
+    const deletedPath = deletedStash?.path;
+    const newStashes = stashes.filter((_v, i) => i !== index);
+    setStashes(newStashes);
+
+    if (deletedPath) {
+      // 删除目录后，立即清空该目录绑定的缓存与元数据
+      setTimeout(async () => {
+        try {
+          await mutateConfigureGeneral({
+            stashes: newStashes.map((s) => ({
+              path: s.path,
+              excludeVideo: s.excludeVideo,
+              excludeImage: s.excludeImage,
+            })),
+          });
+          await mutateMetadataClean({
+            paths: [deletedPath],
+            dryRun: false,
+          });
+          Toast.success(
+            intl.formatMessage(
+              { id: "config.tasks.added_job_to_queue" },
+              { operation_name: intl.formatMessage({ id: "actions.clean" }) }
+            )
+          );
+        } catch (err) {
+          console.error("Auto clean failed:", err);
+        }
+      }, 100);
+    }
   }
 
   function onNew() {
@@ -128,33 +166,50 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
           onClose={(v) => {
             if (v) {
               const cleanPath = TextUtils.stripQuotes(v);
-              setStashes([
-                ...stashes,
-                {
-                  // the server strips out quotes from the library path
-                  // do the same here to be present a consistent value
-                  path: cleanPath,
-                  excludeVideo: false,
-                  excludeImage: false,
-                },
-              ]);
+              const newStashItem = {
+                // the server strips out quotes from the library path
+                // do the same here to be present a consistent value
+                path: cleanPath,
+                excludeVideo: false,
+                excludeImage: false,
+              };
+              const newStashes = [...stashes, newStashItem];
+              setStashes(newStashes);
 
               // 增加目录后自动扫描一次
               setTimeout(async () => {
                 try {
+                  await mutateConfigureGeneral({
+                    stashes: newStashes.map((s) => ({
+                      path: s.path,
+                      excludeVideo: s.excludeVideo,
+                      excludeImage: s.excludeImage,
+                    })),
+                  });
                   await mutateMetadataScan({
                     paths: [cleanPath],
+                    scanGenerateCovers: true,
+                    scanGeneratePreviews: true,
+                    scanGenerateSprites: true,
+                    scanGenerateThumbnails: true,
                   });
+                  try {
+                    await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
+                  } catch (e) {
+                    // ignore if plugin is disabled or loading
+                  }
                   Toast.success(
                     intl.formatMessage(
                       { id: "config.tasks.added_job_to_queue" },
                       { operation_name: intl.formatMessage({ id: "actions.scan" }) }
                     )
                   );
+                  // 立即跳转至任务队列界面
+                  history.push("/settings?tab=tasks");
                 } catch (err) {
                   console.error("Auto scan failed:", err);
                 }
-              }, 700);
+              }, 100);
             }
             setIsCreating(false);
           }}

@@ -1,10 +1,13 @@
 import React, { useMemo } from "react";
+import { Link } from "react-router-dom";
+import { FormattedMessage } from "react-intl";
 import { useFindScenes } from "src/core/StashService";
-import { SceneCard } from "./SceneCard";
 import { SceneQueue } from "src/models/sceneQueue";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { PatchComponent } from "src/patch";
-import { FilteredRecommendationRow } from "../FrontPage/FilteredRecommendationRow";
+import { SceneWallPanel } from "./SceneWallPanel";
+import { RecommendationRow } from "../FrontPage/RecommendationRow";
+import { LoadingIndicator } from "../Shared/LoadingIndicator";
 
 interface IProps {
   isTouch: boolean;
@@ -22,30 +25,32 @@ export const SceneRecommendationRow: React.FC<IProps> = PatchComponent(
       return SceneQueue.fromListFilterModel(props.filter);
     }, [props.filter]);
 
+    const scenes = result.data?.findScenes.scenes ?? [];
+
+    if (!result.loading && !count) {
+      return null;
+    }
+
     return (
-      <FilteredRecommendationRow
+      <RecommendationRow
         className="scene-recommendations"
-        heading={props.header}
-        url={`/scenes?${props.filter.makeQueryParameters()}`}
-        count={count}
-        loading={result.loading}
-        isTouch={props.isTouch}
-        filter={props.filter}
+        header={props.header}
+        link={
+          <Link to={`/scenes?${props.filter.makeQueryParameters()}`}>
+            <FormattedMessage id="view_all" />
+          </Link>
+        }
       >
-        {result.loading
-          ? [...Array(props.filter.itemsPerPage)].map((i) => (
-              <div key={`_${i}`} className="scene-skeleton skeleton-card"></div>
-            ))
-          : result.data?.findScenes.scenes.map((scene, index) => (
-              <SceneCard
-                key={scene.id}
-                scene={scene}
-                queue={queue}
-                index={index}
-                zoomIndex={1}
-              />
-            ))}
-      </FilteredRecommendationRow>
+        {result.loading ? (
+          <LoadingIndicator />
+        ) : (
+          <SceneWallPanel
+            scenes={scenes}
+            sceneQueue={queue}
+            zoomIndex={1}
+          />
+        )}
+      </RecommendationRow>
     );
   }
 );

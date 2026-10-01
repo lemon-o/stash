@@ -49,16 +49,20 @@ export function useSpriteInfo(vttPath: string | undefined) {
       return;
     }
 
-    fetch(vttPath).then((response) => {
-      if (!response.ok) {
-        setSpriteInfo(null);
-        return;
-      }
+    fetch(vttPath)
+      .then((response) => {
+        if (!response.ok) {
+          setSpriteInfo(null);
+          return;
+        }
 
-      response.text().then((text) => {
-        setSpriteInfo(getSpriteInfo(vttPath, text));
+        response.text().then((text) => {
+          setSpriteInfo(getSpriteInfo(vttPath, text));
+        });
+      })
+      .catch(() => {
+        setSpriteInfo(null);
       });
-    });
   }, [vttPath]);
 
   return spriteInfo;

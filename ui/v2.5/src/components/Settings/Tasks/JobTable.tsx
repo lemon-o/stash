@@ -133,11 +133,19 @@ const Task: React.FC<IJob> = ({ job }) => {
 
   function maybeRenderETA() {
     if (
-      job.status === GQL.JobStatus.Running &&
+      job.status !== GQL.JobStatus.Running ||
+      job.progress === undefined ||
+      job.progress === null
+    ) {
+      return null;
+    }
+
+    const progressPercent = `${(job.progress * 100).toFixed(0)}%`;
+
+    let etaStr: string | null = null;
+    if (
       job.startTime !== null &&
       job.startTime !== undefined &&
-      job.progress !== null &&
-      job.progress !== undefined &&
       job.progress > 0
     ) {
       const now = new Date();
@@ -145,13 +153,20 @@ const Task: React.FC<IJob> = ({ job }) => {
       const nowMS = now.valueOf();
       const startMS = start.valueOf();
       const estimatedLength = (nowMS - startMS) / job.progress;
-      const estLenStr = moment.duration(estimatedLength).humanize();
-      return (
-        <span className="job-eta">
-          <FormattedMessage id="eta" />: {estLenStr}
-        </span>
-      );
+      etaStr = moment.duration(estimatedLength).humanize();
     }
+
+    return (
+      <span className="job-eta">
+        <span className="job-percent-badge">{progressPercent}</span>
+        {etaStr && (
+          <>
+            <span className="job-eta-separator">·</span>
+            <FormattedMessage id="eta" />: {etaStr}
+          </>
+        )}
+      </span>
+    );
   }
 
   function maybeRenderSubTasks() {

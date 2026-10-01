@@ -821,7 +821,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   const [collapsed, setCollapsed] = useState(false);
   const [continuePlaylist, setContinuePlaylist] = useState(queryContinue);
   const [hideScrubber, setHideScrubber] = useState(
-    !(configuration?.interface.showScrubber ?? true)
+    !(configuration?.interface.showScrubber ?? false)
   );
 
   const _setTimestamp = useRef<(value: number) => void>();

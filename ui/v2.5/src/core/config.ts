@@ -125,6 +125,19 @@ export function getFrontPageContent(
   return ui?.frontPageContent as FrontPageContent[] | undefined;
 }
 
+function recommendedScenes(intl: IntlShape): ICustomFilter {
+  return {
+    __typename: "CustomFilter",
+    message: {
+      id: "recommendations",
+      values: {},
+    },
+    mode: FilterMode.Scenes,
+    sortBy: "recommended",
+    direction: SortDirectionEnum.Desc,
+  };
+}
+
 function recentlyReleased(
   intl: IntlShape,
   mode: FilterMode,
@@ -134,7 +147,7 @@ function recentlyReleased(
     __typename: "CustomFilter",
     message: {
       id: "recently_released_objects",
-      values: { objects: intl.formatMessage({ id: objectsID }) },
+      values: { objects: intl.formatMessage({ id: objectsID }, { count: 2 }) },
     },
     mode,
     sortBy: "date",
@@ -151,7 +164,7 @@ function recentlyAdded(
     __typename: "CustomFilter",
     message: {
       id: "recently_added_objects",
-      values: { objects: intl.formatMessage({ id: objectsID }) },
+      values: { objects: intl.formatMessage({ id: objectsID }, { count: 2 }) },
     },
     mode,
     sortBy: "created_at",
@@ -161,6 +174,7 @@ function recentlyAdded(
 
 export function generateDefaultFrontPageContent(intl: IntlShape) {
   return [
+    recommendedScenes(intl),
     recentlyReleased(intl, FilterMode.Scenes, "scenes"),
     recentlyAdded(intl, FilterMode.Studios, "studios"),
     recentlyReleased(intl, FilterMode.Groups, "groups"),
@@ -171,6 +185,7 @@ export function generateDefaultFrontPageContent(intl: IntlShape) {
 
 export function generatePremadeFrontPageContent(intl: IntlShape) {
   return [
+    recommendedScenes(intl),
     recentlyReleased(intl, FilterMode.Scenes, "scenes"),
     recentlyAdded(intl, FilterMode.Scenes, "scenes"),
     recentlyReleased(intl, FilterMode.Galleries, "galleries"),

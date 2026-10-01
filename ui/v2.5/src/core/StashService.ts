@@ -2697,6 +2697,21 @@ export const useConfigureGeneral = () =>
     },
   });
 
+export const mutateConfigureGeneral = (input: GQL.ConfigGeneralInput) =>
+  client.mutate<GQL.ConfigureGeneralMutation>({
+    mutation: GQL.ConfigureGeneralDocument,
+    variables: { input },
+    update(cache, result) {
+      if (!result.data?.configureGeneral) return;
+
+      evictQueries(cache, [
+        GQL.ConfigurationDocument,
+        ...scraperMutationImpactedQueries,
+        ...pluginMutationImpactedQueries,
+      ]);
+    },
+  });
+
 export const useConfigureInterface = () =>
   GQL.useConfigureInterfaceMutation({
     update: updateConfiguration,

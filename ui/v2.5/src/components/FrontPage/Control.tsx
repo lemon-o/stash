@@ -13,6 +13,19 @@ import { SceneRecommendationRow } from "../Scenes/SceneRecommendationRow";
 import { StudioRecommendationRow } from "../Studios/StudioRecommendationRow";
 import { TagRecommendationRow } from "../Tags/TagRecommendationRow";
 import { SceneMarkerRecommendationRow } from "../Scenes/SceneMarkerRecommendationRow";
+import { RecommendedScenesRow } from "./RecommendedScenesRow";
+
+const FilterModeToMessageID: Record<string, string> = {
+  [GQL.FilterMode.Galleries]: "galleries",
+  [GQL.FilterMode.Images]: "images",
+  [GQL.FilterMode.Movies]: "groups",
+  [GQL.FilterMode.Groups]: "groups",
+  [GQL.FilterMode.Performers]: "performers",
+  [GQL.FilterMode.SceneMarkers]: "markers",
+  [GQL.FilterMode.Scenes]: "scenes",
+  [GQL.FilterMode.Studios]: "studios",
+  [GQL.FilterMode.Tags]: "tags",
+};
 
 interface IFilter {
   mode: GQL.FilterMode;
@@ -150,12 +163,48 @@ const CustomFilterResults: React.FC<ICustomFilterProps> = ({
     return ret;
   }, [customFilter, config]);
 
-  const header = customFilter.message
-    ? intl.formatMessage(
-        { id: customFilter.message.id },
-        customFilter.message.values
+  function isTouchEnabled() {
+    return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  }
+
+  const isTouch = isTouchEnabled();
+
+  let header = "";
+  if (customFilter.message?.id === "recommendations") {
+    header = intl.formatMessage({
+      id: "recommendations",
+      defaultMessage: "推荐",
+    });
+  } else if (customFilter.message) {
+    let objects = customFilter.message.values?.objects;
+    const modeKey = customFilter.mode
+      ? FilterModeToMessageID[customFilter.mode]
+      : undefined;
+    if (modeKey) {
+      objects = intl.formatMessage({ id: modeKey }, { count: 2 });
+    } else if (
+      objects &&
+      /^(scenes?|studios?|groups?|performers?|galleries?|images?|markers?|tags?)$/i.test(
+        objects
       )
-    : (customFilter.title ?? "");
+    ) {
+      const key = objects.toLowerCase().replace(/s$/, "") + "s";
+      objects = intl.formatMessage({ id: key }, { count: 2 });
+    }
+    header = intl.formatMessage(
+      { id: customFilter.message.id },
+      { ...customFilter.message.values, objects }
+    );
+  } else {
+    header = customFilter.title ?? "";
+  }
+
+  if (
+    customFilter.message?.id === "recommendations" ||
+    customFilter.sortBy === "recommended"
+  ) {
+    return <RecommendedScenesRow header={header} isTouch={isTouch} />;
+  }
 
   return (
     <RecommendationRow

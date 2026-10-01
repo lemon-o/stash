@@ -31,6 +31,7 @@ import { GroupTag } from "../Groups/GroupTag";
 import { FileSize } from "../Shared/FileSize";
 import { OCounterButton } from "../Shared/CountButton";
 import { defaultPreviewVolume } from "src/core/config";
+import { getSceneHoverVideoSource } from "src/utils/wallPreview";
 
 interface IScenePreviewProps {
   isPortrait: boolean;
@@ -429,11 +430,16 @@ const SceneCardImage = React.memo(
       return height > width;
     }
 
+    const hoverVideo = useMemo(
+      () => getSceneHoverVideoSource(props.scene),
+      [props.scene]
+    );
+
     return (
       <>
         <ScenePreview
           image={props.scene.paths.screenshot ?? undefined}
-          video={props.scene.paths.preview ?? undefined}
+          video={hoverVideo}
           isPortrait={isPortrait()}
           soundActive={configuration?.interface?.soundOnPreview ?? false}
           volume={configuration?.ui.previewVolume ?? defaultPreviewVolume}

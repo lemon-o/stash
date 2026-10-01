@@ -152,7 +152,15 @@ const AddContentModal: React.FC<IAddSavedFilterModalProps> = ({
         >
           {premadeFilterOptions.map((c, i) => (
             <option key={i} value={i}>
-              {intl.formatMessage({ id: c.message!.id }, c.message!.values)}
+              {c.message!.id === "recommendations"
+                ? intl.formatMessage({
+                    id: "recommendations",
+                    defaultMessage: "推荐",
+                  })
+                : intl.formatMessage(
+                    { id: c.message!.id },
+                    c.message!.values
+                  )}
             </option>
           ))}
         </Form.Control>
@@ -244,11 +252,33 @@ const ContentRow: React.FC<IFilterRowProps> = (props: IFilterRowProps) => {
       }
       case "CustomFilter": {
         const asCustomFilter = props.content as ICustomFilter;
-        if (asCustomFilter.message)
+        if (asCustomFilter.message?.id === "recommendations") {
+          return intl.formatMessage({
+            id: "recommendations",
+            defaultMessage: "推荐",
+          });
+        }
+        if (asCustomFilter.message) {
+          let objects = asCustomFilter.message.values?.objects;
+          const modeKey = asCustomFilter.mode
+            ? FilterModeToMessageID[asCustomFilter.mode]
+            : undefined;
+          if (modeKey) {
+            objects = intl.formatMessage({ id: modeKey }, { count: 2 });
+          } else if (
+            objects &&
+            /^(scenes?|studios?|groups?|performers?|galleries?|images?|markers?|tags?)$/i.test(
+              objects
+            )
+          ) {
+            const key = objects.toLowerCase().replace(/s$/, "") + "s";
+            objects = intl.formatMessage({ id: key }, { count: 2 });
+          }
           return intl.formatMessage(
             { id: asCustomFilter.message.id },
-            asCustomFilter.message.values
+            { ...asCustomFilter.message.values, objects }
           );
+        }
         return asCustomFilter.title ?? "";
       }
     }

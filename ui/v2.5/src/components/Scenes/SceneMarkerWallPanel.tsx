@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Form } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import Gallery, {
@@ -58,7 +58,6 @@ export const MarkerWallItem: React.FC<
 
   const { configuration } = useConfigurationContext();
   const playSound = configuration?.interface.soundOnPreview ?? false;
-  const showTitle = configuration?.interface.wallShowTitle ?? false;
 
   const [active, setActive] = useState(false);
 
@@ -92,6 +91,17 @@ export const MarkerWallItem: React.FC<
 
   const video = props.photo.mediaType === "video";
   const ImagePreview = video ? "video" : "img";
+  const videoEl = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!video || !videoEl.current) return;
+    if (active) {
+      videoEl.current.play().catch(() => {});
+    } else {
+      videoEl.current.pause();
+      videoEl.current.currentTime = 0;
+    }
+  }, [active, video]);
 
   const { marker } = props.photo;
   const title = wallItemTitle(marker);
@@ -101,9 +111,11 @@ export const MarkerWallItem: React.FC<
 
   return (
     <div
-      className={cx("wall-item", { "show-title": showTitle })}
+      className="wall-item"
       role="button"
       onClick={handleClick}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
       {...dragProps}
       style={{
         ...divStyle,
@@ -127,15 +139,16 @@ export const MarkerWallItem: React.FC<
         loading="lazy"
         loop={video}
         muted={!video || !playSound || !active}
-        autoPlay={video}
+        autoPlay={false}
+        poster={video ? (marker.screenshot ?? undefined) : undefined}
+        preload="none"
         playsInline={video}
         key={props.photo.key}
         src={props.photo.src}
         width={width}
         height={height}
         alt={props.photo.alt}
-        onMouseEnter={() => setActive(true)}
-        onMouseLeave={() => setActive(false)}
+        ref={video ? (videoEl as any) : undefined}
         // having a click handler here results in multiple calls to handleClick
         // due to having the same click handler on the parent div
         onError={() => {

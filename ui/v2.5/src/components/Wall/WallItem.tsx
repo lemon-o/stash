@@ -8,6 +8,7 @@ import { SceneQueue } from "src/models/sceneQueue";
 import { useConfigurationContext } from "src/hooks/Config";
 import { markerTitle } from "src/core/markers";
 import { objectTitle } from "src/core/files";
+import { getSceneHoverVideoSource } from "src/utils/wallPreview";
 
 export type WallItemType = keyof WallItemData;
 
@@ -48,14 +49,13 @@ const Preview: React.FC<{
     if (!video) return;
 
     video.muted = !(soundOnPreview && active);
-    if (previewType !== "video") {
-      if (active) {
-        video.play();
-      } else {
-        video.pause();
-      }
+    if (active) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+      video.currentTime = 0;
     }
-  }, [previewType, soundOnPreview, active]);
+  }, [soundOnPreview, active]);
 
   const image = (
     <img
@@ -73,9 +73,10 @@ const Preview: React.FC<{
       playsInline
       src={previews.video}
       poster={previews.image}
-      autoPlay={previewType === "video"}
+      autoPlay={false}
       loop
       muted
+      preload="none"
       className={cx("wall-item-media", {
         "wall-item-preview": previewType !== "video",
       })}
@@ -123,14 +124,12 @@ export const WallItem = <T extends WallItemType>({
   const itemEl = useRef<HTMLDivElement>(null);
   const { configuration: config } = useConfigurationContext();
 
-  const showTextContainer = config?.interface.wallShowTitle ?? true;
-
   const previews = useMemo(() => {
     switch (type) {
       case "scene": {
         const scene = data as GQL.SlimSceneDataFragment;
         return {
-          video: scene.paths.preview ?? undefined,
+          video: getSceneHoverVideoSource(scene),
           animation: scene.paths.webp ?? undefined,
           image: scene.paths.screenshot ?? undefined,
         };
@@ -234,8 +233,6 @@ export const WallItem = <T extends WallItemType>({
   };
 
   const renderText = () => {
-    if (!showTextContainer) return;
-
     return (
       <div className="wall-item-text">
         <div>{title}</div>
@@ -249,7 +246,11 @@ export const WallItem = <T extends WallItemType>({
   };
 
   return (
-    <div className="wall-item">
+    <div
+      className="wall-item"
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
+    >
       <div className={`wall-item-container ${className}`} ref={itemEl}>
         <Link onClick={onClick} to={linkSrc} className="wall-item-anchor">
           <Preview previews={previews} config={config} active={active} />

@@ -1,29 +1,29 @@
 import React, { useState, useEffect } from "react";
 import { Modal, Container, Row, Col, Nav, Tab } from "react-bootstrap";
-import Introduction from "src/docs/en/Manual/Introduction.md";
-import Tasks from "src/docs/en/Manual/Tasks.md";
-import AutoTagging from "src/docs/en/Manual/AutoTagging.md";
-import JSONSpec from "src/docs/en/Manual/JSONSpec.md";
-import Configuration from "src/docs/en/Manual/Configuration.md";
-import Interface from "src/docs/en/Manual/Interface.md";
-import Images from "src/docs/en/Manual/Images.md";
-import Scraping from "src/docs/en/Manual/Scraping.md";
-import ScraperDevelopment from "src/docs/en/Manual/ScraperDevelopment.md";
-import Plugins from "src/docs/en/Manual/Plugins.md";
-import ExternalPlugins from "src/docs/en/Manual/ExternalPlugins.md";
-import EmbeddedPlugins from "src/docs/en/Manual/EmbeddedPlugins.md";
-import UIPluginApi from "src/docs/en/Manual/UIPluginApi.md";
-import Tagger from "src/docs/en/Manual/Tagger.md";
-import Contributing from "src/docs/en/Manual/Contributing.md";
-import SceneFilenameParser from "src/docs/en/Manual/SceneFilenameParser.md";
-import KeyboardShortcuts from "src/docs/en/Manual/KeyboardShortcuts.md";
-import Help from "src/docs/en/Manual/Help.md";
-import Deduplication from "src/docs/en/Manual/Deduplication.md";
-import Interactive from "src/docs/en/Manual/Interactive.md";
-import Captions from "src/docs/en/Manual/Captions.md";
-import Identify from "src/docs/en/Manual/Identify.md";
-import Browsing from "src/docs/en/Manual/Browsing.md";
-import TroubleshootingMode from "src/docs/en/Manual/TroubleshootingMode.md";
+import Introduction from "src/docs/zh-CN/Manual/Introduction.md";
+import Tasks from "src/docs/zh-CN/Manual/Tasks.md";
+import AutoTagging from "src/docs/zh-CN/Manual/AutoTagging.md";
+import JSONSpec from "src/docs/zh-CN/Manual/JSONSpec.md";
+import Configuration from "src/docs/zh-CN/Manual/Configuration.md";
+import Interface from "src/docs/zh-CN/Manual/Interface.md";
+import Images from "src/docs/zh-CN/Manual/Images.md";
+import Scraping from "src/docs/zh-CN/Manual/Scraping.md";
+import ScraperDevelopment from "src/docs/zh-CN/Manual/ScraperDevelopment.md";
+import Plugins from "src/docs/zh-CN/Manual/Plugins.md";
+import ExternalPlugins from "src/docs/zh-CN/Manual/ExternalPlugins.md";
+import EmbeddedPlugins from "src/docs/zh-CN/Manual/EmbeddedPlugins.md";
+import UIPluginApi from "src/docs/zh-CN/Manual/UIPluginApi.md";
+import Tagger from "src/docs/zh-CN/Manual/Tagger.md";
+import Contributing from "src/docs/zh-CN/Manual/Contributing.md";
+import SceneFilenameParser from "src/docs/zh-CN/Manual/SceneFilenameParser.md";
+import KeyboardShortcuts from "src/docs/zh-CN/Manual/KeyboardShortcuts.md";
+import Help from "src/docs/zh-CN/Manual/Help.md";
+import Deduplication from "src/docs/zh-CN/Manual/Deduplication.md";
+import Interactive from "src/docs/zh-CN/Manual/Interactive.md";
+import Captions from "src/docs/zh-CN/Manual/Captions.md";
+import Identify from "src/docs/zh-CN/Manual/Identify.md";
+import Browsing from "src/docs/zh-CN/Manual/Browsing.md";
+import TroubleshootingMode from "src/docs/zh-CN/Manual/TroubleshootingMode.md";
 import { MarkdownPage } from "../Shared/MarkdownPage";
 
 interface IManualProps {
@@ -42,130 +42,130 @@ export const Manual: React.FC<IManualProps> = ({
   const content = [
     {
       key: "Introduction.md",
-      title: "Introduction",
+      title: "入门介绍",
       content: Introduction,
     },
     {
       key: "Configuration.md",
-      title: "Configuration",
+      title: "系统配置",
       content: Configuration,
     },
     {
       key: "Interface.md",
-      title: "Interface Options",
+      title: "界面选项",
       content: Interface,
     },
     {
       key: "Tasks.md",
-      title: "Tasks",
+      title: "任务管理",
       content: Tasks,
     },
     {
       key: "Identify.md",
-      title: "Identify",
+      title: "元数据识别",
       content: Identify,
       className: "indent-1",
     },
     {
       key: "AutoTagging.md",
-      title: "Auto Tagging",
+      title: "自动打标签",
       content: AutoTagging,
       className: "indent-1",
     },
     {
       key: "SceneFilenameParser.md",
-      title: "Scene Filename Parser",
+      title: "短片文件名解析器",
       content: SceneFilenameParser,
       className: "indent-1",
     },
     {
       key: "JSONSpec.md",
-      title: "JSON Specification",
+      title: "JSON 规范说明",
       content: JSONSpec,
       className: "indent-1",
     },
     {
       key: "Browsing.md",
-      title: "Browsing",
+      title: "浏览与筛选",
       content: Browsing,
     },
     {
       key: "Images.md",
-      title: "Images and Galleries",
+      title: "图片与图库",
       content: Images,
     },
     {
       key: "Scraping.md",
-      title: "Metadata Scraping",
+      title: "元数据刮削",
       content: Scraping,
     },
     {
       key: "ScraperDevelopment.md",
-      title: "Scraper Development",
+      title: "刮削器开发",
       content: ScraperDevelopment,
       className: "indent-1",
     },
     {
       key: "Plugins.md",
-      title: "Plugins",
+      title: "插件系统",
       content: Plugins,
     },
     {
       key: "ExternalPlugins.md",
-      title: "External",
+      title: "外部插件",
       content: ExternalPlugins,
       className: "indent-1",
     },
     {
       key: "EmbeddedPlugins.md",
-      title: "Embedded",
+      title: "内置插件",
       content: EmbeddedPlugins,
       className: "indent-1",
     },
     {
       key: "UIPluginApi.md",
-      title: "UI Plugin API",
+      title: "UI 插件接口 API",
       content: UIPluginApi,
       className: "indent-1",
     },
     {
       key: "Tagger.md",
-      title: "Scene Tagger",
+      title: "短片打标器",
       content: Tagger,
     },
     {
       key: "Deduplication.md",
-      title: "Dupe Checker",
+      title: "重复项查重",
       content: Deduplication,
     },
     {
       key: "Interactive.md",
-      title: "Interactivity",
+      title: "交互设备",
       content: Interactive,
     },
     {
       key: "Captions.md",
-      title: "Captions",
+      title: "字幕支持",
       content: Captions,
     },
     {
       key: "KeyboardShortcuts.md",
-      title: "Keyboard Shortcuts",
+      title: "快捷键列表",
       content: KeyboardShortcuts,
     },
     {
       key: "TroubleshootingMode.md",
-      title: "Troubleshooting Mode",
+      title: "故障排除模式",
       content: TroubleshootingMode,
     },
     {
       key: "Contributing.md",
-      title: "Contributing",
+      title: "参与贡献",
       content: Contributing,
     },
     {
       key: "Help.md",
-      title: "Further Help",
+      title: "获取更多帮助",
       content: Help,
     },
   ];
@@ -199,7 +199,7 @@ export const Manual: React.FC<IManualProps> = ({
       dialogClassName="modal-dialog-scrollable manual modal-xl"
     >
       <Modal.Header closeButton>
-        <Modal.Title>Help</Modal.Title>
+        <Modal.Title>帮助与使用手册</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         <Container className="manual-container">

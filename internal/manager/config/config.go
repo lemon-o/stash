@@ -116,7 +116,7 @@ const (
 	previewAudioDefault = true
 
 	PreviewSegmentDuration        = "preview_segment_duration"
-	previewSegmentDurationDefault = 0.75
+	previewSegmentDurationDefault = 1.25
 
 	PreviewSegments        = "preview_segments"
 	previewSegmentsDefault = 12
@@ -217,7 +217,7 @@ const (
 	SoundOnPreview = "sound_on_preview"
 
 	WallShowTitle        = "wall_show_title"
-	defaultWallShowTitle = true
+	defaultWallShowTitle = false
 
 	CustomPerformerImageLocation        = "custom_performer_image_location"
 	MaximumLoopDuration                 = "maximum_loop_duration"

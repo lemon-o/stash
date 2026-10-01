@@ -65,14 +65,9 @@ export const FilteredRecommendationRow: React.FC<IProps> = PatchComponent(
           </Link>
         }
       >
-        <Slider
-          {...getSlickSliderSettings(
-            cardCount ? cardCount : props.filter.itemsPerPage,
-            props.isTouch
-          )}
-        >
+        <div className="wall-cards-container d-flex flex-wrap justify-content-start">
           {props.children}
-        </Slider>
+        </div>
       </RecommendationRow>
     );
   }

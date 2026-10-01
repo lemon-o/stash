@@ -25,6 +25,7 @@ import { defaultPreviewVolume } from "src/core/config";
 import {
   getFirstValidPreviewSource,
   PreviewMediaType,
+  getSceneHoverVideoSource,
 } from "src/utils/wallPreview";
 
 interface IScenePhoto {
@@ -55,7 +56,6 @@ export const SceneWallItem: React.FC<
   const { configuration } = useConfigurationContext();
   const playSound = configuration?.interface.soundOnPreview ?? false;
   const volume = configuration?.ui.previewVolume ?? defaultPreviewVolume;
-  const showTitle = configuration?.interface.wallShowTitle ?? false;
 
   const height = Math.min(props.maxHeight, props.photo.height);
   const zoomFactor = height / props.photo.height;
@@ -88,19 +88,22 @@ export const SceneWallItem: React.FC<
   }
 
   const video = props.photo.mediaType === "video";
+  const { scene } = props.photo;
+  const poster = scene.paths.screenshot ?? undefined;
+
   const previewProps = {
-    loading: "lazy",
+    loading: "lazy" as const,
     loop: video,
     muted: !video || !playSound || !active,
-    autoPlay: video,
+    autoPlay: false,
     playsInline: video,
+    poster: video ? poster : undefined,
+    preload: "none",
     key: props.photo.key,
     src: props.photo.src,
     width,
     height,
     alt: props.photo.alt,
-    onMouseEnter: () => setActive(true),
-    onMouseLeave: () => setActive(false),
     // having a click handler here results in multiple calls to handleClick
     // due to having the same click handler on the parent div
     onError: () => {
@@ -111,11 +114,20 @@ export const SceneWallItem: React.FC<
   const videoEl = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    if (!video || !videoEl.current) return;
+    if (active) {
+      videoEl.current.play().catch(() => {});
+    } else {
+      videoEl.current.pause();
+      videoEl.current.currentTime = 0;
+    }
+  }, [active, video]);
+
+  useEffect(() => {
     if (video && videoEl?.current?.volume)
       videoEl.current.volume = playSound ? volume / 100 : 0;
   }, [video, playSound, volume]);
 
-  const { scene } = props.photo;
   const title = objectTitle(scene);
   const performerNames = scene.performers.map((p) => p.name);
   const performers =
@@ -127,9 +139,11 @@ export const SceneWallItem: React.FC<
 
   return (
     <div
-      className={cx("wall-item", { "show-title": showTitle })}
+      className="wall-item"
       role="button"
       onClick={handleClick}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
       {...dragProps}
       style={{
         ...divStyle,
@@ -231,8 +245,10 @@ function getScenePreviewSources(
     ] as const;
   }
 
+  const hoverVideo = getSceneHoverVideoSource(scene);
+
   return [
-    { src: scene.paths.preview, mediaType: "video" },
+    { src: hoverVideo, mediaType: "video" },
     { src: scene.paths.screenshot, mediaType: "image" },
   ] as const;
 }

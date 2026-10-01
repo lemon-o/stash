@@ -16,6 +16,10 @@
    - [任务五：滑块轨道与外框原生去框去蓝](#任务五滑块轨道与外框原生去框去蓝)
    - [任务六：顶部导航栏原生极简无框纯文字化](#任务六顶部导航栏原生极简无框纯文字化)
    - [任务七：全域纯暗黑 SCSS 底色重置（根绝蓝色与绿色）](#任务七全域纯暗黑-scss-底色重置根绝蓝色与绿色)
+   - [任务八：预览墙媒体标题改为原生 Hover 悬浮显示（与复选框逻辑统一）](#任务八预览墙媒体标题改为原生-hover-悬浮显示与复选框逻辑统一)
+   - [任务九：播放器组件漂移与音量垂直滑块异常修复（Video.js 深度对齐与重构）](#任务九播放器组件漂移与音量垂直滑块异常修复videojs-深度对齐与重构)
+   - [任务十：全域纯暗黑滚动条与原生深色模式适配（根除 Windows 白底亮色滚动条）](#任务十全域纯暗黑滚动条与原生深色模式适配根除-windows-白底亮色滚动条)
+   - [任务十一：顶部导航栏实用工具按钮激活状态白底胶囊异形 Bug 修复](#任务十一顶部导航栏实用工具按钮激活状态白底胶囊异形-bug-修复)
 3. [本地开发热重载与生产联调指南](#3-本地开发热重载与生产联调指南)
 4. [编译构建与定制 Docker 镜像部署方案](#4-编译构建与定制-docker-镜像部署方案)
 5. [Git 分支管理与未来上游同步策略](#5-git-分支管理与未来上游同步策略)
@@ -200,6 +204,155 @@
 
 ---
 
+### 任务八：预览墙媒体标题改为原生 Hover 悬浮显示（与复选框逻辑统一）
+
+* **机制剖析**：
+  - 原版 Stash 在预览墙（SceneWallPanel、SceneMarkerWallPanel、GalleryWallCard）中，默认通过后端 `defaultWallShowTitle = true` 与 `.show-title` 类将卡片底部的标题、渐变黑条和元数据常驻显示，破坏了预览墙沉浸式画廊的极简视觉体验；
+  - 且原版的悬浮动画带有 500ms 延迟（`transition-delay: 500ms; transition: 1s opacity;`），在响应式小屏幕下还会强制常驻；
+  - 复选框（`.wall-item-check`）采用的是“默认 `opacity: 0`、鼠标移入即平滑渐显 `transition: opacity 0.5s`”的极简交互逻辑。
+* **目标文件**：
+  - `ui/v2.5/src/components/Scenes/SceneWallPanel.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneMarkerWallPanel.tsx`
+  - `ui/v2.5/src/components/Scenes/styles.scss`
+  - `ui/v2.5/src/components/Galleries/styles.scss`
+  - `ui/v2.5/src/components/Wall/WallItem.tsx`
+  - `ui/v2.5/src/components/Wall/styles.scss`
+  - `internal/manager/config/config.go`
+* **代码修改点**：
+  1. **移除强制常驻类名**：在 `SceneWallPanel.tsx` 与 `SceneMarkerWallPanel.tsx` 中剔除 `show-title`，底板统一为 `<div className="wall-item" ...>`。
+  2. **动效与复选框对齐**：
+     - 在 `Scenes/styles.scss` 与 `Galleries/styles.scss` 中，将 `.lineargradient` 阴影底栏与 `&-footer` 底部标题区默认设为 `opacity: 0; pointer-events: none; transition: opacity 0.5s;`。
+     - 在 `:hover` 态下同步触发 `opacity: 1; pointer-events: auto; transition: opacity 0.5s;`，无任何滞后延迟，与复选框的 hover 渐变完全同步联动。
+     - 非 hover 状态下将 `pointer-events` 设为 `none`，杜绝卡片未悬浮时底部透明链接的误触。
+  3. **后端配置基准重置**：将 `internal/manager/config/config.go` 中的 `defaultWallShowTitle` 默认基准值置为 `false`。
+* **效果**：
+  - 预览墙默认状态下纯净呈现无遮挡的媒体预览与封面海报，无任何黑条阴影与文字遮挡；
+  - 当鼠标指针移入任一预览卡片时，左上角的选择复选框与底部的渐变阴影/媒体标题/演员信息完全同步淡入（0.5s 丝滑渐变）；鼠标移出时同步淡出。
+
+---
+
+### 任务九：播放器组件漂移与音量垂直滑块异常修复（Video.js 深度对齐与重构）
+
+* **机制与根本原因剖析**：
+  1. **音量按钮漂移**：原控制栏采用 `align-items: flex-end`，其他控制按钮固定为 `height: 36px`，但包裹音量控制的 `.vjs-volume-panel` 在 Video.js 原生逻辑中为撑满控制栏高度（`height: 100%`）的容器，其内部默认纵向居中，导致音量喇叭图标相比播放键等兄弟按钮纵向悬空漂移约 14px；
+  2. **时间分隔斜杠 `/` 掉行折叠**：Video.js 中当前时间与总时长具备 `.vjs-time-control` 类名，但中间的分隔符 `<div class="vjs-time-divider">` 不具备该类名。在 Flex 布局下其宽度坍缩且缺乏同等高度与 `line-height`，导致斜杠文字 `/` 折行掉落至第二行下方；
+  3. **进度条悬浮冲突**：原 progress-control 使用相对控制栏底部的固定偏移 `bottom: 3.2em`，导致在不同视频尺寸或字体缩放时浮动在画面中间，与控制栏按钮严重重叠穿模；
+  4. **音量垂直滑块变形 Bug（图 2）**：Stash 在 `ScenePlayer.tsx` 初始化时显式配置了 `volumePanel: { inline: false }`，即音量条为垂直弹出的卡片面板（`.vjs-volume-vertical` 与 `.vjs-slider-vertical`）。然而此前 SCSS 中错误套用了水平音量条规则（强制指定了 `height: 4px` 与 `width: 4.5em`），将 80px 高的纵向音量轨道压扁成了 4px 的横向扁条，导致白色滑块圆点被挤在左上角空容器中无法正常操作；
+  5. **精灵图 Scrubber 视口裁剪变形**：下方的交互式进度条组件（`ScenePlayerScrubber.tsx`）内部依赖 `$scrubberHeight: 120px`（视口 120px = 精灵图 90px + 标签 30px），此前外部样式被强行指定为 `height: 80px`，导致精灵图视口被硬性裁剪 40px，引发视觉变形错位。
+* **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/styles.scss`
+* **代码修改点**：
+  1. **控制栏全局中心锁死与零漂移基准**：
+     - 将 `.vjs-control-bar` 高度重设为 `48px`，对齐模式改为 `align-items: center !important`，确保所有子元素在同一水平基准线上；
+     - 统一 `.vjs-button` 与 `.vjs-volume-panel` 均为 `36px × 36px`，音量面板设为 `position: relative`，彻底消除喇叭图标纵向漂移；
+     - 为 `.vjs-autostart-button` 开关单独豁免圆形按钮限制（`width: 3.5rem; border-radius: 18px`），保护其胶囊滑动开关形态。
+  2. **时间与分隔斜杠对齐**：
+     - 联合声明 `.vjs-time-control, .vjs-time-divider`，统一赋予 `height: 36px !important; line-height: 36px !important; display: inline-flex !important; align-items: center !important; white-space: nowrap !important;`；
+     - 为 `.vjs-time-divider` 设定 `min-width: 8px !important; width: auto !important;`，彻底根绝斜杠折行掉落。
+  3. **进度条精准贴合控制栏顶边缘**：
+     - 将 `.vjs-progress-control` 改为 `top: -8px !important; bottom: auto !important; height: 16px !important; width: 100% !important;`，使其 4px 轨道中心线完美重合在控制栏顶部边缘，彻底脱离按钮冲突区。
+  4. **原生纵向音量弹窗重构（修复图 2 Bug）**：
+     - 将垂直音量弹窗 `.vjs-volume-control.vjs-volume-vertical` 重新定位为 `position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: 32px; height: 112px;`，采用毛玻璃纯黑质感（`rgba(18, 18, 18, 0.92)` + `backdrop-filter: blur(16px)` + `border-radius: 16px`）；
+     - 底部添加透明过渡桥（`&::after`），杜绝鼠标自喇叭移动至弹窗时的光标失焦闪退；
+     - 垂直轨道 `.vjs-volume-bar.vjs-slider-vertical` 设定为 `width: 4px; height: 84px; margin: 0 auto;`，内部垂直白色充能条 `.vjs-volume-level` 设定为 `width: 100%; bottom: 0; left: 0;`；
+     - 白色圆形调节旋钮精准固定在音量条顶部边缘（`top: -5px; left: 50%; transform: translateX(-50%); width: 12px; height: 12px; border-radius: 50%;`），并兼容原生拖拽 active 状态。
+  5. **还原 Scrubber 120px 视口高度与无缩略图自动隐藏**：
+     - 将 `.scrubber-wrapper`、`.scrubber-button`、`.scrubber-content` 高度与行高完全恢复绑定 `$scrubberHeight`（120px），保留纯暗黑半透质感与圆角；在 `ScenePlayerScrubber.tsx` 中增加空缩略图判断（`!spriteInfo || spriteInfo.length === 0` 时直接返回 `null`），未生成 Sprites 时彻底隐藏。
+  6. **倍速按钮（1x）重叠碰撞与漂移根治**：
+     - 剖析：`.vjs-playback-rate` 子元素（`<button>` 与 `.vjs-playback-rate-value`）在原生 Video.js 中均为 `position: absolute`，若父容器设为 `width: auto`，父级计算宽度塌缩为 0px，导致后续兄弟按钮（如 AD 语音说明、字幕按钮）重叠在相同坐标上形成穿模重叠；
+     - 重构：将 `.vjs-playback-rate` 设定为固定基准 `position: relative !important; width: 36px !important; min-width: 36px !important; height: 36px !important;`，居中定位内部 28px × 22px 药丸形倍速徽章，悬浮弹窗 `.vjs-menu` 精准定位在上方 8px 处，彻底根绝图 2 穿模漂移问题。
+  7. **Telegram 同款极简无框毛玻璃中心播放按钮**：
+     - 去除突兀的白框外圈（`border: none !important`），改为 Telegram 同款纯黑半透毛玻璃圆盘（`rgba(0, 0, 0, 0.5)` + `backdrop-filter: blur(16px)` + `box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35)`）；
+     - 尺寸定为 64px × 64px，采用 `transform: translate(-50%, -50%)` 精准居中，内部三角播放键右移 3px 实施视觉几何重心校准；
+     - 悬停平滑放大 1.06 倍并深化背景透明度，无任何边缘线条；视频暂停时常驻显示于画面中央，点击即刻播放。
+* **效果**：
+  - 播放器底栏所有按钮、时间数字与斜杠完美居中对齐于一条水平线上，倍速按钮具有独立占位，不再与 AD / 字幕图标重叠穿模；
+  - 屏幕正中播放按钮彻底去除粗糙边框，完美呈现 Telegram 标志性的无框暗黑磨砂玻璃质感，悬停呼吸缩放自然；
+  - 鼠标悬浮音量图标时，向上平滑弹出精致的纯黑毛玻璃垂直音量柱，白色滑块圆点随音量实时在 84px 轨道上垂直定位滑动，操作丝滑自然，图 2 挤扁变形 bug 彻底根除；
+  - 进度条置于控制栏顶部边沿，不遮挡任何按钮；下方精灵图进度条高度恢复正常，时间图块完整显示。
+
+---
+
+### 任务十：全域纯暗黑滚动条与原生深色模式适配（根除 Windows 白底亮色滚动条）
+
+* **机制与根本原因剖析**：
+  1. **父级选择器空格失靶**：原 `ui/v2.5/src/styles/_scrollbars.scss` 中的样式使用了 `body ::-webkit-scrollbar`（注意 `body` 与伪元素间存在空格）。CSS 规则中，该选择器仅匹配 `body` 的**子孙容器**（如弹窗、代码块等），而作为全页面视口根节点的 `html` 与 `body` 自身的主滚动条完全未被选中；
+  2. **缺少系统级深色模式声明**：页面未在 `:root` 与 `html` 声明 `color-scheme: dark;`，导致 Chromium / Edge / Safari 等浏览器在 Windows 系统下直接渲染操作系统原生的浅白底色轨道、双向三角箭头按钮与亮灰滑块，与全站 `#0c0c0c` 暗黑背景形成极为刺眼的视觉割裂；
+  3. **W3C 标准滚动条规范缺位**：未针对 Firefox 与现代标准的 `scrollbar-width` 与 `scrollbar-color` 提供声明；文本选择高亮默认残留 Blueprint 亮蓝底色（`#cce2ff`）。
+* **目标文件**：
+  - `ui/v2.5/src/styles/_scrollbars.scss`
+  - `ui/v2.5/src/index.scss`
+  - `ui/v2.5/index.html`
+* **代码修改点**：
+  1. **根节点深色模式系统级注入**：
+     - 在 `index.html` 的 `<head>` 中新增 `<meta name="color-scheme" content="dark" />`，浏览器首帧即以暗色视口渲染；
+     - 在 `index.scss` 与 `_scrollbars.scss` 中为 `:root, html` 统配 `color-scheme: dark; background-color: $body-bg;`。
+  2. **WebKit / Chromium 纯暗黑极简滚动条定制**：
+     - 全局选择器改为 `::-webkit-scrollbar`，全面覆盖主窗口、弹窗、下拉菜单与详情选项卡；
+     - 宽度与高度设为超薄精致的 `8px`，背景轨道设为 `background: transparent;`；
+     - 滑块 `::-webkit-scrollbar-thumb` 设为 `rgba(255, 255, 255, 0.2)`，搭配 `border: 2px solid transparent; background-clip: padding-box; border-radius: 4px;`，呈现优雅的悬浮纤细胶囊药丸；
+     - Hover 态提升至 `rgba(255, 255, 255, 0.38)`，拖拽 Active 态提升至 `rgba(255, 255, 255, 0.55)`；
+     - 彻底隐藏 Windows 原生古旧的上下三角箭头按钮：`::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }`。
+  3. **W3C 标准滚动条兼容与选区去蓝**：
+     - 添加 `html, body, * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }`；
+     - 文本选择区 `::selection` 底色由亮蓝改为极简柔和白色半透（`rgba(255, 255, 255, 0.25); color: #ffffff;`）。
+* **效果**：
+  - 页面主视口右侧刺眼的白底 Windows 滚动条彻底消失，化为与暗黑背景融为一体的 8px 悬浮半透明微光药丸滑块；
+  - 移入滑块时高亮提亮，拖动反馈平滑；全站所有内部滚动容器（Modal、下拉框、详情侧栏、代码块）风格完全统一。
+
+---
+
+### 任务十一：顶部导航栏实用工具按钮激活状态白底胶囊异形 Bug 修复
+
+* **机制与根本原因剖析**：
+  1. **React-Bootstrap 默认 `variant="primary"` 强加类名**：`SettingsButton.tsx` 与 `MainNavbar.tsx` 中的按钮均采用 React-Bootstrap 的 `<Button className="minimal ...">` 组件。当未显式声明 `variant` 时，React-Bootstrap 会强制为按钮注入 `.btn.btn-primary` 类名；
+  2. **高优先级活跃态底色穿透覆盖**：在 `_theme.scss` 中，为了支持全局主要的 Primary 按钮，定义了 `.btn-primary:focus`, `.btn-primary:active`, `.btn-primary.active` 拥有 `#e5e5e5` / `#cccccc` 的实心浅灰/白色背景与微光外描边。由于组合类名选择器权重大于单个类名 `button.minimal`，导致当用户点击“设置”或处于 `/settings` 活跃路由时，Bootstrap 的 `:active` / `:focus` 与 React Router `<NavLink>` 的 `.active` 联合触发了 `.btn-primary` 的实心底色；
+  3. **`h-100` 高度拉伸为全高胶囊**：由于导航栏高度为 `50px`，按钮带有 `h-100` 类撑满纵向，实心底色与圆角在 50px 高度下被直接绘制为一个巨大的白底垂直药丸胶囊（如图中所示），严重破坏了“极简纯文字/纯图标无框化”的导航栏设计理念。
+* **目标文件**：
+  - `ui/v2.5/src/styles/_theme.scss`
+* **代码修改点**：
+  1. **全域 `.minimal` 按钮绝对去背景保底**：
+     - 重构全局 `.minimal` 声明，明确将 `.btn.minimal`, `.btn-primary.minimal`, `.btn-secondary.minimal`, `a.minimal`, `button.minimal` 联合绑定；
+     - 强制将其 `background`, `background-color`, `border`, `border-color`, `box-shadow`, `outline` 在普通态、`:hover`、`:focus`、`:active`、`.active` 及 `:focus-visible` 下全量切断，彻底杜绝实心色块污染。
+  2. **导航栏右侧实用工具项（`.navbar-buttons .nav-utility`）纯粹文字/图标化重置**：
+     - 为 `.nav-utility`, `a.nav-utility`, `button.nav-utility` 以及其内部的 `.btn`, `.btn.minimal`, `.btn-primary`, `.btn-secondary` 设立最高权重全状态清空规则：
+       - `background: transparent !important;`
+       - `background-color: transparent !important;`
+       - `border: none !important; border-color: transparent !important;`
+       - `box-shadow: none !important; outline: none !important;`
+     - 激活态、聚焦态、点击态与悬浮态统一步调：仅使内部文本与 SVG 图标由默认的静止灰（`#888888`）高亮变为纯净亮白（`#ffffff !important;`），杜绝任何背景形变与药丸色块。
+* **效果**：
+  - 用户点击或进入“设置”、“数据统计”、“赞助”、“帮助”等功能时，仅齿轮/图标与文字由灰变亮白，原先高达 50px 的突兀白底垂直胶囊彻底消失；
+  - 无论处于何种鼠标悬浮、点击激活还是键盘聚焦状态，顶部导航栏均保持完全透澈纯净的极简无框暗黑体验。
+
+---
+
+### 任务十二：全域高对比纯暗黑进度条重构（彻底解决任务队列进度条灰底白条与文字隐形问题）
+
+* **机制与根本原因剖析**：
+  1. **Bootstrap 原生亮灰底色与白色主色冲突**：在 `_theme.scss` 中，全局主色定义为 `primary: #ffffff`，而 Bootstrap 的进度条背景默认采用 `$progress-bg: $gray-200`（`#e9ecef`，浅亮灰），填充部分采用 `$progress-bar-bg: theme-color("primary")`（`#ffffff`，纯白）。在 `#141414` 的暗色卡片上，未完成区域是浅亮灰，已完成区域是纯白，两者对比度极弱，视觉上直接糊成一整根反差刺眼的泛白亮条，根本无法分辨进度分界；
+  2. **百分比文本“白字白底”彻底隐形**：`<ProgressBar>` 内部渲染的百分比文本默认采用 `$progress-bar-color: $white`，绘制在 `#ffffff` 的白色进度填充条上，形成纯白字盖在纯白底上的完全隐形状态；
+  3. **任务头部信息缺乏进度数值支撑**：原 `JobTable.tsx` 的头部右侧仅在运行中且耗时明确时渲染 `预估剩余时间: X 分钟`，缺少直观的百分比指示，初始阶段甚至为空白。
+* **目标文件**：
+  - `ui/v2.5/src/styles/_theme.scss`
+  - `ui/v2.5/src/components/Settings/Tasks/JobTable.tsx`
+  - `ui/v2.5/src/components/Settings/styles.scss`
+* **代码修改点**：
+  1. **SCSS 变量层重设暗黑高对比基准**：
+     - 在 `_theme.scss` 的 `@import "bootstrap/scss/bootstrap"` 前注入 Bootstrap 变量声明：`$progress-bg: #1c1c1c; $progress-bar-bg: #ffffff; $progress-bar-color: #0c0c0c; $progress-border-radius: 6px; $progress-height: 16px;`；
+     - 确保全局所有通过 Bootstrap 渲染的 Progress 组件默认均具备暗黑轨道与高亮黑字。
+  2. **高对比微光进度条全域样式强化**：
+     - 将 `.progress` 轨道底色设定为沉稳深炭灰（`#1c1c1c`），外加柔和内凹阴影（`inset 0 1px 3px rgba(0, 0, 0, 0.7)`）与细微边框（`1px solid rgba(255, 255, 255, 0.14)`），与 `#141414` 卡片背景形成精致立体沉降感；
+     - 填充条 `.progress-bar` 设为纯白微光（`#ffffff` + `box-shadow: 0 0 8px rgba(255, 255, 255, 0.25)`），内部百分比文字设为高对比黑字（`color: #0c0c0c !important; font-weight: 700`）；
+     - 条纹动画覆盖为优雅暗黑半透切角纹路（`rgba(0, 0, 0, 0.12)`），避免亮斑杂色干扰。
+  3. **任务队列标题栏双重百分比显式呈现**：
+     - 重构 `JobTable.tsx` 的 `maybeRenderETA()` 为复合进度指示器，在右侧实时渲染亮白加粗的数字徽章（如 `75%`），当存在预估时长时以圆点分隔（如 `75% · 预估剩余时间: 2 分钟`），确保任何阶段均一目了然。
+* **效果**：
+  - 任务队列进度条呈现极具质感的深暗色凹槽轨道与纯白立体进度填充，边界清晰锐利，对比度高达 12:1；
+  - 进度条内黑字百分比与上方标题栏数值双重呼应，彻底告别“白底白条分不清、文字全隐形”的尴尬体验。
+
+---
+
 ## 3. 本地开发热重载与生产联调指南
 
 无需在本地搭建庞大的 Go 和 SQLite/PostgreSQL 后端，可以通过 Vite 代理直接连接你现有的生产服务器（`https://stash.lemjoo.top`）：
@@ -291,5 +444,92 @@ npx pnpm run start
 
 ---
 
-*文档生成时间：2026-10-01*  
+## 6. 根据子文件夹自动创建“集合”与封面图逻辑
+
+### 功能概述
+为实现自动化媒体库整理，系统新增了针对媒体库子文件夹的“自动创建集合与封面图”功能：
+1. **自动识别媒体库子文件夹创建集合（二级子文件夹逻辑）**：
+   - 遍历媒体库所有短片所在的文件夹结构；
+   - **严格排除媒体库根目录直属单片**：直接存放于媒体库根目录（配置的 Stash 目录）下的视频文件不建立集合，仅对根目录下的二级子文件夹（及包含内容的子目录）自动创建“集合”（Group）；
+   - **智能多盘片/多季层级向上聚合**：自动识别多盘片/分卷目录（如 `CD1`、`Disc 2`、`Part 1`、`Season 1`、`第一季` 等），智能向上提取其所属的上级影视/剧集目录名称作为真实集合名称；
+   - 自动在 Stash 中建立对应名称的“集合”（Group），并将短片加入该集合。
+   - **Windows 路径跨盘符自适应**：原生适配相对盘符根路径（如 `\樱晚`），自动探测真实盘符绝对路径。
+2. **封面图三重优先级自动获取机制**：
+   - **第一优先级（本地磁盘海报）**：自动检索所在子文件夹内命名为 `poster.*`、`cover.*`、`folder.*`、`front.*`、`集合名.*` 或任意图片文件并转码上传为集合封面；
+   - **第二优先级（短片自带封面）**：若无独立海报图片，自动从数据库/系统提取该短片的封面截图赋值给集合；
+   - **第三优先级（FFmpeg 视频抽帧）**：若暂无截图，自动调用系统 `ffmpeg` 对视频文件进行抽帧并生成集合封面图。
+3. **自动化触发与手动执行**：
+   - **自动钩子（Hook）**：监听 `Scene.Create.Post`，每当新增或扫描入库短片时自动执行归类与封面生成；
+   - **增加目录联动**：在“配置”面板添加新目录后，自动触发扫描并无缝联动集合自动创建任务；
+   - **扫描联动**：在“任务”面板点击“扫描”后，自动在后台排队执行该任务；
+   - **独立任务按键**：“设置 -> 任务”中新增“自动创建集合与封面图”专属执行卡片，支持随时一键全库运行。
+
+---
+
+## 7. 媒体库目录生命周期与首页体验增强
+
+### 任务十一：删除目录时立即清空关联缓存与元数据
+- **目标文件**：`ui/v2.5/src/components/Settings/StashConfiguration.tsx`、`ui/v2.5/src/core/StashService.ts`
+- **逻辑实现**：
+  - 用户在设置中删除媒体库目录时，绕过防抖立即调用 `mutateConfigureGeneral` 提交配置；
+  - 自动向后台任务队列发起 `mutateMetadataClean({ paths: [deletedPath], dryRun: false })`，精准清理已删除路径所绑定的元数据记录与磁盘缩略图/预览缓存；
+  - 调用 `getClient().resetStore()` 强制刷新前端 Apollo 缓存，实现无缝数据清空并弹出全局 Toast 提示。
+
+### 任务十二：媒体库为空时首页窗口绝对居中显示“新增目录”
+- **目标文件**：`ui/v2.5/src/components/FrontPage/FrontPage.tsx`、`ui/v2.5/src/components/FrontPage/styles.scss`
+- **设计理念**：
+  - 当检测到媒体库目录为空 (`stashes.length === 0`) 时，首页自动隐藏常规推荐行，切换为全屏居中空态容器；
+  - 使用 Flex 布局搭配 `min-height: calc(100vh - 120px)` 实现视口级别水平与垂直双向精准居中；
+  - 放置高辨识度 Primary 风格“新增目录”按钮，点击直接唤起系统目录选择器 (`FolderSelectDialog`)，选中后立即保存并自动触发初始扫描与缩略图生成。
+
+### 任务十三：缩略图/封面图生成异常排查与默认参数校准
+- **目标文件**：
+  - `ui/v2.5/src/components/Settings/Tasks/LibraryTasks.tsx`
+  - `ui/v2.5/src/components/Settings/Tasks/ScanOptions.tsx`
+  - `ui/v2.5/src/components/Settings/Tasks/GenerateOptions.tsx`
+- **根本原因排查**：
+  - 在 Stash 体系中，视频缩略图核心依赖于 **Covers (`covers` / `scanGenerateCovers`)** 从视频中提取关键帧作为海报；
+  - 早期参数中 `scanGenerateCovers` 与 `covers` 默认值曾被误置为 `false`，导致扫描或执行生成任务时跳过了视频封面提取；
+  - 最终表现为前端预览墙上的 `<video>` 缺少 poster 封面，浏览器只能显示黑底带有白色圆圈播放图标的缺省占位图。
+- **修复方案**：
+  - 校准 `getDefaultScanOptions()` 与 `getDefaultGenerateOptions()`，将 `scanGenerateCovers`、`covers`、`scanGenerateThumbnails`、`imageThumbnails` 等核心缩略图选项默认重置为 `true`；
+  - 保证新添加目录时的自动扫描携带完整的封面与缩略图生成指令。
+
+### 任务十四：全域只保留鼠标悬停（Hover）时播放短片预览
+- **目标文件**：
+  - `ui/v2.5/src/components/Scenes/SceneWallPanel.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneMarkerWallPanel.tsx`
+  - `ui/v2.5/src/components/Wall/WallItem.tsx`
+- **逻辑重构**：
+  - 彻底将预览墙项目的 `<video>` 元素从全屏自启 `autoPlay: true` 调整为 `autoPlay: false`；
+  - 默认绑定 `poster={scene.paths.screenshot}` 与 `preload="none"`，在未悬停时仅渲染静态封面图，杜绝多视频并发解码对 GPU 与 CPU 的无效占用；
+  - 监听卡片容器的 `onMouseEnter` 与 `onMouseLeave` 事件：移入卡片时启动 `videoEl.current.play()` 播放预览，移出时执行 `videoEl.current.pause()` 并重置 `currentTime = 0`，实现如 YouTube 般平滑灵敏的仅悬停播放交互。
+
+### 任务十五：新增媒体库目录后立即自动跳转显示任务队列
+- **目标文件**：
+  - `ui/v2.5/src/components/FrontPage/FrontPage.tsx`
+  - `ui/v2.5/src/components/Settings/StashConfiguration.tsx`
+- **交互升级**：
+  - 无论在首页居中的“新增目录”还是设置“媒体库”面板中添加新文件夹，在自动下发目录配置与扫描/归类任务后；
+  - 自动通过 `history.push("/settings?tab=tasks")` 路由直接重定向至任务管理面板；
+  - 用户可第一时间直观查看到实时任务队列、当前进度百分比条及执行状态。
+
+### 任务十六：切片预览时长调整为 15 秒与短视频原生直放智能分流
+- **目标文件**：
+  - `internal/manager/config/config.go`
+  - `ui/v2.5/src/utils/wallPreview.ts`
+  - `ui/v2.5/src/components/Scenes/SceneWallPanel.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneCard.tsx`
+  - `ui/v2.5/src/components/Wall/WallItem.tsx`
+- **逻辑重构**：
+  1. **切片预览时长精确锁定 15 秒**：调整后端默认切片时长参数 `previewSegmentDurationDefault = 1.25`（配合 12 个片段，12 × 1.25s = 15.0 秒），全库生成浓缩短片时严格保持 15 秒节奏；
+  2. **短视频原生直放智能分流机制**：
+     - 在 `wallPreview.ts` 封装 `isBrowserDirectDecodable` 与 `getSceneHoverVideoSource` 决策链路；
+     - 当原视频时长 **< 15 秒** 且格式为浏览器支持原生硬解的容器（MP4/WebM/MOV）与标准编码（H.264/AVC、VP8/VP9、AV1 等）时，鼠标悬停直接播放原视频流（`scene.paths.stream`），省去切片消耗与空间；
+     - 当原视频时长 **≥ 15 秒** 或格式为特种编码（MKV、HEVC/H.265 无硬解、特殊音频等）时，自动播放 15 秒精彩切片预览（`scene.paths.preview`），若未生成切片则平滑回退，兼顾极速加载与画质表现。
+
+---
+
+*文档更新时间：2026-10-01*  
 *维护者：Antigravity & User Pair-Programming*
+

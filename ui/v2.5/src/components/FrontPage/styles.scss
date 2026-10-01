@@ -493,9 +493,68 @@
   opacity: 0.75;
 }
 
-// HACK: compatibility with existing behaviour after removed width from zoom-1 class
-// this should really be changed to use the specific card types instead of a generic zoom-1 class,
-// but this is a quick fix to prevent breaking existing styles
 .recommendation-row .card.zoom-1 {
   width: 320px;
 }
+
+.wall-cards-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-start;
+  margin-top: 10px;
+  margin-bottom: 25px;
+  width: 100%;
+
+  @media (max-width: 576px) {
+    justify-content: center;
+  }
+
+  .card {
+    margin: 4px !important;
+  }
+}
+
+.recommendations-container {
+  .scene-wall {
+    margin-top: 10px;
+    margin-bottom: 25px;
+    width: 100%;
+  }
+}
+
+.empty-front-page-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 120px);
+  width: 100%;
+
+  .empty-front-page-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 32px;
+    font-size: 1.15rem;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+
+    svg {
+      margin-right: 8px;
+    }
+  }
+}
+

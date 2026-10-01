@@ -58,6 +58,17 @@ $input-focus-box-shadow: 0 0 0 1px #ffffff;
 $input-placeholder-color: #666666;
 $input-plaintext-color: #e5e5e5;
 
+// Bootstrap Progress variables (Monochrome Dark)
+$progress-height: 16px;
+$progress-font-size: 11px;
+$progress-bg: #1c1c1c;
+$progress-border-radius: 6px;
+$progress-box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7);
+$progress-bar-color: #0c0c0c;
+$progress-bar-bg: #ffffff;
+$progress-bar-animation-timing: 1s linear infinite;
+$progress-bar-transition: width 0.3s ease;
+
 @import "bootstrap/scss/bootstrap";
 
 $red1: #a82a2a;
@@ -66,32 +77,45 @@ $sepia1: #63411e;
 $dark-gray2: #0c0c0c;
 $dark-gray5: #161616;
 
-.btn.active:not(.disabled),
-.btn.active.minimal:not(.disabled) {
-  background-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-}
-
+// Minimal buttons must NEVER inherit solid backgrounds or borders from .btn-primary / .btn-secondary
 a.minimal,
-button.minimal {
-  background: none;
-  border: none;
+button.minimal,
+.btn.minimal,
+.btn-primary.minimal,
+.btn-secondary.minimal {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
   color: $text-color;
   transition: none;
 
   &:disabled {
-    background: none;
+    background: transparent !important;
+    background-color: transparent !important;
     opacity: 0.5;
   }
 
   &:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08) !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
   }
 
-  &:active:not(:disabled) {
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
+  &:active:not(:disabled),
+  &.active:not(:disabled),
+  &:focus:not(:disabled),
+  &.focus:not(:disabled),
+  &:focus-visible {
+    background: rgba(255, 255, 255, 0.12) !important;
+    background-color: rgba(255, 255, 255, 0.12) !important;
+    border: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    color: #ffffff !important;
   }
 }
 
@@ -578,8 +602,31 @@ hr {
       margin: 0 !important;
       color: #888888 !important;
       text-decoration: none !important;
+      background: transparent !important;
+      background-color: transparent !important;
+      border: none !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+      outline: none !important;
 
-      .btn {
+      &.active,
+      &:active,
+      &:focus,
+      &:hover,
+      &:focus-visible {
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+        color: #ffffff !important;
+      }
+
+      .btn,
+      .btn.minimal,
+      .btn-primary,
+      .btn-secondary {
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -588,10 +635,17 @@ hr {
         margin: 0 !important;
         line-height: 1 !important;
         color: #888888 !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
 
         .fa-icon,
         svg {
           font-size: 1rem;
+          color: inherit !important;
         }
 
         .fa-icon + span,
@@ -604,7 +658,40 @@ hr {
         }
 
         &:hover,
-        &:focus {
+        &:focus,
+        &:active,
+        &.active,
+        &:focus-visible {
+          background: transparent !important;
+          background-color: transparent !important;
+          border: none !important;
+          border-color: transparent !important;
+          box-shadow: none !important;
+          outline: none !important;
+          color: #ffffff !important;
+
+          .fa-icon,
+          svg {
+            color: #ffffff !important;
+          }
+        }
+      }
+
+      &.active .btn,
+      .active > .btn,
+      .btn.active,
+      .btn:active,
+      .btn:focus {
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+        color: #ffffff !important;
+
+        .fa-icon,
+        svg {
           color: #ffffff !important;
         }
       }
@@ -612,6 +699,11 @@ hr {
       &:hover,
       &:focus {
         color: #ffffff !important;
+
+        .fa-icon,
+        svg {
+          color: #ffffff !important;
+        }
       }
     }
 
@@ -652,3 +744,40 @@ hr {
     }
   }
 }
+
+// High-Contrast Monochrome Dark Progress Bar
+.progress {
+  background-color: #1c1c1c !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 6px !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7) !important;
+  overflow: hidden !important;
+  height: 16px !important;
+
+  .progress-bar {
+    background-color: #ffffff !important;
+    color: #0c0c0c !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 14px !important;
+    border-radius: 4px !important;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.25) !important;
+    transition: width 0.3s ease !important;
+
+    &.progress-bar-striped {
+      background-image: linear-gradient(
+        45deg,
+        rgba(0, 0, 0, 0.12) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(0, 0, 0, 0.12) 50%,
+        rgba(0, 0, 0, 0.12) 75%,
+        transparent 75%,
+        transparent
+      ) !important;
+      background-size: 1rem 1rem !important;
+    }
+  }
+}
+

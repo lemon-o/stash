@@ -292,11 +292,34 @@
 
   .job-status {
     width: 100%;
+
+    .progress {
+      margin: 8px 0 10px 0;
+    }
   }
 
   .job-description {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+  }
+
+  .job-eta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.75);
+
+    .job-percent-badge {
+      color: #ffffff;
+      font-weight: 700;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .job-eta-separator {
+      color: rgba(255, 255, 255, 0.35);
+    }
   }
 
   .stop:not(:disabled),

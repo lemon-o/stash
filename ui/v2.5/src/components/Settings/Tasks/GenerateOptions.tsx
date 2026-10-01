@@ -36,12 +36,12 @@ export const GenerateOptions: React.FC<IGenerateOptions> = ({
           <BooleanSetting
             id="covers-task"
             headingID="dialogs.scene_gen.covers"
-            checked={options.covers ?? false}
+            checked={options.covers ?? true}
             onChange={(v) => setOptions({ covers: v })}
           />
           <BooleanSetting
             id="preview-task"
-            checked={options.previews ?? false}
+            checked={options.previews ?? true}
             headingID="dialogs.scene_gen.video_previews"
             tooltipID="dialogs.scene_gen.video_previews_tooltip"
             onChange={(v) => setOptions({ previews: v })}
@@ -83,14 +83,14 @@ export const GenerateOptions: React.FC<IGenerateOptions> = ({
 
           <BooleanSetting
             id="sprite-task"
-            checked={options.sprites ?? false}
+            checked={options.sprites ?? true}
             headingID="dialogs.scene_gen.sprites"
             tooltipID="dialogs.scene_gen.sprites_tooltip"
             onChange={(v) => setOptions({ sprites: v })}
           />
           <BooleanSetting
             id="marker-task"
-            checked={options.markers ?? false}
+            checked={options.markers ?? true}
             headingID="dialogs.scene_gen.markers"
             tooltipID="dialogs.scene_gen.markers_tooltip"
             onChange={(v) => setOptions({ markers: v })}
@@ -139,7 +139,7 @@ export const GenerateOptions: React.FC<IGenerateOptions> = ({
 
           <BooleanSetting
             id="phash-task"
-            checked={options.phashes ?? false}
+            checked={options.phashes ?? true}
             headingID="dialogs.scene_gen.phash"
             tooltipID="dialogs.scene_gen.phash_tooltip"
             onChange={(v) => setOptions({ phashes: v })}
@@ -163,7 +163,7 @@ export const GenerateOptions: React.FC<IGenerateOptions> = ({
           />
           <BooleanSetting
             id="image-thumbnails"
-            checked={options.imageThumbnails ?? false}
+            checked={options.imageThumbnails ?? true}
             headingID="dialogs.scene_gen.image_thumbnails"
             onChange={(v) => setOptions({ imageThumbnails: v })}
           />

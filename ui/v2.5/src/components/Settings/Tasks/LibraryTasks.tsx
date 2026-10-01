@@ -5,6 +5,7 @@ import {
   mutateMetadataScan,
   mutateMetadataAutoTag,
   mutateMetadataGenerate,
+  mutateRunPluginTask,
 } from "src/core/StashService";
 import { withoutTypename } from "src/utils/data";
 import { useConfigurationContext } from "src/hooks/Config";
@@ -91,12 +92,14 @@ export const LibraryTasks: React.FC = () => {
   function getDefaultScanOptions(): GQL.ScanMetadataInput {
     return {
       scanGenerateCovers: true,
-      scanGeneratePreviews: false,
+      scanGeneratePreviews: true,
       scanGenerateImagePreviews: false,
-      scanGenerateSprites: false,
+      scanGenerateSprites: true,
       scanGeneratePhashes: false,
-      scanGenerateThumbnails: false,
+      scanGenerateThumbnails: true,
+      scanGenerateImagePhashes: false,
       scanGenerateClipPreviews: false,
+      rescan: false,
     };
   }
 
@@ -117,6 +120,12 @@ export const LibraryTasks: React.FC = () => {
       phashes: true,
       previews: true,
       markers: true,
+      markerScreenshots: false,
+      interactiveHeatmapsSpeeds: false,
+      clipPreviews: false,
+      imageThumbnails: true,
+      imagePhashes: false,
+      overwrite: false,
       previewOptions: {
         previewSegments: 0,
         previewSegmentDuration: 0,
@@ -231,6 +240,22 @@ export const LibraryTasks: React.FC = () => {
           { operation_name: intl.formatMessage({ id: "actions.scan" }) }
         )
       );
+
+      // 扫描后自动排队执行集合归类与封面图生成任务
+      try {
+        await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
+      } catch (err) {
+        // Plugin task queued silently if available
+      }
+    } catch (e) {
+      Toast.error(e);
+    }
+  }
+
+  async function runAutoGroup() {
+    try {
+      await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
+      Toast.success("已将任务添加到队列：自动创建集合与封面图");
     } catch (e) {
       Toast.error(e);
     }
@@ -395,6 +420,19 @@ export const LibraryTasks: React.FC = () => {
         >
           <ScanOptions options={scanOptions} setOptions={onSetScanOptions} />
         </SettingGroup>
+
+        <Setting
+          heading="自动创建集合与封面图"
+          subHeading="根据媒体库子文件夹名称自动创建“集合”并将短片归类，同时自动提取或生成集合封面图。"
+        >
+          <Button
+            variant="secondary"
+            type="submit"
+            onClick={() => runAutoGroup()}
+          >
+            自动创建集合与封面图
+          </Button>
+        </Setting>
       </SettingSection>
 
       <SettingSection advanced>

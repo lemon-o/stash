@@ -1233,6 +1233,10 @@ ul.selectable-list {
   }
 }
 
+.pagination-index-container {
+  display: none !important;
+}
+
 .pagination-footer-container {
   background-color: transparent;
   bottom: $navbar-height;
@@ -1250,20 +1254,49 @@ ul.selectable-list {
   margin: auto;
   padding: 0.5rem 1rem 0.75rem;
   pointer-events: auto;
-
   width: fit-content;
 
   .pagination.btn-group {
-    box-shadow: 0 8px 10px 2px rgb(0 0 0 / 30%);
+    background-color: rgba(18, 18, 18, 0.75) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5) !important;
+    overflow: hidden;
+
+    .btn {
+      background-color: transparent !important;
+      border: none !important;
+      border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+      color: rgba(255, 255, 255, 0.8) !important;
+      transition: background-color 0.15s ease, color 0.15s ease;
+
+      &:last-child {
+        border-right: none !important;
+      }
+
+      &:hover:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.18) !important;
+        color: #ffffff !important;
+      }
+
+      &.active,
+      &:active:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.28) !important;
+        color: #ffffff !important;
+        font-weight: 700;
+      }
+
+      &:disabled {
+        color: rgba(255, 255, 255, 0.25) !important;
+        background-color: transparent !important;
+      }
+    }
   }
 
   .pagination {
     margin-bottom: 0;
-
-    .btn:disabled {
-      color: #888;
-      opacity: 1;
-    }
   }
 }
 

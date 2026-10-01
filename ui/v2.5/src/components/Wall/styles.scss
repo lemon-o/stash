@@ -56,18 +56,21 @@
 
     &-text {
       background: linear-gradient(
-        rgba(255, 255, 255, 0.25),
-        rgba(255, 255, 255, 0.65)
+        rgba(0, 0, 0, 0.4),
+        rgba(0, 0, 0, 0.8)
       );
       bottom: 0;
-      color: #444;
+      color: #fff;
       font-weight: 700;
       left: 0;
       line-height: 1;
+      opacity: 0;
       overflow: hidden;
       padding: 5px;
+      pointer-events: none;
       position: absolute;
       text-align: center;
+      transition: opacity 0.5s;
       width: 100%;
       z-index: 2000000;
 
@@ -138,6 +141,14 @@
       top: 0;
       transition: opacity 0.5s 0s ease-in-out;
       z-index: -1;
+    }
+
+    &:hover {
+      .wall-item-text {
+        opacity: 1;
+        pointer-events: auto;
+        transition: opacity 0.5s;
+      }
     }
 
     @media (min-width: 576px) {
