@@ -1,7 +1,7 @@
 import { faCheck, faList, faTimes } from "@fortawesome/free-solid-svg-icons";
 import React, { useState } from "react";
 import { Button, Row, Col } from "react-bootstrap";
-import { useIntl } from "react-intl";
+import { useIntl, FormattedMessage } from "react-intl";
 
 import { ModalComponent } from "../Shared/Modal";
 import { Icon } from "../Shared/Icon";
@@ -55,9 +55,17 @@ const FieldSelector: React.FC<IProps> = ({
           onSelect(Object.keys(excluded).filter((f) => excluded[f])),
       }}
     >
-      <h4>Select tagged fields</h4>
+      <h4>
+        <FormattedMessage
+          id="tagger.select_tagged_fields"
+          defaultMessage="选择刮削标签字段"
+        />
+      </h4>
       <div className="mb-2">
-        These fields will be tagged by default. Click the button to toggle.
+        <FormattedMessage
+          id="tagger.select_tagged_fields_help"
+          defaultMessage="默认将对这些字段进行刮削匹配。点击按钮可开启或关闭。"
+        />
       </div>
       <Row>{fields.map((f) => renderField(f))}</Row>
     </ModalComponent>

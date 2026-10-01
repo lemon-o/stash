@@ -4,7 +4,7 @@ import { mutateImportObjects } from "src/core/StashService";
 import { ModalComponent } from "src/components/Shared/Modal";
 import * as GQL from "src/core/generated-graphql";
 import { useToast } from "src/hooks/Toast";
-import { useIntl } from "react-intl";
+import { useIntl, FormattedMessage } from "react-intl";
 import { faPencilAlt } from "@fortawesome/free-solid-svg-icons";
 
 interface IImportDialogProps {
@@ -14,13 +14,11 @@ interface IImportDialogProps {
 export const ImportDialog: React.FC<IImportDialogProps> = (
   props: IImportDialogProps
 ) => {
-  const [duplicateBehaviour, setDuplicateBehaviour] = useState<string>(
-    duplicateHandlingToString(GQL.ImportDuplicateEnum.Ignore)
-  );
+  const [duplicateBehaviour, setDuplicateBehaviour] =
+    useState<GQL.ImportDuplicateEnum>(GQL.ImportDuplicateEnum.Ignore);
 
-  const [missingRefBehaviour, setMissingRefBehaviour] = useState<string>(
-    missingRefHandlingToString(GQL.ImportMissingRefEnum.Fail)
-  );
+  const [missingRefBehaviour, setMissingRefBehaviour] =
+    useState<GQL.ImportMissingRefEnum>(GQL.ImportMissingRefEnum.Fail);
 
   const [file, setFile] = useState<File | undefined>();
 
@@ -30,58 +28,32 @@ export const ImportDialog: React.FC<IImportDialogProps> = (
   const intl = useIntl();
   const Toast = useToast();
 
-  function duplicateHandlingToString(
+  function duplicateHandlingToLabel(
     value: GQL.ImportDuplicateEnum | undefined
   ) {
     switch (value) {
       case GQL.ImportDuplicateEnum.Fail:
-        return "Fail";
+        return intl.formatMessage({ id: "fail", defaultMessage: "失败报错" });
       case GQL.ImportDuplicateEnum.Ignore:
-        return "Ignore";
+        return intl.formatMessage({ id: "ignore", defaultMessage: "忽略跳过" });
       case GQL.ImportDuplicateEnum.Overwrite:
-        return "Overwrite";
+        return intl.formatMessage({ id: "overwrite", defaultMessage: "覆盖更新" });
     }
-    return "Ignore";
+    return intl.formatMessage({ id: "ignore", defaultMessage: "忽略跳过" });
   }
 
-  function translateDuplicateHandling(value: string) {
-    switch (value) {
-      case "Fail":
-        return GQL.ImportDuplicateEnum.Fail;
-      case "Ignore":
-        return GQL.ImportDuplicateEnum.Ignore;
-      case "Overwrite":
-        return GQL.ImportDuplicateEnum.Overwrite;
-    }
-
-    return GQL.ImportDuplicateEnum.Ignore;
-  }
-
-  function missingRefHandlingToString(
+  function missingRefHandlingToLabel(
     value: GQL.ImportMissingRefEnum | undefined
   ) {
     switch (value) {
       case GQL.ImportMissingRefEnum.Fail:
-        return "Fail";
+        return intl.formatMessage({ id: "fail", defaultMessage: "失败报错" });
       case GQL.ImportMissingRefEnum.Ignore:
-        return "Ignore";
+        return intl.formatMessage({ id: "ignore", defaultMessage: "忽略跳过" });
       case GQL.ImportMissingRefEnum.Create:
-        return "Create";
+        return intl.formatMessage({ id: "actions.create", defaultMessage: "自动创建" });
     }
-    return "Fail";
-  }
-
-  function translateMissingRefHandling(value: string) {
-    switch (value) {
-      case "Fail":
-        return GQL.ImportMissingRefEnum.Fail;
-      case "Ignore":
-        return GQL.ImportMissingRefEnum.Ignore;
-      case "Create":
-        return GQL.ImportMissingRefEnum.Create;
-    }
-
-    return GQL.ImportMissingRefEnum.Fail;
+    return intl.formatMessage({ id: "ignore", defaultMessage: "忽略跳过" });
   }
 
   function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -100,8 +72,8 @@ export const ImportDialog: React.FC<IImportDialogProps> = (
     try {
       setIsRunning(true);
       await mutateImportObjects({
-        duplicateBehaviour: translateDuplicateHandling(duplicateBehaviour),
-        missingRefBehaviour: translateMissingRefHandling(missingRefBehaviour),
+        duplicateBehaviour,
+        missingRefBehaviour,
         file,
       });
       setIsRunning(false);
@@ -135,37 +107,52 @@ export const ImportDialog: React.FC<IImportDialogProps> = (
       <div className="dialog-container">
         <Form>
           <Form.Group id="import-file">
-            <h6>Import zip file</h6>
+            <h6>
+              <FormattedMessage
+                id="import_dialog.import_zip_file"
+                defaultMessage="导入 ZIP 压缩包"
+              />
+            </h6>
             <Form.File onChange={onFileChange} accept=".zip" />
           </Form.Group>
           <Form.Group id="duplicate-handling">
-            <h6>Duplicate object handling</h6>
+            <h6>
+              <FormattedMessage
+                id="import_dialog.duplicate_handling"
+                defaultMessage="重复对象处理方式"
+              />
+            </h6>
             <Form.Control
               className="w-auto input-control"
               as="select"
               value={duplicateBehaviour}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                setDuplicateBehaviour(e.currentTarget.value)
+                setDuplicateBehaviour(e.currentTarget.value as GQL.ImportDuplicateEnum)
               }
             >
               {Object.values(GQL.ImportDuplicateEnum).map((p) => (
-                <option key={p}>{duplicateHandlingToString(p)}</option>
+                <option key={p} value={p}>{duplicateHandlingToLabel(p)}</option>
               ))}
             </Form.Control>
           </Form.Group>
 
           <Form.Group id="missing-ref-handling">
-            <h6>Missing reference handling</h6>
+            <h6>
+              <FormattedMessage
+                id="import_dialog.missing_ref_handling"
+                defaultMessage="缺失引用对象处理方式"
+              />
+            </h6>
             <Form.Control
               className="w-auto input-control"
               as="select"
               value={missingRefBehaviour}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                setMissingRefBehaviour(e.currentTarget.value)
+                setMissingRefBehaviour(e.currentTarget.value as GQL.ImportMissingRefEnum)
               }
             >
               {Object.values(GQL.ImportMissingRefEnum).map((p) => (
-                <option key={p}>{missingRefHandlingToString(p)}</option>
+                <option key={p} value={p}>{missingRefHandlingToLabel(p)}</option>
               ))}
             </Form.Control>
           </Form.Group>

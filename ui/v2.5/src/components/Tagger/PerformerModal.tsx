@@ -179,11 +179,21 @@ const PerformerModal: React.FC<IPerformerModalProps> = ({
             onError={handleError}
           />
           {imageState === "loading" && (
-            <LoadingIndicator message="Loading image..." />
+            <LoadingIndicator
+              message={intl.formatMessage({
+                id: "actions.loading_image",
+                defaultMessage: "正在加载图片...",
+              })}
+            />
           )}
           {imageState === "error" && (
             <div className="h-100 d-flex justify-content-center align-items-center">
-              <b>Error loading image.</b>
+              <b>
+                <FormattedMessage
+                  id="tagger.error_loading_image"
+                  defaultMessage="图片加载失败。"
+                />
+              </b>
             </div>
           )}
         </div>
@@ -192,9 +202,12 @@ const PerformerModal: React.FC<IPerformerModalProps> = ({
             <Icon icon={faArrowLeft} />
           </Button>
           <h5 className="flex-grow-1">
-            Select performer image
+            <FormattedMessage
+              id="tagger.select_performer_image"
+              defaultMessage="选择演员头像"
+            />
             <br />
-            {imageIndex + 1} of {images.length}
+            {imageIndex + 1} / {images.length}
           </h5>
           <Button onClick={setNext} disabled={images.length === 1}>
             <Icon icon={faArrowRight} />

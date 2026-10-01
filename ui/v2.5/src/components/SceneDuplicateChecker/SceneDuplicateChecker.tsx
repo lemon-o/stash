@@ -1034,7 +1034,12 @@ export const SceneDuplicateChecker: React.FC = () => {
           </tbody>
         </Table>
         {scenes.length === 0 && (
-          <h4 className="text-center mt-4">No duplicates found.</h4>
+          <h4 className="text-center mt-4">
+            <FormattedMessage
+              id="dupe_check.no_duplicates_found"
+              defaultMessage="未找到重复项。"
+            />
+          </h4>
         )}
         {renderPagination()}
       </div>

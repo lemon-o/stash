@@ -7,7 +7,9 @@ import (
 
 // matcher defines a matcher for the languages we support
 var matcher = language.NewMatcher([]language.Tag{
-	language.MustParse("en-US"), // The first language is used as fallback.
+	language.MustParse("zh-CN"), // The first language is used as fallback.
+	language.MustParse("zh-TW"),
+	language.MustParse("en-US"),
 	language.MustParse("en-GB"),
 	language.MustParse("en-AU"),
 	language.MustParse("es-ES"),

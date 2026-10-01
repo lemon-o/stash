@@ -856,9 +856,9 @@ func (i *Config) GetCreateGalleriesFromFolders() bool {
 func (i *Config) GetLanguage() string {
 	ret := i.getString(Language)
 
-	// default to English
+	// default to Simplified Chinese
 	if ret == "" {
-		return "en-US"
+		return "zh-CN"
 	}
 
 	return ret
@@ -1989,6 +1989,7 @@ func (i *Config) setDefaultValues() {
 	i.setDefault(SpriteScreenshotSize, spriteScreenshotSizeDefault)
 
 	i.setDefault(ThemeColor, DefaultThemeColor)
+	i.setDefault(Language, "zh-CN")
 
 	i.setDefault(WriteImageThumbnails, writeImageThumbnailsDefault)
 	i.setDefault(CreateImageClipsFromVideos, createImageClipsFromVideosDefault)

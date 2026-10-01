@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Container,
+  Dropdown,
   Form,
   InputGroup,
 } from "react-bootstrap";
@@ -653,19 +654,24 @@ const SetPathsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
 };
 
 const StashExclusions: React.FC<{ stash: GQL.StashConfig }> = ({ stash }) => {
+  const intl = useIntl();
   if (!stash.excludeImage && !stash.excludeVideo) {
     return null;
   }
 
   const excludes = [];
   if (stash.excludeVideo) {
-    excludes.push("videos");
+    excludes.push(intl.formatMessage({ id: "videos" }));
   }
   if (stash.excludeImage) {
-    excludes.push("images");
+    excludes.push(intl.formatMessage({ id: "images" }));
   }
 
-  return <span>{`(excludes ${excludes.join(" and ")})`}</span>;
+  return (
+    <span>{`(${intl.formatMessage({ id: "actions.ignore" })}: ${excludes.join(
+      intl.locale.startsWith("zh") ? "、" : " and "
+    )})`}</span>
+  );
 };
 
 function validateUsername(username: string) {
@@ -1021,6 +1027,7 @@ const FinishStep: React.FC<IWizardStep> = ({ goBack }) => {
 export const Setup: React.FC = () => {
   const intl = useIntl();
   const { configuration } = useConfigurationContext();
+  const [mutateConfigureInterface] = GQL.useConfigureInterfaceMutation();
 
   const {
     data: systemStatus,
@@ -1034,6 +1041,27 @@ export const Setup: React.FC = () => {
   const [setupError, setSetupError] = useState<string | undefined>(undefined);
 
   const history = useHistory();
+
+  const currentLocale = intl.locale || "zh-CN";
+  const languageNames: Record<string, string> = {
+    "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
+    "en-GB": "English (UK)",
+    "en-US": "English (US)",
+    "ja-JP": "日本語",
+    "ko-KR": "한국어",
+    "de-DE": "Deutsch",
+    "fr-FR": "Français",
+    "es-ES": "Español",
+    "ru-RU": "Русский",
+  };
+
+  function onSelectLanguage(locale: string) {
+    localStorage.setItem("stash_setup_locale", locale);
+    window.dispatchEvent(
+      new CustomEvent("stash_setup_locale_change", { detail: { locale } })
+    );
+  }
 
   const steps: React.FC<IWizardStep>[] = [
     WelcomeStep,
@@ -1049,6 +1077,17 @@ export const Setup: React.FC = () => {
       setCreating(true);
       setSetupError(undefined);
       await mutateSetup(setupInput as GQL.SetupInput);
+      try {
+        await mutateConfigureInterface({
+          variables: {
+            input: {
+              language: currentLocale,
+            },
+          },
+        });
+      } catch (_e) {
+        // ignore if not ready
+      }
       history.replace("/welcome");
     } catch (e) {
       if (e instanceof Error && e.message) {
@@ -1130,9 +1169,30 @@ export const Setup: React.FC = () => {
       systemStatus={systemStatus}
     >
       <Container className="setup-wizard">
-        <h1 className="text-center">
-          <FormattedMessage id="setup.stash_setup_wizard" />
-        </h1>
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div style={{ width: 150 }} />
+          <h1 className="text-center m-0 flex-grow-1">
+            <FormattedMessage id="setup.stash_setup_wizard" />
+          </h1>
+          <div style={{ width: 150, textAlign: "right" }}>
+            <Dropdown onSelect={(k) => k && onSelectLanguage(k)}>
+              <Dropdown.Toggle variant="secondary" size="sm">
+                🌐 {languageNames[currentLocale] || currentLocale}
+              </Dropdown.Toggle>
+              <Dropdown.Menu className="bg-secondary text-white dropdown-menu-right">
+                {Object.entries(languageNames).map(([code, name]) => (
+                  <Dropdown.Item
+                    key={code}
+                    eventKey={code}
+                    active={currentLocale === code}
+                  >
+                    {name}
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown>
+          </div>
+        </div>
         <Card>
           {creating ? (
             <LoadingIndicator

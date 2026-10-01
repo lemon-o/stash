@@ -141,7 +141,14 @@ export const Tagger: React.FC<ITaggerProps> = ({
             disabled={loading || !sources.length}
             onChange={handleSourceSelect}
           >
-            {!sources.length && <option>No scraper sources</option>}
+            {!sources.length && (
+              <option>
+                {intl.formatMessage({
+                  id: "tagger.no_scraper_sources",
+                  defaultMessage: "无可用刮削源",
+                })}
+              </option>
+            )}
             {sources.map((i) => (
               <option value={i.id} key={i.id}>
                 {i.displayName}

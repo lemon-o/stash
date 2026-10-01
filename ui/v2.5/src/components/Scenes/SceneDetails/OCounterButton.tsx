@@ -1,7 +1,7 @@
 import { faBan, faMinus, faThumbsUp } from "@fortawesome/free-solid-svg-icons";
 import React, { useState } from "react";
 import { Button, ButtonGroup, Dropdown, DropdownButton } from "react-bootstrap";
-import { useIntl } from "react-intl";
+import { useIntl, FormattedMessage } from "react-intl";
 import { Icon } from "src/components/Shared/Icon";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { SweatDrops } from "src/components/Shared/SweatDrops";
@@ -69,11 +69,15 @@ export const OCounterButton: React.FC<IOCounterButtonProps> = (
         >
           <Dropdown.Item onClick={decrement}>
             <Icon icon={faMinus} />
-            <span>Decrement</span>
+            <span>
+              <FormattedMessage id="actions.decrement" defaultMessage="减少" />
+            </span>
           </Dropdown.Item>
           <Dropdown.Item onClick={reset}>
             <Icon icon={faBan} />
-            <span>Reset</span>
+            <span>
+              <FormattedMessage id="actions.reset" defaultMessage="重置" />
+            </span>
           </Dropdown.Item>
         </DropdownButton>
       );

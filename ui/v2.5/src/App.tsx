@@ -96,7 +96,7 @@ const intlFormats: CustomFormats = {
   },
 };
 
-const fallbackLocale = "en-GB";
+const fallbackLocale = "zh-CN";
 const defaultLocale = "zh-CN";
 
 function languageMessageString(language: string) {
@@ -144,8 +144,34 @@ export const App: React.FC = () => {
 
   const { data: systemStatusData } = useSystemStatus();
 
+  const [setupLocale, setSetupLocale] = useState<string>(() => {
+    return localStorage.getItem("stash_setup_locale") || "";
+  });
+
+  useEffect(() => {
+    const handleLocaleChange = (e: any) => {
+      if (e?.detail?.locale) {
+        setSetupLocale(e.detail.locale);
+        localStorage.setItem("stash_setup_locale", e.detail.locale);
+      }
+    };
+    window.addEventListener("stash_setup_locale_change", handleLocaleChange);
+    return () =>
+      window.removeEventListener(
+        "stash_setup_locale_change",
+        handleLocaleChange
+      );
+  }, []);
+
+  const isSetup =
+    systemStatusData?.systemStatus?.status === GQL.SystemStatusEnum.Setup;
+  const configuredLanguage = config.data?.configuration?.interface?.language;
+
+  // In Setup mode or when unconfigured, guarantee defaulting to zh-CN unless chosen by user
   const language =
-    config.data?.configuration?.interface?.language || defaultLocale;
+    setupLocale ||
+    (isSetup ? defaultLocale : configuredLanguage) ||
+    defaultLocale;
   const intlLanguage = translateLanguageLocale(language);
 
   // use fallbackLocale (en-GB) as default messages if any messages aren't found in the chosen language

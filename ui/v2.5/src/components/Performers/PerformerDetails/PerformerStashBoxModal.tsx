@@ -228,7 +228,11 @@ const PerformerStashBoxModal: React.FC<IProps> = ({
         ) : performers.length > 0 ? (
           renderResults()
         ) : (
-          query !== "" && <h5 className="text-center">No results found.</h5>
+          query !== "" && (
+            <h5 className="text-center">
+              <FormattedMessage id="stashbox_search.no_results" />
+            </h5>
+          )
         )}
       </div>
     </ModalComponent>

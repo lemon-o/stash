@@ -20,7 +20,7 @@ import (
 const (
 	returnURLParam = "returnURL"
 
-	defaultLocale = "en-GB"
+	defaultLocale = "zh-CN"
 )
 
 func getLoginPage() []byte {

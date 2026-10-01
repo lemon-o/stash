@@ -608,6 +608,46 @@ npx pnpm run start
      - 视频真正解码并触发 `onPlaying` 且确认当前仍处于悬停状态（`active == true`）时，平滑淡入视频画面；
      - 鼠标离开卡片瞬间（`onMouseLeave`），立刻重置 `isPlaying = false`，视频 `opacity` 瞬时归零并暂停重置，底层静态海报 0ms 无缝呈现，彻底根除黑帧闪烁或冻结！
 
+### 任务二十二：初始配置向导（Setup Wizard）全面汉化、全域语言快捷切换与系统未翻译词条深度清零
+- **目标文件**：
+  - `internal/manager/config/config.go`
+  - `internal/api/locale.go`
+  - `internal/api/session.go`
+  - `ui/login/login.html`
+  - `ui/v2.5/src/App.tsx`
+  - `ui/v2.5/src/components/Setup/Setup.tsx`
+  - `ui/v2.5/src/locales/zh-CN.json`
+  - `ui/v2.5/src/locales/en-GB.json`
+  - `ui/v2.5/src/components/Settings/Tasks/ImportDialog.tsx`
+  - `ui/v2.5/src/components/Tagger/FieldSelector.tsx`
+  - `ui/v2.5/src/components/Tagger/PerformerModal.tsx`
+  - `ui/v2.5/src/components/Tagger/scenes/SceneTagger.tsx`
+  - `ui/v2.5/src/components/Performers/PerformerDetails/PerformerStashBoxModal.tsx`
+  - `ui/v2.5/src/components/SceneDuplicateChecker/SceneDuplicateChecker.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneDetails/OCounterButton.tsx`
+- **机制与根本原因剖析**：
+  1. **Go 后端未初始化配置时硬编码强制指定 `"en-US"`**：
+     - 在 `internal/manager/config/config.go`（`GetLanguage()`）中，当未读取到配置文件时，硬编码逻辑为 `if ret == "" { return "en-US" }`；
+     - 导致在新装、首次启动向导（`SystemStatusEnum.Setup`）或重置环境下，后端向前端 GraphQL 接口报告的默认界面语言为 `"en-US"`，前端初始化获取后直接将语言强切为英文；
+  2. **中文语言包（`zh-CN.json`）缺失 42+ 个关键字段与配置向导凭据词条**：
+     - 包括 `setup.credentials.*`（账号密码设置、未设置密码警告等）、重复场景检查、自动标签警告等关键字段在 `zh-CN.json` 中完全缺失，运行时静默降级为英文；
+  3. **初始配置向导（Setup Wizard）无语言切换入口且不持久化语言配置**：
+     - 首次安装界面右上角缺少直观的语言切换下拉器；向导完成进入系统时未将当前语言持久化写入 `config.yml`；
+  4. **全系统多处界面组件硬编码英文字符串**：
+     - `ImportDialog`（导入 ZIP、重复处理、缺失引用）、`FieldSelector`（选择刮削标签字段）、`PerformerModal`（正在加载图片、图片加载失败、选择演员头像）、`SceneTagger`（无可用刮削源）、`OCounterButton`（重置/递减）等组件中遗留原生英文无国际化封装。
+- **机制与实现方案**：
+  1. **双层保底：后端与前端默认首选语言全面变更为 `zh-CN`**：
+     - 在 `config.go` 中，将 `GetLanguage()` 默认空返回值改为 `"zh-CN"`，并在 `setDefaultValues()` 中写入 `i.setDefault(Language, "zh-CN")`；
+     - 在 `locale.go`、`session.go`、`login.html` 中同步将简体中文提至最高匹配优先级；
+     - 在 `App.tsx` 中，针对首次配置向导阶段（`status === GQL.SystemStatusEnum.Setup`），安全屏蔽未初始化的后端英文返回值，优先启用浏览器或用户所选中文。
+  2. **语言包 100% 深度补齐与润色**：
+     - 自动化对比并补全 `zh-CN.json` 缺失的全部 42 个词条，对向导流程、凭据校验、媒体排除项等提示进行高标准本土化深度润色。
+  3. **初始向导多语言快速切换器与自动持久化保存**：
+     - 在 `Setup.tsx` 顶部右侧新增极简风格的语言切换下拉菜单（支持 🌐 简体中文、English、繁體中文等无缝即时切换）；
+     - 点击「完成」提交配置时，自动调用 `configureInterface({ language: currentLocale })`，将用户当前语言写入 `config.yml`，首次进入主界面无需二次设置。
+  4. **全系统硬编码英文字符全面组件化汉化**：
+     - 全面使用 `<FormattedMessage>` 与 `intl.formatMessage` 封装各对话框与组件，并在 `zh-CN.json` 与 `en-GB.json` 中统一注册国际化键值，实现系统全域无死角中文覆盖。
+
 ---
 
 *文档更新时间：2026-10-01*  
