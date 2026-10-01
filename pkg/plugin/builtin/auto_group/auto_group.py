@@ -458,18 +458,13 @@ def extract_optimal_frame_ffmpeg(video_path, duration=None):
     candidates = []
     if duration > 0:
         if duration <= 15.0:
-            ratios = [0.30, 0.50, 0.20, 0.70, 0.40, 0.60, 0.80, 0.10]
-            for r in ratios:
-                candidates.append((r, r * duration))
-            for s in [1.0, 2.0, 0.5, 3.0]:
-                if s < duration:
-                    candidates.append((s / duration, s))
+            ratios = [0.25, 0.50, 0.75]
         else:
-            ratios = [0.20, 0.40, 0.60, 0.70, 0.50, 0.30, 0.80, 0.15, 0.10]
-            for r in ratios:
-                candidates.append((r, r * duration))
+            ratios = [0.20, 0.40, 0.60]
+        for r in ratios:
+            candidates.append((r, r * duration))
     else:
-        candidates = [(0.0, 10.0), (0.0, 5.0), (0.0, 2.0), (0.0, 1.0), (0.0, 20.0)]
+        candidates = [(0.0, 2.0), (0.0, 5.0), (0.0, 10.0)]
 
     temp_dir = tempfile.gettempdir()
     best_data_uri = None
@@ -489,9 +484,9 @@ def extract_optimal_frame_ffmpeg(video_path, duration=None):
                     first_data_uri = data_uri
 
                 is_unusable, score, mean, stddev = is_image_black_or_blank(raw_bytes)
-                # If frame is bright, sharp and comfortable exposure, accept immediately!
-                if not is_unusable and mean >= 40.0 and score >= 25.0:
-                    log.LogDebug(f"提取到清晰无黑帧高质量画面 ({os.path.basename(video_path)} @ {t:.2f}s, mean={mean:.1f}, stddev={stddev:.1f}, score={score:.1f})")
+                # 只要不是黑屏且非纯色空白屏（not is_unusable），立即返回，避免多轮 FFmpeg 串行抽取
+                if not is_unusable:
+                    log.LogDebug(f"提取到清晰画面 ({os.path.basename(video_path)} @ {t:.2f}s, mean={mean:.1f}, stddev={stddev:.1f})")
                     return data_uri
 
                 if score > best_score:
@@ -579,9 +574,10 @@ def resolve_group_cover(folder_dir, col_name, scene_id, video_path):
     return None
 
 
-def process_scene(scene, client, library_roots, groups_map):
-    # 优先检测并自动修复短片自身的静态缩略图（避免黑帧、暗帧与空白帧）
-    check_and_repair_scene_thumbnail(scene, client)
+def process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=False):
+    # 仅在明确开启核验时修复短片缩略图（扫描与日常入库时 Go 后端已生成封面，避免重复调用 FFmpeg）
+    if fix_scene_thumb:
+        check_and_repair_scene_thumbnail(scene, client)
 
     scene_id = scene["id"]
     files = scene.get("files", [])
@@ -656,7 +652,7 @@ def run_full(client):
 
     for i, scene in enumerate(scenes):
         try:
-            process_scene(scene, client, library_roots, groups_map)
+            process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=False)
         except Exception as e:
             log.LogWarning(f"处理短片 #{scene.get('id')} 发生错误: {e}")
 
@@ -688,14 +684,14 @@ def run_hook(client, hook_context):
     scene_id = hook_context.get("id")
     if not scene_id:
         return
-    log.LogInfo(f"检测到新短片创建或更新 (ID: {scene_id})，正在检查缩略图质量与子文件夹归类...")
+    log.LogInfo(f"检测到新短片创建或更新 (ID: {scene_id})，正在执行子文件夹归类...")
     library_roots = get_library_roots(client)
     groups_map = client.get_all_groups()
 
     scene = client.get_scene(scene_id)
     if scene:
-        process_scene(scene, client, library_roots, groups_map)
-        log.LogInfo(f"短片 #{scene_id} 缩略图质量与归类处理完成")
+        process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=False)
+        log.LogInfo(f"短片 #{scene_id} 集合归类处理完成")
 
 
 def main():

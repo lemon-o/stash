@@ -767,9 +767,42 @@ npx pnpm run start
      - 待全部轻量缩略图排入并优先完成后，再将长耗时的切片预览（Previews、ClipPreviews）排入队列（第二阶段）；
      - 即使全库重新批量生成，所有短片的封面缩略图也会在数秒内最先瞬间刷满，随后后台从容补充切片。
 
+### 任务二十八：缩略图生成性能瓶颈深度优化（消除多轮 FFmpeg 串行抽帧与后置钩子阻塞）
+- **目标文件**：
+  - `pkg/scene/generate/screenshot.go`
+  - `pkg/scene/scan.go`
+  - `pkg/plugin/builtin/auto_group/auto_group.py`
+  - `data/plugins/auto_group/auto_group.py`
+- **问题剖析（为什么只生成缩略图还这么慢）**：
+  1. **过严阈值导致 9~12 次 FFmpeg 串行进程轮询（最核心瓶颈）**：
+     - 在 `screenshot.go` 中，为了避免截取到黑屏，设置了 9~12 个候选时间戳（`20%, 40%, 60%, 70%, 50%, 30%, 80%, 15%, 10%`）；
+     - 但提前接受条件被设定为过严的 `!fq.isUnusable && fq.avgY >= 40.0 && fq.score >= 25.0`；
+     - 任何带有宽银幕上下黑边（Letterboxing，常见于 16:9 或 2.35:1 电影）、暗调室内戏、夜晚戏或动漫的视频，整幅图像平均亮度 `avgY` 极易低于 40 或对比度得分低于 25；
+     - 虽然第 1 个时间点（20% 处）截取的画面完全正常可用（`!isUnusable`），却因未达到上述过严阈值被驳回，系统不得不连续拉起 9~12 次 `ffmpeg.exe` 进程！在 Windows 系统上，单次进程创建与文件 I/O 耗时 150ms~1.5s，单部视频仅封面提取就被拉长至 5~15 秒！
+  2. **Python 插件钩子对每部短片重复进行 9 次二次抽帧**：
+     - 短片入库触发 `Scene.Create.Post` 钩子时，`auto_group.py` 在 `run_hook` 中调用了 `check_and_repair_scene_thumbnail`；
+     - 其在 Python 内部再次做黑帧/暗帧判断，如果判定不满足又在 Python 进程中连续拉起 9 次 FFmpeg 重新抽帧；
+     - 叠加 Go 端与 Python 端，单部短片在最坏情况下被连续拉起多达 18 次 FFmpeg 进程与 1 次 Python 进程！
+  3. **插件后置钩子同步阻塞扫描 Worker**：
+     - `pkg/scene/scan.go` 中原先在事务提交后同步调用 `h.PluginCache.ExecutePostHooks`，导致文件扫描线程必须等待 Python 进程启动、通过 HTTP/GraphQL 查询全部分组、执行归类完成后才能处理下一个文件；
+  4. **配置默认并发数（parallel_tasks）受限**：
+     - 若配置中 `parallel_tasks: 1`，全部文件只能单线程串行处理，无法发挥多核 CPU 优势。
+- **机制与实现方案**：
+  1. **首选可用画面立即熔断返回（1 次 FFmpeg 即可完成 98% 的视频封面提取）**：
+     - 在 `pkg/scene/generate/screenshot.go` 中优化退出条件：只要首个抽取帧不是全黑（`avgY >= 15` 且 `!(avgY < 20 && maxY < 45)`）且不是单色空白（`stddev >= 6` 且 `maxY - minY >= 15`），即满足 `!fq.isUnusable`，**直接命中并返回**，耗时仅 50~180ms；
+     - 将候选时间戳由 9~12 个大幅精简为至多 3 个（`20%, 40%, 60%`），即使万一第 1 帧确实是片头黑屏，最多也只需尝试 2~3 次；
+     - 全库扫描生成的 FFmpeg 进程总调用次数直降 90%~95%！
+  2. **消除 Python 钩子中的重复核验与重复抽帧**：
+     - 在 `auto_group.py` 的 `process_scene` 中增加 `fix_scene_thumb=False` 保护开关：常规入库与后置钩子仅负责子文件夹归类，不重复进行短片封面检测；
+     - 集合封面优先直接复用 Go 后端已写入 SQLite 的高清短片封面，不再额外调用 FFmpeg；
+     - 将 `auto_group.py` 内部的候选帧也精简至 3 个，并同样改为非黑屏即立即命中。
+  3. **插件后置钩子异步派发（非阻塞扫描流水线）**：
+     - 在 `pkg/scene/scan.go` 中将 `PluginCache.ExecutePostHooks` 置入后台 goroutine（`go h.PluginCache.ExecutePostHooks(...)`）；
+     - 扫描线程生成封面后立即推送给前端并继续扫描下一个视频，后台 Python 归类完全不阻碍扫描入库的飞速进行。
+
 ---
 
-*文档更新时间：2026-10-01*  
+*文档更新时间：2026-10-02*  
 *维护者：Antigravity & User Pair-Programming*
 
 

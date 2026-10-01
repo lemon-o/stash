@@ -148,9 +148,9 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 			}
 		}
 
-		// 封面图生成完成后，再触发插件后置钩子（确保 auto_group 归类与提取集合封面时已有短片封面）
+		// 封面图生成完成后，异步触发插件后置钩子（确保 auto_group 归类与提取集合封面时已有短片封面，且不阻塞扫描主队列）
 		if isNew {
-			h.PluginCache.ExecutePostHooks(ctx, newScene.ID, hook.SceneCreatePost, nil, nil)
+			go h.PluginCache.ExecutePostHooks(context.Background(), newScene.ID, hook.SceneCreatePost, nil, nil)
 		}
 	})
 

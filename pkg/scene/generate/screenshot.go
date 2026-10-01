@@ -148,16 +148,11 @@ func getCandidateTimestamps(videoDuration float64, requestedAt *float64) []float
 	}
 
 	if videoDuration <= 15.0 {
-		for _, ratio := range []float64{0.30, 0.50, 0.20, 0.70, 0.40, 0.60, 0.80, 0.10} {
+		for _, ratio := range []float64{0.25, 0.50, 0.75} {
 			addTime(ratio * videoDuration)
 		}
-		for _, sec := range []float64{1.0, 2.0, 0.5, 3.0} {
-			if sec < videoDuration {
-				addTime(sec)
-			}
-		}
 	} else {
-		for _, ratio := range []float64{0.20, 0.40, 0.60, 0.70, 0.50, 0.30, 0.80, 0.15, 0.10} {
+		for _, ratio := range []float64{0.20, 0.40, 0.60} {
 			addTime(ratio * videoDuration)
 		}
 	}
@@ -193,10 +188,11 @@ func (g Generator) Screenshot(ctx context.Context, input string, videoWidth int,
 		}
 
 		fq := evaluateFrameImage(ret)
-		// If frame is bright, sharp and comfortable exposure, accept immediately!
-		if !fq.isUnusable && fq.avgY >= 40.0 && fq.score >= 25.0 {
+		// 只要第一张画面不是黑屏且不是纯色空白屏（!isUnusable），立即作为有效封面返回！
+		// 避免因暗光/宽银幕黑边导致不满足过严阈值而触发连续 9~12 次 FFmpeg 串行抽取
+		if !fq.isUnusable {
 			if idx > 0 {
-				logger.Infof("[generator] selected optimal non-black frame at %.2fs for %s (avg=%.1f, stddev=%.1f, score=%.1f)", at, input, fq.avgY, fq.stddevY, fq.score)
+				logger.Infof("[generator] selected alternative non-black frame at %.2fs for %s (avg=%.1f, stddev=%.1f)", at, input, fq.avgY, fq.stddevY)
 			}
 			return ret, nil
 		}
@@ -206,9 +202,7 @@ func (g Generator) Screenshot(ctx context.Context, input string, videoWidth int,
 			bestData = ret
 		}
 
-		if fq.isUnusable {
-			logger.Debugf("[generator] frame at %.2fs for %s is black/blank (avg=%.1f, stddev=%.1f), searching alternative...", at, input, fq.avgY, fq.stddevY)
-		}
+		logger.Debugf("[generator] frame at %.2fs for %s is black/blank (avg=%.1f, stddev=%.1f), searching alternative...", at, input, fq.avgY, fq.stddevY)
 	}
 
 	if bestData != nil && bestScore > 0 {
