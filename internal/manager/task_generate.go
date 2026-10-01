@@ -323,23 +323,23 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 func (j *GenerateJob) queueTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
 	j.totals = totalsGenerate{}
 
-	// 第一阶段：优先生成封面、缩略图与轻量元数据，保证增量快速呈现
+	// 第一阶段（毫秒级极速）：优先只生成全库的短片封面（Covers）与图片缩略图（ImageThumbnails），所有卡片海报瞬间涌入前端
 	j.queueScenesFastTasks(ctx, g, paths, queue)
 	j.queueImagesFastTasks(ctx, g, paths, queue)
 
-	// 第二阶段：在封面和缩略图就绪后，后台慢慢补充耗时极长的切片预览
-	j.queueScenesPreviewTasks(ctx, g, paths, queue)
-	j.queueImagesPreviewTasks(ctx, g, paths, queue)
+	// 第二阶段（耗时任务后台慢慢补充）：所有轻量缩略图排完后，再排入耗时漫长的感知哈希、切片预览、雪碧图等重度任务
+	j.queueScenesSlowTasks(ctx, g, paths, queue)
+	j.queueImagesSlowTasks(ctx, g, paths, queue)
 }
 
 func (j *GenerateJob) queueScenesTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
 	j.queueScenesFastTasks(ctx, g, paths, queue)
-	j.queueScenesPreviewTasks(ctx, g, paths, queue)
+	j.queueScenesSlowTasks(ctx, g, paths, queue)
 }
 
 func (j *GenerateJob) queueScenesFastTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
-	hasFastTasks := j.input.Covers || j.input.Sprites || j.input.Markers || j.input.MarkerImagePreviews || j.input.MarkerScreenshots || j.input.Transcodes || j.input.Phashes || j.input.InteractiveHeatmapsSpeeds
-	if !hasFastTasks {
+	// 第一阶段只排入轻量封面
+	if !j.input.Covers {
 		return
 	}
 
@@ -382,8 +382,9 @@ func (j *GenerateJob) queueScenesFastTasks(ctx context.Context, g *generate.Gene
 	}
 }
 
-func (j *GenerateJob) queueScenesPreviewTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
-	if !j.input.Previews {
+func (j *GenerateJob) queueScenesSlowTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	hasSlowTasks := j.input.Previews || j.input.Phashes || j.input.Sprites || j.input.Markers || j.input.MarkerImagePreviews || j.input.MarkerScreenshots || j.input.Transcodes || j.input.InteractiveHeatmapsSpeeds
+	if !hasSlowTasks {
 		return
 	}
 
@@ -401,7 +402,7 @@ func (j *GenerateJob) queueScenesPreviewTasks(ctx context.Context, g *generate.G
 
 		scenes, err := scene.Query(ctx, r.Scene, sceneFilter, findFilter)
 		if err != nil {
-			logger.Errorf("Error encountered queuing scenes for preview generation: %s", err.Error())
+			logger.Errorf("Error encountered queuing scenes for slow generation: %s", err.Error())
 			return
 		}
 
@@ -415,7 +416,7 @@ func (j *GenerateJob) queueScenesPreviewTasks(ctx context.Context, g *generate.G
 				return
 			}
 
-			j.queueScenePreviewJobs(ctx, g, ss, queue)
+			j.queueSceneSlowJobs(ctx, g, ss, queue)
 		}
 
 		if len(scenes) != batchSize {
@@ -428,12 +429,12 @@ func (j *GenerateJob) queueScenesPreviewTasks(ctx context.Context, g *generate.G
 
 func (j *GenerateJob) queueImagesTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
 	j.queueImagesFastTasks(ctx, g, paths, queue)
-	j.queueImagesPreviewTasks(ctx, g, paths, queue)
+	j.queueImagesSlowTasks(ctx, g, paths, queue)
 }
 
 func (j *GenerateJob) queueImagesFastTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
-	hasFastTasks := j.input.ImageThumbnails || j.input.ImagePhashes
-	if !hasFastTasks {
+	// 第一阶段只排入轻量图片缩略图
+	if !j.input.ImageThumbnails {
 		return
 	}
 
@@ -476,8 +477,9 @@ func (j *GenerateJob) queueImagesFastTasks(ctx context.Context, g *generate.Gene
 	}
 }
 
-func (j *GenerateJob) queueImagesPreviewTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
-	if !j.input.ClipPreviews {
+func (j *GenerateJob) queueImagesSlowTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	hasSlowTasks := j.input.ClipPreviews || j.input.ImagePhashes
+	if !hasSlowTasks {
 		return
 	}
 
@@ -495,7 +497,7 @@ func (j *GenerateJob) queueImagesPreviewTasks(ctx context.Context, g *generate.G
 
 		images, err := image.Query(ctx, r.Image, imageFilter, findFilter)
 		if err != nil {
-			logger.Errorf("Error encountered queuing images for clip preview generation: %s", err.Error())
+			logger.Errorf("Error encountered queuing images for slow generation: %s", err.Error())
 			return
 		}
 
@@ -509,7 +511,7 @@ func (j *GenerateJob) queueImagesPreviewTasks(ctx context.Context, g *generate.G
 				return
 			}
 
-			j.queueImagePreviewJob(g, ss, queue)
+			j.queueImageSlowJob(g, ss, queue)
 		}
 
 		if len(images) != batchSize {
@@ -558,6 +560,7 @@ func getGeneratePreviewOptions(optionsInput GeneratePreviewOptionsInput) generat
 func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
 	r := j.repository
 
+	// 极速第一阶段：仅排入短片封面生成（毫秒级提取海报，秒级铺满前端卡片）
 	if j.input.Covers {
 		task := &GenerateCoverTask{
 			repository: r,
@@ -571,7 +574,12 @@ func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Genera
 			queue <- task
 		}
 	}
+}
 
+func (j *GenerateJob) queueSceneSlowJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
+	r := j.repository
+
+	// 1. 雪碧图 (Sprites: 截取数十张切片画面，耗时较长)
 	if j.input.Sprites {
 		task := &GenerateSpriteTask{
 			Scene:               *scene,
@@ -586,6 +594,7 @@ func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Genera
 		}
 	}
 
+	// 2. 标记与截图 (Markers)
 	if j.input.Markers || j.input.MarkerImagePreviews || j.input.MarkerScreenshots {
 		task := &GenerateMarkersTask{
 			repository:          r,
@@ -608,6 +617,7 @@ func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Genera
 		}
 	}
 
+	// 3. 转码 (Transcodes)
 	if j.input.Transcodes {
 		forceTranscode := j.input.ForceTranscodes
 		task := &GenerateTranscodeTask{
@@ -624,6 +634,7 @@ func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Genera
 		}
 	}
 
+	// 4. 视频感知哈希 (Phashes: 需提取 25 帧画面计算 5x5 拼图矩阵特征码，重度耗时)
 	if j.input.Phashes {
 		// generate for all files in scene
 		for _, f := range scene.Files.List() {
@@ -642,6 +653,7 @@ func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Genera
 		}
 	}
 
+	// 5. 热图与速度 (InteractiveHeatmapsSpeeds)
 	if j.input.InteractiveHeatmapsSpeeds {
 		task := &GenerateInteractiveHeatmapSpeedTask{
 			repository:          r,
@@ -656,9 +668,8 @@ func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Genera
 			queue <- task
 		}
 	}
-}
 
-func (j *GenerateJob) queueScenePreviewJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
+	// 6. 切片预览 (Previews: 提取 12 个切片片段重新压制小视频，重度耗时)
 	generatePreviewOptions := j.input.PreviewOptions
 	if generatePreviewOptions == nil {
 		generatePreviewOptions = &GeneratePreviewOptionsInput{}
@@ -691,7 +702,7 @@ func (j *GenerateJob) queueScenePreviewJobs(ctx context.Context, g *generate.Gen
 
 func (j *GenerateJob) queueSceneJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
 	j.queueSceneFastJobs(ctx, g, scene, queue)
-	j.queueScenePreviewJobs(ctx, g, scene, queue)
+	j.queueSceneSlowJobs(ctx, g, scene, queue)
 }
 
 func (j *GenerateJob) queueMarkerJob(g *generate.Generator, marker *models.SceneMarker, queue chan<- Task) {
@@ -711,6 +722,7 @@ func (j *GenerateJob) queueMarkerJob(g *generate.Generator, marker *models.Scene
 }
 
 func (j *GenerateJob) queueImageFastJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
+	// 极速第一阶段：仅排入图片缩略图
 	if j.input.ImageThumbnails {
 		task := &GenerateImageThumbnailTask{
 			Image:     *image,
@@ -723,7 +735,9 @@ func (j *GenerateJob) queueImageFastJob(g *generate.Generator, image *models.Ima
 			queue <- task
 		}
 	}
+}
 
+func (j *GenerateJob) queueImageSlowJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
 	if j.input.ImagePhashes {
 		// generate for all files in image
 		for _, f := range image.Files.List() {
@@ -742,9 +756,7 @@ func (j *GenerateJob) queueImageFastJob(g *generate.Generator, image *models.Ima
 			}
 		}
 	}
-}
 
-func (j *GenerateJob) queueImagePreviewJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
 	if j.input.ClipPreviews {
 		task := &GenerateClipPreviewTask{
 			Image:     *image,
@@ -761,5 +773,5 @@ func (j *GenerateJob) queueImagePreviewJob(g *generate.Generator, image *models.
 
 func (j *GenerateJob) queueImageJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
 	j.queueImageFastJob(g, image, queue)
-	j.queueImagePreviewJob(g, image, queue)
+	j.queueImageSlowJob(g, image, queue)
 }
