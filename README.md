@@ -150,6 +150,16 @@ Stash 可以通过[刮削器](https://github.com/stashapp/stash/blob/develop/ui/
 
 逐项的代码定位、改法与设计原则见 [MODIFICATIONS.md](MODIFICATIONS.md)。
 
+### 界面预览
+
+空媒体库 —— 首次使用时的极简呈现：
+
+![空媒体库界面](docs/readme_assets/demo_image_empty.png)
+
+设置页 —— 任务队列、收藏库扫描选项与生成内容，同样是无框纯暗黑：
+
+![设置页界面](docs/readme_assets/demo_image_settings.png)
+
 ---
 
 ## 从源码构建
