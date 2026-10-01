@@ -119,7 +119,7 @@ export const LibraryTasks: React.FC = () => {
       sprites: false,
       phashes: false,
       previews: false,
-      markers: false,
+      markers: true,
       markerScreenshots: false,
       interactiveHeatmapsSpeeds: false,
       clipPreviews: false,

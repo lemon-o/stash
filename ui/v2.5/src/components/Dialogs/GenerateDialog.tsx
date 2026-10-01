@@ -37,7 +37,7 @@ export const GenerateDialog: React.FC<IGenerateDialog> = ({
       sprites: false,
       phashes: false,
       previews: false,
-      markers: false,
+      markers: true,
       previewOptions: {
         previewSegments: 0,
         previewSegmentDuration: 0,
