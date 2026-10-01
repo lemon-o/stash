@@ -89,7 +89,7 @@ const (
 	LiveTranscodeOutputArgs = "ffmpeg.live_transcode.output_args"
 
 	ParallelTasks        = "parallel_tasks"
-	parallelTasksDefault = 1
+	parallelTasksDefault = 0
 
 	UseCustomSpriteInterval        = "use_custom_sprite_interval"
 	UseCustomSpriteIntervalDefault = false
