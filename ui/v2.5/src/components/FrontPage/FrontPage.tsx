@@ -24,7 +24,7 @@ import { Icon } from "../Shared/Icon";
 import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import TextUtils from "src/utils/text";
 import { useHistory } from "react-router-dom";
-import { mutateRunPluginTask } from "src/core/StashService";
+import { runAutoGroupIfAvailable } from "src/core/StashService";
 
 const FrontPage: React.FC = PatchComponent("FrontPage", () => {
   const history = useHistory();
@@ -114,11 +114,7 @@ const FrontPage: React.FC = PatchComponent("FrontPage", () => {
                     scanGenerateSprites: false,
                     scanGenerateThumbnails: true,
                   });
-                  try {
-                    await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
-                  } catch (e) {
-                    // ignore if plugin is disabled or loading
-                  }
+                  await runAutoGroupIfAvailable();
                   Toast.success(
                     intl.formatMessage(
                       { id: "config.tasks.added_job_to_queue" },

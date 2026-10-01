@@ -2574,6 +2574,27 @@ export const useConfiguration = () => GQL.useConfigurationQuery();
 
 export const usePlugins = () => GQL.usePluginsQuery();
 
+export const queryPlugins = () =>
+  client.query<GQL.PluginsQuery>({
+    query: GQL.PluginsDocument,
+    fetchPolicy: "network-only",
+  });
+
+export const runAutoGroupIfAvailable = async () => {
+  try {
+    const res = await queryPlugins();
+    const plugins = res.data?.plugins ?? [];
+    const hasAutoGroup = plugins.some(
+      (p) => p.id === "auto_group" && p.enabled
+    );
+    if (hasAutoGroup) {
+      await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
+    }
+  } catch (_e) {
+    // ignore
+  }
+};
+
 export const usePluginTasks = () => GQL.usePluginTasksQuery();
 
 export const useStats = () => GQL.useStatsQuery();

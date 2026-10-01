@@ -143,14 +143,18 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 
 				j.queueTasks(ctx, g, nil, queue)
 			} else {
+				// 第一阶段：优先生成封面、缩略图与轻量元数据，保证增量快速呈现
 				if len(j.input.SceneIDs) > 0 {
 					scenes, err = qb.FindMany(ctx, sceneIDs)
+					if err != nil {
+						return err
+					}
 					for _, s := range scenes {
 						if err := s.LoadFiles(ctx, qb); err != nil {
 							return err
 						}
 
-						j.queueSceneJobs(ctx, g, s, queue)
+						j.queueSceneFastJobs(ctx, g, s, queue)
 					}
 				}
 
@@ -166,12 +170,15 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 
 				if len(j.input.ImageIDs) > 0 {
 					images, err = r.Image.FindMany(ctx, imageIDs)
+					if err != nil {
+						return err
+					}
 					for _, i := range images {
 						if err := i.LoadFiles(ctx, r.Image); err != nil {
 							return err
 						}
 
-						j.queueImageJob(g, i, queue)
+						j.queueImageFastJob(g, i, queue)
 					}
 				}
 
@@ -186,7 +193,7 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 								return err
 							}
 
-							j.queueImageJob(g, img, queue)
+							j.queueImageFastJob(g, img, queue)
 						}
 					}
 				}
@@ -194,6 +201,29 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 				if len(j.input.Paths) > 0 {
 					paths := filterStashPaths(j.input.Paths)
 					j.queueTasks(ctx, g, paths, queue)
+				}
+
+				// 第二阶段：在封面和缩略图就绪后，再后台处理耗时较长的切片预览任务
+				if len(j.input.SceneIDs) > 0 {
+					for _, s := range scenes {
+						j.queueScenePreviewJobs(ctx, g, s, queue)
+					}
+				}
+
+				if len(j.input.ImageIDs) > 0 {
+					for _, i := range images {
+						j.queueImagePreviewJob(g, i, queue)
+					}
+				}
+
+				if len(j.input.GalleryIDs) > 0 {
+					for _, galleryID := range galleryIDs {
+						imgs, _ := r.Image.FindByGalleryID(ctx, galleryID)
+						for _, img := range imgs {
+							_ = img.LoadFiles(ctx, r.Image)
+							j.queueImagePreviewJob(g, img, queue)
+						}
+					}
 				}
 			}
 
@@ -293,11 +323,26 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 func (j *GenerateJob) queueTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
 	j.totals = totalsGenerate{}
 
-	j.queueScenesTasks(ctx, g, paths, queue)
-	j.queueImagesTasks(ctx, g, paths, queue)
+	// 第一阶段：优先生成封面、缩略图与轻量元数据，保证增量快速呈现
+	j.queueScenesFastTasks(ctx, g, paths, queue)
+	j.queueImagesFastTasks(ctx, g, paths, queue)
+
+	// 第二阶段：在封面和缩略图就绪后，后台慢慢补充耗时极长的切片预览
+	j.queueScenesPreviewTasks(ctx, g, paths, queue)
+	j.queueImagesPreviewTasks(ctx, g, paths, queue)
 }
 
 func (j *GenerateJob) queueScenesTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	j.queueScenesFastTasks(ctx, g, paths, queue)
+	j.queueScenesPreviewTasks(ctx, g, paths, queue)
+}
+
+func (j *GenerateJob) queueScenesFastTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	hasFastTasks := j.input.Covers || j.input.Sprites || j.input.Markers || j.input.MarkerImagePreviews || j.input.MarkerScreenshots || j.input.Transcodes || j.input.Phashes || j.input.InteractiveHeatmapsSpeeds
+	if !hasFastTasks {
+		return
+	}
+
 	const batchSize = 1000
 
 	findFilter := models.BatchFindFilter(batchSize)
@@ -312,7 +357,7 @@ func (j *GenerateJob) queueScenesTasks(ctx context.Context, g *generate.Generato
 
 		scenes, err := scene.Query(ctx, r.Scene, sceneFilter, findFilter)
 		if err != nil {
-			logger.Errorf("Error encountered queuing files to scan: %s", err.Error())
+			logger.Errorf("Error encountered queuing scenes for fast generation: %s", err.Error())
 			return
 		}
 
@@ -322,11 +367,55 @@ func (j *GenerateJob) queueScenesTasks(ctx context.Context, g *generate.Generato
 			}
 
 			if err := ss.LoadFiles(ctx, r.Scene); err != nil {
-				logger.Errorf("Error encountered queuing files to scan: %s", err.Error())
+				logger.Errorf("Error encountered queuing scene files: %s", err.Error())
 				return
 			}
 
-			j.queueSceneJobs(ctx, g, ss, queue)
+			j.queueSceneFastJobs(ctx, g, ss, queue)
+		}
+
+		if len(scenes) != batchSize {
+			more = false
+		} else {
+			*findFilter.Page++
+		}
+	}
+}
+
+func (j *GenerateJob) queueScenesPreviewTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	if !j.input.Previews {
+		return
+	}
+
+	const batchSize = 1000
+
+	findFilter := models.BatchFindFilter(batchSize)
+	sceneFilter := scene.FilterFromPaths(paths)
+
+	r := j.repository
+
+	for more := true; more; {
+		if job.IsCancelled(ctx) {
+			return
+		}
+
+		scenes, err := scene.Query(ctx, r.Scene, sceneFilter, findFilter)
+		if err != nil {
+			logger.Errorf("Error encountered queuing scenes for preview generation: %s", err.Error())
+			return
+		}
+
+		for _, ss := range scenes {
+			if job.IsCancelled(ctx) {
+				return
+			}
+
+			if err := ss.LoadFiles(ctx, r.Scene); err != nil {
+				logger.Errorf("Error encountered queuing scene files: %s", err.Error())
+				return
+			}
+
+			j.queueScenePreviewJobs(ctx, g, ss, queue)
 		}
 
 		if len(scenes) != batchSize {
@@ -338,6 +427,16 @@ func (j *GenerateJob) queueScenesTasks(ctx context.Context, g *generate.Generato
 }
 
 func (j *GenerateJob) queueImagesTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	j.queueImagesFastTasks(ctx, g, paths, queue)
+	j.queueImagesPreviewTasks(ctx, g, paths, queue)
+}
+
+func (j *GenerateJob) queueImagesFastTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	hasFastTasks := j.input.ImageThumbnails || j.input.ImagePhashes
+	if !hasFastTasks {
+		return
+	}
+
 	const batchSize = 1000
 
 	findFilter := models.BatchFindFilter(batchSize)
@@ -345,14 +444,14 @@ func (j *GenerateJob) queueImagesTasks(ctx context.Context, g *generate.Generato
 
 	r := j.repository
 
-	for more := j.input.ClipPreviews || j.input.ImageThumbnails || j.input.ImagePhashes; more; {
+	for more := true; more; {
 		if job.IsCancelled(ctx) {
 			return
 		}
 
 		images, err := image.Query(ctx, r.Image, imageFilter, findFilter)
 		if err != nil {
-			logger.Errorf("Error encountered queuing files to scan: %s", err.Error())
+			logger.Errorf("Error encountered queuing images for fast generation: %s", err.Error())
 			return
 		}
 
@@ -362,11 +461,55 @@ func (j *GenerateJob) queueImagesTasks(ctx context.Context, g *generate.Generato
 			}
 
 			if err := ss.LoadFiles(ctx, r.Image); err != nil {
-				logger.Errorf("Error encountered queuing files to scan: %s", err.Error())
+				logger.Errorf("Error encountered queuing image files: %s", err.Error())
 				return
 			}
 
-			j.queueImageJob(g, ss, queue)
+			j.queueImageFastJob(g, ss, queue)
+		}
+
+		if len(images) != batchSize {
+			more = false
+		} else {
+			*findFilter.Page++
+		}
+	}
+}
+
+func (j *GenerateJob) queueImagesPreviewTasks(ctx context.Context, g *generate.Generator, paths []string, queue chan<- Task) {
+	if !j.input.ClipPreviews {
+		return
+	}
+
+	const batchSize = 1000
+
+	findFilter := models.BatchFindFilter(batchSize)
+	imageFilter := image.FilterFromPaths(paths)
+
+	r := j.repository
+
+	for more := true; more; {
+		if job.IsCancelled(ctx) {
+			return
+		}
+
+		images, err := image.Query(ctx, r.Image, imageFilter, findFilter)
+		if err != nil {
+			logger.Errorf("Error encountered queuing images for clip preview generation: %s", err.Error())
+			return
+		}
+
+		for _, ss := range images {
+			if job.IsCancelled(ctx) {
+				return
+			}
+
+			if err := ss.LoadFiles(ctx, r.Image); err != nil {
+				logger.Errorf("Error encountered queuing image files: %s", err.Error())
+				return
+			}
+
+			j.queueImagePreviewJob(g, ss, queue)
 		}
 
 		if len(images) != batchSize {
@@ -412,7 +555,7 @@ func getGeneratePreviewOptions(optionsInput GeneratePreviewOptionsInput) generat
 	return ret
 }
 
-func (j *GenerateJob) queueSceneJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
+func (j *GenerateJob) queueSceneFastJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
 	r := j.repository
 
 	if j.input.Covers {
@@ -438,35 +581,6 @@ func (j *GenerateJob) queueSceneJobs(ctx context.Context, g *generate.Generator,
 
 		if task.required() {
 			j.totals.sprites++
-			j.totals.tasks++
-			queue <- task
-		}
-	}
-
-	generatePreviewOptions := j.input.PreviewOptions
-	if generatePreviewOptions == nil {
-		generatePreviewOptions = &GeneratePreviewOptionsInput{}
-	}
-	options := getGeneratePreviewOptions(*generatePreviewOptions)
-
-	if j.input.Previews {
-		task := &GeneratePreviewTask{
-			Scene:               *scene,
-			ImagePreview:        j.input.ImagePreviews,
-			Options:             options,
-			Overwrite:           j.overwrite,
-			fileNamingAlgorithm: j.fileNamingAlgo,
-			generator:           g,
-		}
-
-		if task.required() {
-			if task.videoPreviewRequired() {
-				j.totals.previews++
-			}
-			if task.imagePreviewRequired() {
-				j.totals.imagePreviews++
-			}
-
 			j.totals.tasks++
 			queue <- task
 		}
@@ -544,6 +658,42 @@ func (j *GenerateJob) queueSceneJobs(ctx context.Context, g *generate.Generator,
 	}
 }
 
+func (j *GenerateJob) queueScenePreviewJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
+	generatePreviewOptions := j.input.PreviewOptions
+	if generatePreviewOptions == nil {
+		generatePreviewOptions = &GeneratePreviewOptionsInput{}
+	}
+	options := getGeneratePreviewOptions(*generatePreviewOptions)
+
+	if j.input.Previews {
+		task := &GeneratePreviewTask{
+			Scene:               *scene,
+			ImagePreview:        j.input.ImagePreviews,
+			Options:             options,
+			Overwrite:           j.overwrite,
+			fileNamingAlgorithm: j.fileNamingAlgo,
+			generator:           g,
+		}
+
+		if task.required() {
+			if task.videoPreviewRequired() {
+				j.totals.previews++
+			}
+			if task.imagePreviewRequired() {
+				j.totals.imagePreviews++
+			}
+
+			j.totals.tasks++
+			queue <- task
+		}
+	}
+}
+
+func (j *GenerateJob) queueSceneJobs(ctx context.Context, g *generate.Generator, scene *models.Scene, queue chan<- Task) {
+	j.queueSceneFastJobs(ctx, g, scene, queue)
+	j.queueScenePreviewJobs(ctx, g, scene, queue)
+}
+
 func (j *GenerateJob) queueMarkerJob(g *generate.Generator, marker *models.SceneMarker, queue chan<- Task) {
 	task := &GenerateMarkersTask{
 		repository:          j.repository,
@@ -560,7 +710,7 @@ func (j *GenerateJob) queueMarkerJob(g *generate.Generator, marker *models.Scene
 	queue <- task
 }
 
-func (j *GenerateJob) queueImageJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
+func (j *GenerateJob) queueImageFastJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
 	if j.input.ImageThumbnails {
 		task := &GenerateImageThumbnailTask{
 			Image:     *image,
@@ -569,19 +719,6 @@ func (j *GenerateJob) queueImageJob(g *generate.Generator, image *models.Image, 
 
 		if task.required() {
 			j.totals.imageThumbnails++
-			j.totals.tasks++
-			queue <- task
-		}
-	}
-
-	if j.input.ClipPreviews {
-		task := &GenerateClipPreviewTask{
-			Image:     *image,
-			Overwrite: j.overwrite,
-		}
-
-		if task.required() {
-			j.totals.clipPreviews++
 			j.totals.tasks++
 			queue <- task
 		}
@@ -605,4 +742,24 @@ func (j *GenerateJob) queueImageJob(g *generate.Generator, image *models.Image, 
 			}
 		}
 	}
+}
+
+func (j *GenerateJob) queueImagePreviewJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
+	if j.input.ClipPreviews {
+		task := &GenerateClipPreviewTask{
+			Image:     *image,
+			Overwrite: j.overwrite,
+		}
+
+		if task.required() {
+			j.totals.clipPreviews++
+			j.totals.tasks++
+			queue <- task
+		}
+	}
+}
+
+func (j *GenerateJob) queueImageJob(g *generate.Generator, image *models.Image, queue chan<- Task) {
+	j.queueImageFastJob(g, image, queue)
+	j.queueImagePreviewJob(g, image, queue)
 }

@@ -9,7 +9,7 @@ import {
   mutateConfigureGeneral,
   mutateMetadataClean,
   mutateMetadataScan,
-  mutateRunPluginTask,
+  runAutoGroupIfAvailable,
 } from "src/core/StashService";
 import { useToast } from "src/hooks/Toast";
 import TextUtils from "src/utils/text";
@@ -193,11 +193,7 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
                     scanGenerateSprites: false,
                     scanGenerateThumbnails: true,
                   });
-                  try {
-                    await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
-                  } catch (e) {
-                    // ignore if plugin is disabled or loading
-                  }
+                  await runAutoGroupIfAvailable();
                   Toast.success(
                     intl.formatMessage(
                       { id: "config.tasks.added_job_to_queue" },

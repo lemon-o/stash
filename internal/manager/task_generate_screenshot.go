@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -85,6 +86,9 @@ func (t *GenerateCoverTask) Start(ctx context.Context) {
 	}); err != nil && ctx.Err() == nil {
 		logger.Error(err.Error())
 	}
+
+	// 实时节流通知前端，让新生成的视频封面与缩略图立即在页面上增量呈现
+	instance.scanSubs.notifyThrottled(1 * time.Second)
 }
 
 // required returns true if the sprite needs to be generated

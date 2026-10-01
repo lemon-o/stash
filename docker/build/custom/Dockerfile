@@ -86,6 +86,7 @@ RUN apk add --no-cache \
     && pip install --break-system-packages mechanicalsoup cloudscraper stashapp-tools
 
 COPY --from=backend /stash/stash /usr/bin/
+COPY ./pkg/plugin/builtin/ /root/.stash/plugins/
 ENV STASH_CONFIG_FILE=/root/.stash/config.yml
 LABEL org.opencontainers.image.title="Stash (customised)" \
     org.opencontainers.image.description="Stash with a monochrome dark UI and a Chinese in-app manual, built from lemon-o/stash." \

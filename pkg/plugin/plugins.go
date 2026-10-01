@@ -21,6 +21,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/plugin/builtin"
 	"github.com/stashapp/stash/pkg/plugin/common"
 	"github.com/stashapp/stash/pkg/plugin/hook"
 	"github.com/stashapp/stash/pkg/session"
@@ -131,6 +132,10 @@ func (c *Cache) RegisterSessionStore(sessionStore *session.Store) {
 // If a plugin cannot be loaded, an error is logged and the plugin is skipped.
 func (c *Cache) ReloadPlugins() {
 	path := c.config.GetPluginsPath()
+	if err := builtin.ProvisionDefaultPlugins(path); err != nil {
+		logger.Warnf("Could not provision built-in plugins to %s: %v", path, err)
+	}
+
 	// # 4484 - ensure plugin ids are unique
 	plugins := make([]Config, 0)
 	pluginIDs := make(map[string]bool)

@@ -235,7 +235,12 @@ func (s *Manager) Generate(ctx context.Context, input GenerateMetadataInput) (in
 		input:      input,
 	}
 
-	return s.JobManager.Add(ctx, "Generating...", j), nil
+	desc := "Generating..."
+	if input.Previews && !input.Covers && !input.Sprites && !input.Markers && !input.Transcodes && !input.Phashes {
+		desc = "Generating previews..."
+	}
+
+	return s.JobManager.Add(ctx, desc, j), nil
 }
 
 func (s *Manager) GenerateDefaultScreenshot(ctx context.Context, sceneId string) int {

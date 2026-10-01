@@ -695,9 +695,83 @@ npx pnpm run start
      - 在 `subscribe.go` 中引入安全非阻塞通信与节流通知机制 `notifyThrottled(1 * time.Second)`；每当单个视频处理完毕（数据库、封面图、切片预览俱全），立即节流通知订阅者；
      - 前端 `createClient.ts` 监听 `ScanCompleteSubscribe`，收到流式增量通知时调用 `client.refetchQueries({ include: "active" })`，平滑无感地将最新入库且带有封面与预览的视频实时呈现在当前页面上。
 
+### 任务二十五：插件安全存在性校验与 auto_group 自动集合任务触发保护
+- **目标文件**：
+  - `internal/api/resolver_mutation_plugin.go`
+  - `ui/v2.5/src/core/StashService.ts`
+  - `ui/v2.5/src/components/FrontPage/FrontPage.tsx`
+  - `ui/v2.5/src/components/Settings/StashConfiguration.tsx`
+  - `ui/v2.5/src/components/Setup/Welcome.tsx`
+- **机制与问题根源剖析**：
+  1. **前端盲目触发插件任务引发持久红标报错**：
+     - 在自动化扫描或完成向导时，前端调用 `mutateRunPluginTask("auto_group", "自动创建集合与封面图")`；
+     - 若用户的部署环境（如 Docker 挂载的 `./config/plugins` 或宿主机目录）尚未将 `auto_group` 插件文件夹复制放入，Go 后端内部直接将该无主任务提交给 `JobManager`；
+     - 当后台任务线程执行到 `PluginCache.CreateTask` 时抛出 `no plugin with ID auto_group` 异常，并在系统任务队列中留下一道显眼的红色错误日志，给用户造成困惑；
+  2. **后端 GraphQL Resolver 缺乏前置校验熔断**：
+     - 原版 `RunPluginTask` resolver 在向后台队列推任务前，未校验该 `pluginID` 是否真实存在于 `PluginCache` 中，导致任何无效的插件调用都会污染后台任务队列。
+- **机制与实现方案**：
+  1. **后端前置熔断校验**：
+     - 在 `internal/api/resolver_mutation_plugin.go` 中，向后台作业队列（`JobManager`）添加任务前，首先执行 `m.PluginCache.GetPlugin(pluginID) == nil` 校验；若不存在则即时阻断并返回错误，杜绝无效任务进入后台执行线程并在任务列表中留下持久红标；
+  2. **前端动态探测与自适应调用安全守卫**：
+     - 在 `StashService.ts` 中封装 `runAutoGroupIfAvailable()`，在触发插件前先向 GraphQL `queryPlugins` 查询当前服务端已加载的所有插件；
+     - 仅当明确检测到 `auto_group` 存在且状态处于 `enabled: true` 时，才执行插件任务调度；若未安装或未启用，则静默安全略过，不打扰用户；
+  3. **全面接入统一守卫**：
+     - 将 `FrontPage.tsx`、`StashConfiguration.tsx` 及 `Welcome.tsx` 中的无感知硬编码调用全面替换为 `await runAutoGroupIfAvailable()`，确保无论在任何部署环境下均丝滑稳定无误报。
+
+### 任务二十六：内置插件镜像层打包与 Go 内核嵌入自释放（零手动配置开箱即用）
+- **目标文件**：
+  - `pkg/plugin/builtin/builtin.go`
+  - `pkg/plugin/builtin/auto_group/auto_group.py`
+  - `pkg/plugin/builtin/auto_group/auto_group.yml`
+  - `pkg/plugin/builtin/auto_group/log.py`
+  - `pkg/plugin/plugins.go`
+  - `docker/build/custom/Dockerfile`
+- **机制与问题根源剖析**：
+  1. **`.gitignore` 过滤导致插件未能提交进代码库与 Docker 构建上下文**：
+     - 原先 `auto_group` 插件保存在 `data/plugins/auto_group`，而项目的根目录 `.gitignore` 中包含 `/data` 规则，导致插件源码从未进入版本控制，GitHub Actions 自动化构建 Docker 镜像时也不会包含该文件；
+  2. **Docker 卷挂载覆盖（Bind Mount Masking）**：
+     - 用户部署 Stash 时，通常使用 `-v ./config:/root/.stash` 挂载宿主机目录。如果仅在 Docker 镜像中的 `/root/.stash` 写入文件，一旦用户挂载宿主机目录，镜像内原有的文件会被宿主机目录直接遮蔽掩盖，导致容器内插件丢失。
+- **机制与实现方案**：
+  1. **插件源码正式归档入库**：
+     - 将插件移入版本控制跟踪路径 `pkg/plugin/builtin/auto_group/`，随同核心代码一同管理和发布；
+     - 优化 `auto_group.py` 中的路径与端口探测机制，优先识别 `STASH_CONFIG_FILE` 环境变量及 Docker 路径 `/root/.stash`；
+  2. **Go 1.16+ `//go:embed` 静态编译嵌入**：
+     - 在 `pkg/plugin/builtin/builtin.go` 中，利用 `//go:embed auto_group/*` 将全部插件文件编译嵌入到 Stash 主执行文件中，使其成为一个完全自包含的单一产物；
+  3. **后端启动开机自解压与自维护（Auto-Provisioning）**：
+     - 在 `pkg/plugin/plugins.go` 的 `ReloadPlugins()` 中，扫描插件目录前首先执行 `builtin.ProvisionDefaultPlugins(path)`；
+     - 无论用户是在本地直接运行二进制，还是在 Docker 中将全新的空白目录挂载至 `/root/.stash`，Stash 服务端一启动便会自动将内置的 `auto_group` 插件释放到挂载的 `plugins/` 目录中，并立即完成加载与任务注册；
+  4. **Dockerfile 双重预置**：
+     - 在 `docker/build/custom/Dockerfile` 中显式添加 `COPY ./pkg/plugin/builtin/ /root/.stash/plugins/`，实现镜像层与内核层的双重内置保障。
+
+### 任务二十七：扫描与生成逻辑解耦切片预览，视频与封面缩略图极速增量呈现
+- **目标文件**：
+  - `internal/manager/task_scan.go`
+  - `internal/manager/task_generate.go`
+  - `internal/manager/task_generate_screenshot.go`
+  - `internal/manager/manager_tasks.go`
+  - `pkg/scene/scan.go`
+- **问题剖析**：
+  - 此前为解决视频缩略图问题，在短片入库扫描循环中同步触发了 `taskPreview.Start(ctx)`（切片预览截取）；
+  - 由于切片预览需要 FFmpeg 多点寻道、抽帧、拼接并转码，单部视频往往耗时 10~30 秒，导致扫描整个文件夹时发生严重阻塞，后续所有视频的入库与缩略图提取均被卡死在队列后方；
+  - 在生成任务（`GenerateJob`）中，若同时勾选封面与切片预览，所有任务被平铺混杂进同一队列，并发 Worker 迅速被耗时漫长的切片预览占满，导致其他视频的封面缩略图迟迟无法生成。
+- **机制与实现方案**：
+  1. **扫描与切片预览彻底解耦（剥离同步切片）**：
+     - 从 `task_scan.go` 的 `sceneGenerators.Generate` 中彻底移除同步调用的 `GeneratePreviewTask`；
+     - 扫描视频时仅同步执行轻量的 `GenerateCoverTask`（封面缩略图提取，单片耗时仅约 0.1 秒）；
+     - 每处理完一个视频的封面缩略图，立即触发 `mgr.scanSubs.notifyThrottled(1 * time.Second)` 向前端 Apollo 客户端发送增量推送，用户能在前端看到视频卡片伴随海报缩略图毫秒级逐个涌入；
+  2. **扫描完成后自动衔接独立后台预览任务（慢慢补充切片）**：
+     - 在 `ScanJob.Execute` 扫描全部文件完成后，若配置了 `ScanGeneratePreviews`，自动在后台向任务队列派发独立的 `GenerateMetadataInput{ Previews: true, Paths: j.input.Paths }` 任务；
+     - 扫描任务（Scanning...）在几秒内即可达到 100% 完成，所有视频入库完毕且封面完整可用；随后后台队列平滑启动“Generating previews...”（切片预览生成）慢慢补充，绝不阻塞用户正常浏览与操作；
+  3. **生成任务两阶段（Two-Phase）优先级调度**：
+     - 重构 `task_generate.go` 中的任务生产管道：优先将全库/所选短片的封面、缩略图、哈希（Covers、ImageThumbnails、Phashes）等轻量资产排入队列执行（第一阶段）；
+     - 待全部轻量缩略图排入并优先完成后，再将长耗时的切片预览（Previews、ClipPreviews）排入队列（第二阶段）；
+     - 即使全库重新批量生成，所有短片的封面缩略图也会在数秒内最先瞬间刷满，随后后台从容补充切片。
+
 ---
 
 *文档更新时间：2026-10-01*  
 *维护者：Antigravity & User Pair-Programming*
+
+
 
 

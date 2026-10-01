@@ -24,7 +24,6 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/paths"
 	"github.com/stashapp/stash/pkg/scene"
-	"github.com/stashapp/stash/pkg/scene/generate"
 	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stashapp/stash/pkg/utils"
 )
@@ -91,6 +90,23 @@ func (j *ScanJob) Execute(ctx context.Context, progress *job.Progress) error {
 	logger.Infof("Scan finished (%s)", elapsed)
 
 	j.subscriptions.notify()
+
+	// 扫描完成：视频记录与封面缩略图已全部增量入库并实时呈现完毕。
+	// 若配置了生成切片预览（ScanGeneratePreviews），单独拎出来作为独立后台任务慢慢补充，避免阻塞扫描入库
+	if j.input.ScanGeneratePreviews {
+		logger.Infof("Scan completed. Enqueuing background preview generation task to supplement preview slices...")
+		go func() {
+			_, err := mgr.Generate(context.Background(), GenerateMetadataInput{
+				Previews:      true,
+				ImagePreviews: j.input.ScanGenerateImagePreviews,
+				Paths:         j.input.Paths,
+			})
+			if err != nil {
+				logger.Errorf("Failed to start background preview generation: %v", err)
+			}
+		}()
+	}
+
 	return nil
 }
 
@@ -858,7 +874,7 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 		}
 	}
 
-	// 同步生成封面图：扫描到一个视频就立即处理该视频的封面图，避免排队滞后
+	// 同步生成封面图：扫描到一个视频就立即生成该视频的封面缩略图（耗时仅约0.1s），确保视频增量入库时封面立即可用
 	if t.ScanGenerateCovers {
 		progress.AddTotal(1)
 		taskCover := GenerateCoverTask{
@@ -870,33 +886,7 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 		progress.Increment()
 	}
 
-	// 同步生成切片预览：扫描到一个视频就立即处理该视频的切片预览，避免排队滞后
-	if t.ScanGeneratePreviews {
-		progress.AddTotal(1)
-		options := getGeneratePreviewOptions(GeneratePreviewOptionsInput{})
-
-		generator := &generate.Generator{
-			Encoder:      mgr.FFMpeg,
-			FFMpegConfig: mgr.Config,
-			LockManager:  mgr.ReadLockManager,
-			MarkerPaths:  g.paths.SceneMarkers,
-			ScenePaths:   g.paths.Scene,
-			Overwrite:    overwrite,
-		}
-
-		taskPreview := GeneratePreviewTask{
-			Scene:               *s,
-			ImagePreview:        t.ScanGenerateImagePreviews,
-			Options:             options,
-			Overwrite:           overwrite,
-			fileNamingAlgorithm: g.fileNamingAlgorithm,
-			generator:           generator,
-		}
-		taskPreview.Start(ctx)
-		progress.Increment()
-	}
-
-	// 边扫描边添加：每处理完一个视频的封面与切片预览，立即通过节流通知前端实时呈现
+	// 边扫描边添加：每处理完一个视频的封面缩略图，立即通过节流通知前端实时增量呈现，不再被长耗时的切片预览阻塞
 	mgr.scanSubs.notifyThrottled(1 * time.Second)
 
 	return nil

@@ -1,0 +1,24 @@
+name: 自动集合与封面图
+description: 根据目录的子文件夹名称自动创建“集合”并将短片归类，同时自动提取或生成集合封面图。
+version: "1.0"
+url: https://github.com/stashapp/stash
+exec:
+  - python
+  - "{pluginDir}/auto_group.py"
+interface: raw
+tasks:
+  - name: 自动创建集合与封面图
+    description: 遍历所有目录子文件夹，根据文件夹名称自动创建集合并设置集合封面图。
+    defaultArgs:
+      mode: full
+  - name: 优化短片缩略图（消除黑帧与空白帧）
+    description: 遍历媒体库短片，自动识别黑帧、暗帧与空白帧缩略图，并重新抓取清晰高对比度画面替换。
+    defaultArgs:
+      mode: fix_thumbnails
+hooks:
+  - name: 新短片自动归类集合与封面
+    description: 短片添加或扫描完成后自动执行集合归类与封面生成。
+    triggeredBy:
+      - Scene.Create.Post
+    defaultArgs:
+      mode: hook

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/stashapp/stash/internal/manager"
@@ -61,6 +62,10 @@ func (r *mutationResolver) RunPluginTask(
 	}
 
 	m := manager.GetInstance()
+	if m.PluginCache.GetPlugin(pluginID) == nil {
+		return "", fmt.Errorf("no plugin with ID %s", pluginID)
+	}
+
 	jobID := m.RunPluginTask(ctx, pluginID, taskName, description, argsMap)
 	return strconv.Itoa(jobID), nil
 }

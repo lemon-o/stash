@@ -155,7 +155,6 @@ export const MarkerWallItem: React.FC<
       {/* 悬停预览视频（仅在开始播放后显现，移出时立即隐藏恢复为静态封面） */}
       {video && (
         <video
-          loading="lazy"
           loop
           muted={!playSound || !active}
           autoPlay={false}
@@ -166,7 +165,6 @@ export const MarkerWallItem: React.FC<
           src={props.photo.src}
           width={width}
           height={height}
-          alt={props.photo.alt}
           ref={videoEl}
           style={{
             position: "absolute",

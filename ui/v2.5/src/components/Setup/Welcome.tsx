@@ -4,7 +4,7 @@ import { Alert, Button, Card, Container, Form } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import {
   mutateMetadataScan,
-  mutateRunPluginTask,
+  runAutoGroupIfAvailable,
   useConfigureUI,
   useSystemStatus,
 } from "src/core/StashService";
@@ -96,11 +96,7 @@ const SuccessStep: React.FC<{
             scanGenerateSprites: false,
             scanGenerateThumbnails: true,
           });
-          try {
-            await mutateRunPluginTask("auto_group", "自动创建集合与封面图");
-          } catch (_e) {
-            // ignore if plugin is disabled or loading
-          }
+          await runAutoGroupIfAvailable();
           Toast.success(
             intl.formatMessage(
               { id: "config.tasks.added_job_to_queue" },
