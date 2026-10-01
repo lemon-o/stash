@@ -605,24 +605,26 @@ $sceneTabWidth: 450px;
     z-index: 100;
   }
 
-  // Telegram-style Center Big Play Button
+  // Standalone Rounded Triangle Big Play Button
   .vjs-big-play-button {
-    background-color: rgba(0, 0, 0, 0.5) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
+    background: transparent !important;
+    background-color: transparent !important;
     border: none !important;
     outline: none !important;
-    border-radius: 50% !important;
-    width: 64px !important;
-    height: 64px !important;
-    line-height: 64px !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-radius: 0 !important;
+    width: 84px !important;
+    height: 84px !important;
+    line-height: 84px !important;
     top: 50% !important;
     left: 50% !important;
     transform: translate(-50%, -50%) !important;
     margin: 0 !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
     cursor: pointer !important;
-    transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1), background-color 0.16s ease, box-shadow 0.16s ease !important;
+    filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.65)) drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5)) !important;
+    transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), filter 0.18s ease, opacity 0.18s ease !important;
 
     .vjs-icon-placeholder {
       display: block !important;
@@ -630,33 +632,47 @@ $sceneTabWidth: 450px;
       height: 100% !important;
 
       &::before {
-        color: #ffffff !important;
-        font-size: 30px !important;
-        line-height: 64px !important;
-        height: 64px !important;
-        width: 64px !important;
-        text-align: center !important;
-        margin-left: 3px !important; // Telegram optical center shift
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+        content: "" !important;
+        display: block !important;
+        width: 100% !important;
+        height: 100% !important;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ffffff' d='M7.5 4.8c0-1.15 1.25-1.87 2.25-1.28l11.25 6.6c.98.57.98 1.99 0 2.56l-11.25 6.6c-1 .59-2.25-.13-2.25-1.28V4.8z'/%3E%3C/svg%3E") !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
+        background-size: contain !important;
+        border: none !important;
       }
     }
 
     &:hover,
     &:focus {
-      background-color: rgba(0, 0, 0, 0.68) !important;
+      background: transparent !important;
+      background-color: transparent !important;
       border: none !important;
       outline: none !important;
-      transform: translate(-50%, -50%) scale(1.06) !important;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45) !important;
+      box-shadow: none !important;
+      transform: translate(-50%, -50%) scale(1.12) !important;
+      filter: drop-shadow(0 6px 26px rgba(0, 0, 0, 0.85)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)) !important;
     }
 
     &:active {
-      background-color: rgba(0, 0, 0, 0.8) !important;
-      transform: translate(-50%, -50%) scale(0.95) !important;
+      background: transparent !important;
+      background-color: transparent !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+      transform: translate(-50%, -50%) scale(0.94) !important;
     }
   }
 
-  // Telegram-style: show big play button when video is paused
+  &:hover .vjs-big-play-button {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  // Show standalone big play button when video is paused
   &.vjs-has-started.vjs-paused:not(.vjs-seeking):not(.vjs-scrubbing) .vjs-big-play-button {
     display: block !important;
   }
