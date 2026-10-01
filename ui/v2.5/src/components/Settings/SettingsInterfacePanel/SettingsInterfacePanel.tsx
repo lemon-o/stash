@@ -448,7 +448,7 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
           <BooleanSetting
             id="auto-start-video"
             headingID="config.ui.scene_player.options.auto_start_video"
-            checked={iface.autostartVideo ?? undefined}
+            checked={iface.autostartVideo ?? true}
             onChange={(v) => saveInterface({ autostartVideo: v })}
           />
           <BooleanSetting

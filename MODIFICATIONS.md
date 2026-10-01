@@ -867,6 +867,23 @@ npx pnpm run start
   3. **架构保障**：
      - 得益于任务二十七与二十九的双阶段（Two-Phase）调度机制，开启切片预览后，第一阶段全库视频封面缩略图依然会在数秒内极速涌入前端，长耗时的切片预览则无缝排入第二阶段后台静默补充，完全兼顾快速展示与完整体验。
 
+### 任务三十二：播放器默认自动播放（界面→短片播放器→自动播放）
+- **目标文件**：
+  - `data/config.yml`
+  - `internal/manager/config/config.go`
+  - `ui/v2.5/src/components/ScenePlayer/ScenePlayer.tsx`
+  - `ui/v2.5/src/components/ScenePlayer/autostart-button.ts`
+  - `ui/v2.5/src/components/Settings/SettingsInterfacePanel/SettingsInterfacePanel.tsx`
+- **问题与需求**：
+  - 用户希望系统“界面→短片播放器→自动播放”（`autostartVideo`）默认开启。
+- **机制与实现方案**：
+  1. **配置层（YAML & Go Viper Defaults）**：
+     - 在 `data/config.yml` 中将 `autostart_video` 设为 `true`；
+     - 在 `internal/manager/config/config.go` 中新增常量 `autostartVideoDefault = true`，并将 `GetAutostartVideo()` 改造为 `i.getBoolDefault(AutostartVideo, autostartVideoDefault)`，与 `AutostartVideoOnPlaySelected` 保持统一的默认开启行为。
+  2. **前端组件默认值兜底（React & VideoJS Plugin）**：
+     - 在 `SettingsInterfacePanel.tsx` 中，将自动播放选项开关在无明确配置时的回退值由 `undefined` 设为 `true`；
+     - 在 `ScenePlayer.tsx` 及 `autostart-button.ts` 中，将 `autostartVideo ?? false` 全面升级为 `autostartVideo ?? true`，确保进入短片播放详情页时默认自动起播。
+
 ---
 
 *文档更新时间：2026-10-02*  

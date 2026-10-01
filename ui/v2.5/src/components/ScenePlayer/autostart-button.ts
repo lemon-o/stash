@@ -59,7 +59,7 @@ class AutostartButtonPlugin extends videojs.getPlugin("plugin") {
   constructor(player: VideoJsPlayer, options?: IAutostartButtonOptions) {
     super(player, options);
 
-    this.autostartEnabled = options?.enabled ?? false;
+    this.autostartEnabled = options?.enabled ?? true;
 
     this.button = new AutostartButton(player, {
       autostartEnabled: this.autostartEnabled,

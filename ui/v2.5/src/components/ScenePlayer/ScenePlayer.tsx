@@ -396,7 +396,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           trackActivity: {},
           vrMenu: {},
           autostartButton: {
-            enabled: interfaceConfig?.autostartVideo ?? false,
+            enabled: interfaceConfig?.autostartVideo ?? true,
           },
           abLoopPlugin: {
             start: 0,
@@ -719,7 +719,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       auto.current =
         autoplay ||
         buttonEnabled ||
-        (interfaceConfig?.autostartVideo ?? false) ||
+        (interfaceConfig?.autostartVideo ?? true) ||
         _initialTimestamp > 0;
       autostartIntent.current = auto.current;
 
@@ -891,7 +891,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const autostartButton = player.autostartButton();
       if (autostartButton) {
         autostartButton.syncWithConfig(
-          interfaceConfig?.autostartVideo ?? false
+          interfaceConfig?.autostartVideo ?? true
         );
         autostartButton.updateAutoStart = updateAutoStart;
       }

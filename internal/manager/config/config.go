@@ -222,6 +222,7 @@ const (
 	CustomPerformerImageLocation        = "custom_performer_image_location"
 	MaximumLoopDuration                 = "maximum_loop_duration"
 	AutostartVideo                      = "autostart_video"
+	autostartVideoDefault               = true
 	AutostartVideoOnPlaySelected        = "autostart_video_on_play_selected"
 	autostartVideoOnPlaySelectedDefault = true
 	ContinuePlaylistDefault             = "continue_playlist_default"
@@ -1373,7 +1374,7 @@ func (i *Config) GetMaximumLoopDuration() int {
 }
 
 func (i *Config) GetAutostartVideo() bool {
-	return i.getBool(AutostartVideo)
+	return i.getBoolDefault(AutostartVideo, autostartVideoDefault)
 }
 
 func (i *Config) GetAutostartVideoOnPlaySelected() bool {
