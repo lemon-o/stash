@@ -32,7 +32,7 @@ export const GroupRecommendationRow: React.FC<IProps> = PatchComponent(
               <div key={`_${i}`} className="group-skeleton skeleton-card"></div>
             ))
           : result.data?.findGroups.groups.map((g) => (
-              <GroupCard key={g.id} group={g} />
+              <GroupCard key={g.id} group={g} zoomIndex={2} />
             ))}
       </FilteredRecommendationRow>
     );

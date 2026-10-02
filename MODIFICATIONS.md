@@ -426,6 +426,59 @@
 
 ---
 
+### 任务十五：全站 9 大核心界面默认视图统一为预览墙（Wall）70% 缩放（`zoomIndex = 2`）
+
+* **机制与根本原因剖析**：
+  1. **实体模型视图类型声明差异**：
+     - 在 Stash 前端底层架构中，`ListFilterModel` 的全局默认显示参数 `DEFAULT_PARAMS.displayMode` 已定义为 `DisplayMode.Wall`，默认缩放层级 `zoomIndex` 与 `defaultZoomIndex` 也已设定为 `2`（对应缩放滑块的第 3 档，即 70% 放大比例）；
+     - 短片（Scenes）、图片（Images）、图库（Galleries）、标记（Scene Markers）本身包含了 `DisplayMode.Wall`，因此天然支持预览墙；
+     - 但集合（Groups）、演员（Performers）、工作室（Studios）、标签（Tags）的筛选模型定义中缺少 `DisplayMode.Wall`，例如 `groups.ts` 仅有 `[DisplayMode.Grid]`，`performers.ts`、`studios.ts` 与 `tags.ts` 仅有 `[DisplayMode.Grid, DisplayMode.List, DisplayMode.Tagger]`。由于其配置项未包含 `DisplayMode.Wall`，`ListFilterModel` 构造函数触发兜底回退：`this.displayMode = displayModeOptions[0]`（即 `Grid` 网格模式）；
+     - `StudioList.tsx` 中原代码在 `filter.displayMode === DisplayMode.Wall` 分支甚至直接返回 `<h1>TODO</h1>`，未接入卡片墙渲染。
+  2. **首页（FrontPage）推荐栏硬编码小尺寸缩放**：
+     - 首页（FrontPage）的各个推荐行组件（如 `SceneRecommendationRow.tsx`、`RecommendedScenesRow.tsx`、`SceneMarkerRecommendationRow.tsx`、`GalleryRecommendationRow.tsx`、`ImageRecommendationRow.tsx` 等）原本硬编码为 `zoomIndex={1}`（甚至 `TagRecommendationRow.tsx` 为 `zoomIndex={0}`），导致首页虽然以卡片墙呈现，但尺寸偏小，未达到 70%（`zoomIndex = 2`）的视觉预期。
+* **目标文件**：
+  - `ui/v2.5/src/models/list-filter/groups.ts`
+  - `ui/v2.5/src/models/list-filter/performers.ts`
+  - `ui/v2.5/src/models/list-filter/studios.ts`
+  - `ui/v2.5/src/models/list-filter/tags.ts`
+  - `ui/v2.5/src/components/Groups/GroupList.tsx`
+  - `ui/v2.5/src/components/Performers/PerformerList.tsx`
+  - `ui/v2.5/src/components/Studios/StudioList.tsx`
+  - `ui/v2.5/src/components/Tags/TagList.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneRecommendationRow.tsx`
+  - `ui/v2.5/src/components/FrontPage/RecommendedScenesRow.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneMarkerRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Galleries/GalleryRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Images/ImageRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Groups/GroupRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Performers/PerformerRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Studios/StudioRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Tags/TagRecommendationRow.tsx`
+* **代码修改点**：
+  1. **模型层补全并置顶 `DisplayMode.Wall`**：
+     - 在 `groups.ts`、`performers.ts`、`studios.ts`、`tags.ts` 的 `displayModeOptions` 选项数组首位增加 `DisplayMode.Wall`；
+     - 使得所有 9 个模块的 `displayModeOptions.includes(DEFAULT_PARAMS.displayMode)` 均成功命中，默认全部自动生效为 `DisplayMode.Wall`，并继承 `DEFAULT_PARAMS` 规定的 `zoomIndex = 2`（70% 缩放）。
+  2. **列表组件全面支持 `DisplayMode.Wall` 渲染与缩放**：
+     - 在 `GroupList.tsx`、`PerformerList.tsx`、`StudioList.tsx`、`TagList.tsx` 中，扩展条件判断允许 `DisplayMode.Wall` 与 `DisplayMode.Grid` 同样渲染卡片墙（如 `GroupCardGrid`、`PerformerCardGrid`、`StudioCardGrid`、`TagCardGrid`），同时传递 `zoomIndex={filter.zoomIndex}`；
+     - 彻底清除 `StudioList.tsx` 中的 `<h1>TODO</h1>` 占位符；
+     - 4 个列表工具栏均已原生挂载 `zoomable` 支持，进入预览墙模式时自动高亮方形预览墙图标并展示滑块，用户可随意在 0%~100% 间调节或按 `+`/`-` 键缩放。
+  3. **首页（FrontPage）所有推荐栏统一步调为 70% 缩放**：
+     - 将 `SceneRecommendationRow.tsx` 与 `RecommendedScenesRow.tsx`（智能推荐行）的 `SceneWallPanel` 统一设定为 `zoomIndex={2}`；
+     - 将 `SceneMarkerRecommendationRow.tsx`、`GalleryRecommendationRow.tsx`、`ImageRecommendationRow.tsx`、`GroupRecommendationRow.tsx`、`PerformerRecommendationRow.tsx`、`StudioRecommendationRow.tsx`、`TagRecommendationRow.tsx` 的卡片缩放全部设置为 `zoomIndex={2}`（70% 缩放比例）。
+* **效果**：
+  - **首页（FrontPage - `/`）**：所有推荐行卡片均以大气美观的 70% 尺寸（`zoomIndex = 2`）瀑布流排列展示；
+  - **短片（Scenes - `/scenes`）**：默认进入视频动态预览墙，70% 大尺寸缩放；
+  - **图片（Images - `/images`）**：默认进入图片瀑布照片墙，70% 大尺寸缩放；
+  - **集合（Groups - `/groups`）**：默认以预览墙（卡片墙）70% 缩放展示，激活预览墙图标与缩放滑块；
+  - **标记（Scene Markers - `/scenes/markers`）**：默认进入标记预览墙，70% 大尺寸缩放；
+  - **图库（Galleries - `/galleries`）**：默认进入图库预览墙，70% 大尺寸缩放；
+  - **演员（Performers - `/performers`）**：默认以演员预览墙 70% 大卡片呈现；
+  - **工作室（Studios - `/studios`）**：默认以工作室预览墙 70% 大卡片呈现；
+  - **标签（Tags - `/tags`）**：默认以标签预览墙 70% 大卡片呈现。
+  - 9 大核心界面不论通过左侧导航直达还是通过无参数链接进入，均 100% 呈现统一和谐的预览墙 70% 缩放沉浸式视觉体验。
+
+---
+
 ## 3. 本地开发热重载与生产联调指南
 
 无需在本地搭建庞大的 Go 和 SQLite/PostgreSQL 后端，可以通过 Vite 代理直接连接你现有的生产服务器（`https://stash.lemjoo.top`）：
@@ -962,11 +1015,24 @@ npx pnpm run start
      - 限制移动端表单文本框文字不小于 16px，彻底根除 iOS 聚焦自动放大问题；
      - 弹窗与对话框强制适配 `max-height: calc(100vh - 1.5rem - safe-area)` 配合滚动体，杜绝底部确定按钮被顶出屏幕。
 
+### 任务三十四：扫描总文件数精准统计与任务队列 ETA 剩余时间校准
+- **目标文件**：
+  - `internal/manager/task_scan.go`
+  - `ui/v2.5/src/components/Settings/Tasks/JobTable.tsx`
+- **问题与现状剖析**：
+  1. **扫描任务进度条长期处于不确定状态且百分比失准**：
+     - 原版 Stash 在扫描开始前未预先统计待处理文件总数，而是边走遍历边 `progress.AddTotal`，甚至在遍历子目录（`handleFolder`）与生成任务时随意叠加总数，导致进度条百分比来回跳跃，扫描未完成时常错误显示为 100%；
+  2. **任务队列 ETA（预计剩余时间）计算错误**：
+     - `JobTable.tsx` 原逻辑计算的是 `estimatedLength = elapsed / progress; etaStr = moment.duration(estimatedLength).humanize();`，这直接将**任务从开始到结束的预估总时长**当作**剩余时间**展示给用户，造成用户看到的倒计时与实际剩余时间严重脱节。
+- **机制与实现方案**：
+  1. **启动前快速预扫描统计有效媒体总数**：
+     - 在 `task_scan.go` 的 `ScanJob.Execute` 中，正式扫描入库前调用 `countMediaFiles` 快速遍历待扫描路径，基于 `AcceptEntry` 过滤出实际合法的媒体文件总数，预先调用 `progress.SetTotal(totalMediaFiles)` 和 `progress.SetProcessed(0)`；
+     - 彻底移除 `handleFolder` 与生成任务对主扫描进度条的不当干扰，让进度百分比自第 1 个文件开始即完全按照真实文件进度平滑递增；
+  2. **任务进度条百分比与 ETA 剩余时间严格修正**：
+     - 在 `JobTable.tsx` 中，引入 `remainingMS = Math.max(0, estimatedLength - elapsedMS)`，精准计算真正的**剩余所需时间**；
+     - 当任务进度未达到 1（未完成）时，通过 `Math.min(99, Math.floor(progress))` 限制最高展示 99%，杜绝任务尚未结束却提前显示 100% 的误导体验。
+
 ---
 
 *文档更新时间：2026-10-02*  
 *维护者：Antigravity & User Pair-Programming*
-
-
-
-

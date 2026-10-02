@@ -66,6 +66,7 @@ const sortByOptions = [
   ]);
 
 const displayModeOptions = [
+  DisplayMode.Wall,
   DisplayMode.Grid,
   DisplayMode.List,
   DisplayMode.Tagger,

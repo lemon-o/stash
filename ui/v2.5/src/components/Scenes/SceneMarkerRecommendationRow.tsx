@@ -39,7 +39,7 @@ export const SceneMarkerRecommendationRow: React.FC<IProps> = PatchComponent(
                 key={marker.id}
                 marker={marker}
                 index={index}
-                zoomIndex={1}
+                zoomIndex={2}
               />
             ))}
       </FilteredRecommendationRow>

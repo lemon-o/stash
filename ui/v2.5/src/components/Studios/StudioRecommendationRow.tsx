@@ -35,7 +35,7 @@ export const StudioRecommendationRow: React.FC<IProps> = PatchComponent(
               ></div>
             ))
           : result.data?.findStudios.studios.map((s) => (
-              <StudioCard key={s.id} studio={s} hideParent={true} />
+              <StudioCard key={s.id} studio={s} hideParent={true} zoomIndex={2} />
             ))}
       </FilteredRecommendationRow>
     );

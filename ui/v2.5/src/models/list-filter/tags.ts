@@ -52,6 +52,7 @@ const sortByOptions = ["name", "random", "scenes_duration", "scenes_size"]
   ]);
 
 const displayModeOptions = [
+  DisplayMode.Wall,
   DisplayMode.Grid,
   DisplayMode.List,
   DisplayMode.Tagger,

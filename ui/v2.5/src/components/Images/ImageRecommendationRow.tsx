@@ -32,7 +32,7 @@ export const ImageRecommendationRow: React.FC<IProps> = PatchComponent(
               <div key={`_${i}`} className="image-skeleton skeleton-card"></div>
             ))
           : result.data?.findImages.images.map((i) => (
-              <ImageCard key={i.id} image={i} zoomIndex={1} />
+              <ImageCard key={i.id} image={i} zoomIndex={2} />
             ))}
       </FilteredRecommendationRow>
     );

@@ -62,7 +62,10 @@ const GroupList: React.FC<{
       return null;
     }
 
-    if (filter.displayMode === DisplayMode.Grid) {
+    if (
+      filter.displayMode === DisplayMode.Grid ||
+      filter.displayMode === DisplayMode.Wall
+    ) {
       return (
         <GroupCardGrid
           groups={groups ?? []}

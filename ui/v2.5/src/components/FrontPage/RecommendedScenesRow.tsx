@@ -205,7 +205,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
         <SceneWallPanel
           scenes={recommendedScenes}
           sceneQueue={queue}
-          zoomIndex={1}
+          zoomIndex={2}
         />
       </RecommendationRow>
     );

@@ -47,7 +47,7 @@ export const SceneRecommendationRow: React.FC<IProps> = PatchComponent(
           <SceneWallPanel
             scenes={scenes}
             sceneQueue={queue}
-            zoomIndex={1}
+            zoomIndex={2}
           />
         )}
       </RecommendationRow>

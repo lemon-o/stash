@@ -121,11 +121,13 @@ const Task: React.FC<IJob> = ({ job }) => {
       job.progress !== null
     ) {
       const progress = job.progress * 100;
+      const displayPercent =
+        job.progress < 1 ? Math.min(99, Math.floor(progress)) : Math.round(progress);
       return (
         <ProgressBar
           animated
           now={progress}
-          label={`${progress.toFixed(0)}%`}
+          label={`${displayPercent}%`}
         />
       );
     }
@@ -140,7 +142,10 @@ const Task: React.FC<IJob> = ({ job }) => {
       return null;
     }
 
-    const progressPercent = `${(job.progress * 100).toFixed(0)}%`;
+    const progress = job.progress * 100;
+    const displayPercent =
+      job.progress < 1 ? Math.min(99, Math.floor(progress)) : Math.round(progress);
+    const progressPercent = `${displayPercent}%`;
 
     let etaStr: string | null = null;
     if (
@@ -152,8 +157,12 @@ const Task: React.FC<IJob> = ({ job }) => {
       const start = new Date(job.startTime);
       const nowMS = now.valueOf();
       const startMS = start.valueOf();
-      const estimatedLength = (nowMS - startMS) / job.progress;
-      etaStr = moment.duration(estimatedLength).humanize();
+      const elapsedMS = nowMS - startMS;
+      if (job.progress < 1 && elapsedMS > 0) {
+        const estimatedLength = elapsedMS / job.progress;
+        const remainingMS = Math.max(0, estimatedLength - elapsedMS);
+        etaStr = moment.duration(remainingMS).humanize();
+      }
     }
 
     return (

@@ -75,9 +75,19 @@ func (j *ScanJob) Execute(ctx context.Context, progress *job.Progress) error {
 	j.scanner.ScanFilters = []file.PathFilter{newScanFilter(c, repo, minModTime)}
 	j.scanner.HandlerRequiredFilters = []file.Filter{newHandlerRequiredFilter(cfg, repo)}
 
-	logger.Infof("Starting scan of %d paths with %d parallel tasks", len(paths), nTasks)
+	// 读取待扫描路径下的媒体文件总数，作为进度条计算百分比的基准
+	totalMediaFiles := j.countMediaFiles(ctx, paths, progress)
+	if totalMediaFiles > 0 {
+		progress.SetTotal(totalMediaFiles)
+		progress.SetProcessed(0)
+	} else {
+		progress.SetTotal(0)
+		progress.SetPercent(1.0)
+	}
 
-	j.runJob(ctx, paths, nTasks, progress)
+	logger.Infof("Starting scan of %d paths (%d media files) with %d parallel tasks", len(paths), totalMediaFiles, nTasks)
+
+	j.runJob(ctx, paths, nTasks, progress, totalMediaFiles)
 
 	taskQueue.Close()
 
@@ -85,6 +95,11 @@ func (j *ScanJob) Execute(ctx context.Context, progress *job.Progress) error {
 		logger.Info("Stopping due to user request")
 		return nil
 	}
+
+	if totalMediaFiles > 0 {
+		progress.SetProcessed(totalMediaFiles)
+	}
+	progress.SetPercent(1.0)
 
 	elapsed := time.Since(start)
 	logger.Infof("Scan finished (%s)", elapsed)
@@ -110,7 +125,45 @@ func (j *ScanJob) Execute(ctx context.Context, progress *job.Progress) error {
 	return nil
 }
 
-func (j *ScanJob) runJob(ctx context.Context, paths []string, nTasks int, progress *job.Progress) {
+func (j *ScanJob) countMediaFiles(ctx context.Context, paths []string, progress *job.Progress) int {
+	osFS := &file.OsFS{}
+	count := 0
+
+	progress.ExecuteTask("Calculating total media files...", func() {
+		for _, p := range paths {
+			if ctx.Err() != nil {
+				return
+			}
+			_ = file.SymWalk(osFS, p, func(path string, d fs.DirEntry, err error) error {
+				if err != nil || ctx.Err() != nil {
+					return nil
+				}
+
+				info, err := d.Info()
+				if err != nil {
+					return nil
+				}
+
+				if !j.scanner.AcceptEntry(ctx, path, info, "") {
+					if info.IsDir() {
+						return fs.SkipDir
+					}
+					return nil
+				}
+
+				if !info.IsDir() {
+					count++
+				}
+
+				return nil
+			})
+		}
+	})
+
+	return count
+}
+
+func (j *ScanJob) runJob(ctx context.Context, paths []string, nTasks int, progress *job.Progress, totalMediaFiles int) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -127,7 +180,7 @@ func (j *ScanJob) runJob(ctx context.Context, paths []string, nTasks int, progre
 			}
 		}()
 
-		if err := j.queueFiles(ctx, paths, progress); err != nil {
+		if err := j.queueFiles(ctx, paths, progress, totalMediaFiles); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -146,20 +199,22 @@ func (j *ScanJob) runJob(ctx context.Context, paths []string, nTasks int, progre
 
 const scanQueueSize = 200000
 
-func (j *ScanJob) queueFiles(ctx context.Context, paths []string, progress *job.Progress) error {
-	fs := &file.OsFS{}
+func (j *ScanJob) queueFiles(ctx context.Context, paths []string, progress *job.Progress, totalMediaFiles int) error {
+	osFS := &file.OsFS{}
 
 	defer func() {
 		close(j.fileQueue)
 
-		progress.AddTotal(j.count)
-		progress.Definite()
+		// 若实际入队数量与预先统计数量有差异（如扫描中文件变动），以实际队列数量纠正
+		if j.count > 0 && j.count != totalMediaFiles {
+			progress.SetTotal(j.count)
+		}
 	}()
 
 	var err error
 	progress.ExecuteTask("Walking directory tree", func() {
 		for _, p := range paths {
-			err = file.SymWalk(fs, p, j.queueFileFunc(ctx, fs, nil, progress))
+			err = file.SymWalk(osFS, p, j.queueFileFunc(ctx, osFS, nil, progress))
 			if err != nil {
 				return
 			}
@@ -339,10 +394,6 @@ func (j *ScanJob) processQueueItem(ctx context.Context, f file.ScannedFile, prog
 }
 
 func (j *ScanJob) handleFolder(ctx context.Context, f file.ScannedFile, progress *job.Progress) error {
-	if progress != nil {
-		defer progress.Increment()
-	}
-
 	_, err := j.scanner.ScanFolder(ctx, f)
 	if err != nil {
 		return err
@@ -772,7 +823,6 @@ func (g *imageGenerators) Generate(ctx context.Context, i *models.Image, f model
 	// avoid adding a task if the file isn't a video file
 	_, isVideo := f.(*models.VideoFile)
 	if isVideo && t.ScanGenerateClipPreviews {
-		progress.AddTotal(1)
 		previewsFn := func(ctx context.Context) {
 			taskPreview := GenerateClipPreviewTask{
 				Image:     ii,
@@ -780,7 +830,6 @@ func (g *imageGenerators) Generate(ctx context.Context, i *models.Image, f model
 			}
 
 			taskPreview.Start(ctx)
-			progress.Increment()
 		}
 
 		if g.sequentialScanning {
@@ -791,7 +840,6 @@ func (g *imageGenerators) Generate(ctx context.Context, i *models.Image, f model
 	}
 
 	if t.ScanGenerateImagePhashes {
-		progress.AddTotal(1)
 		phashFn := func(ctx context.Context) {
 			mgr := GetInstance()
 			// Only generate phash for image files, not video files
@@ -803,7 +851,6 @@ func (g *imageGenerators) Generate(ctx context.Context, i *models.Image, f model
 				}
 				taskPhash.Start(ctx)
 			}
-			progress.Increment()
 		}
 
 		if g.sequentialScanning {
@@ -829,14 +876,12 @@ type sceneGenerators struct {
 func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *models.VideoFile) error {
 	const overwrite = false
 
-	progress := g.progress
 	t := g.input
 	path := f.Path
 
 	mgr := GetInstance()
 
 	if t.ScanGenerateSprites {
-		progress.AddTotal(1)
 		spriteFn := func(ctx context.Context) {
 			taskSprite := GenerateSpriteTask{
 				Scene:               *s,
@@ -844,7 +889,6 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 				fileNamingAlgorithm: g.fileNamingAlgorithm,
 			}
 			taskSprite.Start(ctx)
-			progress.Increment()
 		}
 
 		if g.sequentialScanning {
@@ -855,7 +899,6 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 	}
 
 	if t.ScanGeneratePhashes {
-		progress.AddTotal(1)
 		phashFn := func(ctx context.Context) {
 			taskPhash := GeneratePhashTask{
 				repository:          mgr.Repository,
@@ -864,7 +907,6 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 				fileNamingAlgorithm: g.fileNamingAlgorithm,
 			}
 			taskPhash.Start(ctx)
-			progress.Increment()
 		}
 
 		if g.sequentialScanning {
@@ -876,14 +918,12 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 
 	// 同步生成封面图：扫描到一个视频就立即生成该视频的封面缩略图（耗时仅约0.1s），确保视频增量入库时封面立即可用
 	if t.ScanGenerateCovers {
-		progress.AddTotal(1)
 		taskCover := GenerateCoverTask{
 			repository: mgr.Repository,
 			Scene:      *s,
 			Overwrite:  overwrite,
 		}
 		taskCover.Start(ctx)
-		progress.Increment()
 	}
 
 	// 边扫描边添加：每处理完一个视频的封面缩略图，立即通过节流通知前端实时增量呈现，不再被长耗时的切片预览阻塞

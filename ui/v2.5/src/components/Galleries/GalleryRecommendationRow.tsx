@@ -35,7 +35,7 @@ export const GalleryRecommendationRow: React.FC<IProps> = PatchComponent(
               ></div>
             ))
           : result.data?.findGalleries.galleries.map((g) => (
-              <GalleryCard key={g.id} gallery={g} zoomIndex={1} />
+              <GalleryCard key={g.id} gallery={g} zoomIndex={2} />
             ))}
       </FilteredRecommendationRow>
     );

@@ -61,7 +61,10 @@ const StudioList: React.FC<{
       return null;
     }
 
-    if (filter.displayMode === DisplayMode.Grid) {
+    if (
+      filter.displayMode === DisplayMode.Grid ||
+      filter.displayMode === DisplayMode.Wall
+    ) {
       return (
         <StudioCardGrid
           studios={studios}
@@ -80,9 +83,6 @@ const StudioList: React.FC<{
           onSelectChange={onSelectChange}
         />
       );
-    }
-    if (filter.displayMode === DisplayMode.Wall) {
-      return <h1>TODO</h1>;
     }
     if (filter.displayMode === DisplayMode.Tagger) {
       return <StudioTagger studios={studios} />;

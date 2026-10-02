@@ -35,7 +35,7 @@ export const PerformerRecommendationRow: React.FC<IProps> = PatchComponent(
               ></div>
             ))
           : result.data?.findPerformers.performers.map((p) => (
-              <PerformerCard key={p.id} performer={p} />
+              <PerformerCard key={p.id} performer={p} zoomIndex={2} />
             ))}
       </FilteredRecommendationRow>
     );

@@ -32,7 +32,7 @@ export const TagRecommendationRow: React.FC<IProps> = PatchComponent(
               <div key={`_${i}`} className="tag-skeleton skeleton-card"></div>
             ))
           : result.data?.findTags.tags.map((p) => (
-              <TagCard key={p.id} tag={p} zoomIndex={0} />
+              <TagCard key={p.id} tag={p} zoomIndex={2} />
             ))}
       </FilteredRecommendationRow>
     );

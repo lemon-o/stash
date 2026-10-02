@@ -43,7 +43,7 @@ const sortByOptions = [
       sfwMessageID: "o_count_sfw",
     },
   ]);
-const displayModeOptions = [DisplayMode.Grid];
+const displayModeOptions = [DisplayMode.Wall, DisplayMode.Grid];
 const criterionOptions = [
   // StudioTagsCriterionOption,
   StudiosCriterionOption,
