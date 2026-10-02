@@ -833,6 +833,7 @@ var gallerySortOptions = sortOptions{
 	"performer_count",
 	"random",
 	"rating",
+	"rating100",
 	"tag_count",
 	"title",
 	"updated_at",
@@ -844,6 +845,9 @@ func (qb *GalleryStore) setGallerySort(query *queryBuilder, findFilter *models.F
 	}
 
 	sort := findFilter.GetSort("path")
+	if sort == "rating100" {
+		sort = "rating"
+	}
 	direction := findFilter.GetDirection()
 
 	// CVE-2024-32231 - ensure sort is in the list of allowed sorts

@@ -1021,3 +1021,58 @@ func (qb *FileStore) GetCaptions(ctx context.Context, fileID models.FileID) ([]*
 func (qb *FileStore) UpdateCaptions(ctx context.Context, fileID models.FileID, captions []*models.VideoCaption) error {
 	return qb.captionRepository().replace(ctx, fileID, captions)
 }
+
+type FileBasicInfo struct {
+	Path    string
+	Size    int64
+	ModTime time.Time
+}
+
+type fileBasicRow struct {
+	FolderPath null.String   `db:"folder_path"`
+	Basename   null.String   `db:"basename"`
+	Size       null.Int      `db:"size"`
+	ModTime    NullTimestamp `db:"mod_time"`
+}
+
+func (qb *FileStore) GetAllFileBasics(ctx context.Context, p []string) ([]FileBasicInfo, error) {
+	table := qb.table()
+	folderTable := folderTableMgr.table
+
+	cols := []interface{}{
+		folderTable.Col("path").As("folder_path"),
+		table.Col("basename"),
+		table.Col("size"),
+		table.Col("mod_time"),
+	}
+
+	q := dialect.From(table).Prepared(true).InnerJoin(
+		folderTable,
+		goqu.On(table.Col("parent_folder_id").Eq(folderTable.Col(idColumn))),
+	).Select(cols...).Where(table.Col("zip_file_id").IsNull())
+
+	if len(p) > 0 {
+		q = qb.allInPaths(q, p)
+	}
+
+	query, args, err := q.ToSQL()
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []fileBasicRow
+	if err := dbWrapper.Select(ctx, &rows, query, args...); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	ret := make([]FileBasicInfo, len(rows))
+	for i, r := range rows {
+		ret[i] = FileBasicInfo{
+			Path:    filepath.Join(r.FolderPath.String, r.Basename.String),
+			Size:    r.Size.Int64,
+			ModTime: r.ModTime.Timestamp,
+		}
+	}
+
+	return ret, nil
+}

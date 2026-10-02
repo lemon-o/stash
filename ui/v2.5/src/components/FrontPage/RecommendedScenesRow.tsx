@@ -83,7 +83,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
           filter: {
             page: 1,
             per_page: 24,
-            sort: "rating100",
+            sort: "rating",
             direction: GQL.SortDirectionEnum.Desc,
           },
           scene_filter: {
@@ -134,7 +134,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
         filter: {
           page: 1,
           per_page: 24,
-          sort: "rating100",
+          sort: "rating",
           direction: GQL.SortDirectionEnum.Desc,
         },
       };
@@ -166,7 +166,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
 
     const dummyFilter = useMemo(() => {
       const f = new ListFilterModel(GQL.FilterMode.Scenes, configuration);
-      f.sortBy = hasHistory ? "rating100" : "date";
+      f.sortBy = hasHistory ? "rating" : "date";
       f.sortDirection = GQL.SortDirectionEnum.Desc;
       return f;
     }, [configuration, hasHistory]);

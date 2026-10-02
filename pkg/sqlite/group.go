@@ -498,6 +498,7 @@ var groupSortOptions = sortOptions{
 	"name",
 	"random",
 	"rating",
+	"rating100",
 	"scenes_count",
 	"o_counter",
 	"sub_group_description",
@@ -514,6 +515,9 @@ func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindF
 		direction = "ASC"
 	} else {
 		sort = findFilter.GetSort("name")
+		if sort == "rating100" {
+			sort = "rating"
+		}
 		direction = findFilter.GetDirection()
 	}
 

@@ -1031,6 +1031,7 @@ var imageSortOptions = sortOptions{
 	"performer_count",
 	"random",
 	"rating",
+	"rating100",
 	"resolution",
 	"tag_count",
 	"title",
@@ -1042,6 +1043,9 @@ func (qb *ImageStore) setImageSortAndPagination(q *queryBuilder, findFilter *mod
 
 	if findFilter != nil && findFilter.Sort != nil && *findFilter.Sort != "" {
 		sort := findFilter.GetSort("title")
+		if sort == "rating100" {
+			sort = "rating"
+		}
 		direction := findFilter.GetDirection()
 
 		// CVE-2024-32231 - ensure sort is in the list of allowed sorts

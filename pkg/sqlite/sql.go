@@ -52,6 +52,10 @@ const randomSeedPrefix = "random_" // prefix for random sort
 type sortOptions []string
 
 func (o sortOptions) validateSort(sort string) error {
+	if sort == "rating100" {
+		sort = "rating"
+	}
+
 	if strings.HasPrefix(sort, randomSeedPrefix) {
 		// seed as a parameter from the UI
 		seedStr := sort[len(randomSeedPrefix):]
@@ -91,6 +95,10 @@ func getSortDirection(direction string) string {
 
 func getSort(sort string, direction string, tableName string) string {
 	direction = getSortDirection(direction)
+
+	if sort == "rating100" {
+		sort = "rating"
+	}
 
 	switch {
 	case strings.HasSuffix(sort, "_count"):

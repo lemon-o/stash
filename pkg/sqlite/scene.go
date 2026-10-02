@@ -1201,6 +1201,7 @@ var sceneSortOptions = sortOptions{
 	"perceptual_similarity",
 	"random",
 	"rating",
+	"rating100",
 	"resolution",
 	"studio",
 	"tag_count",
@@ -1214,6 +1215,9 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 		return nil
 	}
 	sort := findFilter.GetSort("title")
+	if sort == "rating100" {
+		sort = "rating"
+	}
 
 	// CVE-2024-32231 - ensure sort is in the list of allowed sorts
 	if err := sceneSortOptions.validateSort(sort); err != nil {

@@ -121,9 +121,7 @@ func (s *Manager) RefreshConfig() {
 		s.ImageThumbnailGenerateWaitGroup.Size = cfg.GetParallelTasksWithAutoDetection()
 	}
 
-	if s.AutoScanManager != nil {
-		s.RefreshAutoScan()
-	}
+	s.RefreshAutoScan()
 }
 
 // RefreshPluginCache refreshes the plugin cache.

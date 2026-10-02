@@ -143,7 +143,7 @@ const (
 	autoScanDefault = true
 
 	AutoScanInterval        = "auto_scan_interval"
-	autoScanIntervalDefault = 300
+	autoScanIntervalDefault = 60
 
 	Host        = "host"
 	hostDefault = "0.0.0.0"

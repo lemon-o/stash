@@ -1421,6 +1421,41 @@ npx pnpm run start
   3. **细化卡片布局与异步解码**：
      - 优化自定义筛选每页条目数为更适宜瀑布排布的 16 条，并在 `GroupWallCard` 封面图片中引入 `decoding="async"`，彻底消除图片解码阻塞主线程。
 
+### 任务四十六：自动扫描（AutoScan）无感增量感知引擎重构与 rating100 排序错误修复
+- **目标文件**：
+  - `internal/manager/autoscan.go`（重构自动扫描感知检测器）
+  - `internal/manager/config/config.go`（轮询周期默认值设为 60s）
+  - `internal/manager/manager.go`（RefreshConfig 确保 AutoScan 刷新无遗漏）
+  - `pkg/sqlite/file.go`（新增轻量级 `GetAllFileBasics` 查询方法）
+  - `pkg/sqlite/sql.go`（排序验证与生成兼容 `rating100` 别名）
+  - `pkg/sqlite/scene.go`、`image.go`、`gallery.go`、`group.go`（排序选项兼容 `rating100`）
+  - `ui/v2.5/src/components/FrontPage/RecommendedScenesRow.tsx`（修正 `sort: "rating"`）
+- **问题与现状剖析**：
+  1. **文件修改时间（mtime）对比机制在常见 NAS / SMB / 下载场景彻底失效**：
+     - 原 `hasNewOrModifiedFiles(since)` 逻辑检测磁盘文件时，以 `info.ModTime().After(since)` 为判定依据；
+     - 在实际网络存储（群晖 NAS、SMB/NFS 挂载、Docker 映射）或 BT 下载、解压场景中，文件通常**保留历史原始修改时间**（可能是数天甚至数年前的时间戳）；
+     - 因此刚拷贝进媒体目录的视频文件，其 mtime 依然早于服务启动时间，导致轮询判定永远为 `false`，扫描根本无法触发；
+  2. **群晖 Docker / SMB 环境下 inotify 事件静默丢失**：
+     - 用户通过 Windows/Mac 经由 SMB/NFS 向群晖 NAS 写入新文件时，Linux 跨协议/跨命名空间的 inotify 事件往往无法投递至 Docker 容器内，仅能依赖轮询检测；原 5 分钟轮询周期过长且判定逻辑失效；
+  3. **服务刚启动时缺少启动自检**：
+     - 容器启动后若目录下已存在未扫文件或关机期间新增的文件，服务只输出启动日志而不执行检查；
+  4. **`findScenes: input: findScenes invalid sort: rating100` 报错**：
+     - 首页推荐行向后端发送了 `sort: "rating100"`，而后端数据库允许的排序枚举为 `rating`，触发 GraphQL 验证拦截报错。
+- **机制与实现方案**：
+  1. **构建基于 SQLite 轻量已知快照的高性能对比检测器**：
+     - 在 `FileStore` 中设计 `GetAllFileBasics(ctx, paths)`，以单条极速 SQL 查询提取当前库内所有已索引媒体的路径、文件大小（size）与修改时间（mod_time），构建常驻比对 Hash 表（万级数据内存仅占数 MB，查询耗时仅 10ms 量级）；
+     - 磁盘遍历时，逐一检验文件是否在已知表中：
+       - **未索引文件**：立即命中新文件，立刻中断后续遍历并自动发起增量扫描；
+       - **文件大小或时间变更（偏差 > 2s）**：立即判定为修改文件并触发扫描；
+       - **文件减少**：即刻感知文件移除；
+  2. **开机启动 5 秒静默检测（Startup Check）**：
+     - 容器启动并初始化完毕 5 秒后，自动执行一次轻量快速自检；若发现有未索引的新增或遗漏文件，即刻启动后台入库扫描，杜绝“日志显示已启动但实际上没动静”的现象；
+  3. **轮询间隔提速至 60 秒**：
+     - 将默认后台巡检周期由 300 秒（5 分钟）降至 60 秒，无变更时巡检毫秒级无感退出，保障 NAS SMB 写入后最长 1 分钟内必然被感知入库；
+  4. **全链路兼容 `rating100` 排序别名**：
+     - 在前端 `RecommendedScenesRow.tsx` 中规范使用 `rating`；
+     - 在后端 `pkg/sqlite/sql.go`、`scene.go`、`image.go`、`gallery.go`、`group.go` 的 `validateSort` 与 `getSort` 中，对 `rating100` 建立透明别名映射，统一转换为底层列名 `rating` 升降序，根除各类客户端及保存筛选的报错。
+
 ---
 
 *文档更新时间：2026-10-02*  
