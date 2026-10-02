@@ -1257,8 +1257,48 @@ npx pnpm run start
      - 增加 `Image.Create.Post` 钩子，当新增图片入库时自动执行图库归类；
      - 保持现有 UI 任务接口调用兼容性，一键扫描或点击任务卡片即可完成全库短片集合与图片图库的双重自动化整理。
 
+### 任务四十一：手机端响应式全面重构（移动端首页横向滑动轨、视频信息卡片常显与列表双列网格）
+- **目标文件**：
+  - `ui/v2.5/src/components/FrontPage/SceneRecommendationRail.tsx`（新建）
+  - `ui/v2.5/src/components/FrontPage/RecommendedScenesRow.tsx`
+  - `ui/v2.5/src/components/Scenes/SceneRecommendationRow.tsx`
+  - `ui/v2.5/src/components/FrontPage/FilteredRecommendationRow.tsx`
+  - `ui/v2.5/src/components/FrontPage/styles.scss`
+  - `ui/v2.5/src/components/Scenes/SceneWallPanel.tsx`
+  - `ui/v2.5/src/components/Scenes/styles.scss`
+  - `ui/v2.5/src/styles/_theme.scss`
+  - `ui/v2.5/src/utils/screen.ts`
+- **问题与现状剖析**：
+  1. **首页 6 个推荐栏目在手机端变成 150 个巨型卡片垂直堆叠（灾难级单列瀑布流）**：
+     - 推荐短片（24个短片）、最新短片（25个短片）、制片商（25个）、系列（25个）、演员（25个）、相册（25个）在手机端因为 `SceneWallPanel` 缺乏横向滑动机制以及 `_theme.scss` 强加的 `width: 100% !important`，全部在首页单列垂直展开，形成长达 150 屏的超长纵向列表；手机用户需要无休止地往下滑动 50 屏才能看到下方的演员或系列；
+  2. **视频卡片在手机触屏上为“无名哑巴图”**：
+     - `SceneWallPanel` 的短片标题、演员、日期文字与渐变层设置了 `opacity: 0`，仅在 PC 端鼠标悬停（`:hover`）时显示；触屏手机上没有悬停，导致用户只能看到毫无文字的缩略图，完全不知道短片名称与演员；
+  3. **列表页卡片粗暴拉满 100% 满宽破坏比例**：
+     - 演员（Performers）、系列（Groups）、制片商（Studios）、相册（Galleries）、标签（Tags）在手机端被强拉为 100% 满宽，竖版肖像高达 500px+，一屏只能看到一个演员半身，制片商与标签小图标空旷失调；
+  4. **首页栏目头部排版粗糙且缺乏移动端触控优化**：
+     - 标题字号过大且缺乏视觉识别重力，右侧“查看全部”文字链接在大拇指下单薄易误触，缺少药丸状触控区与流媒体质感。
+- **机制与实现方案**：
+  1. **首创移动端丝滑横向滑动卡片轨（`SceneRecommendationRail` & `Mobile Carousel Track`）**：
+     - 创建 `SceneRecommendationRail.tsx` 组件，在移动设备（`ScreenUtils.useMediaQuery("only screen and (max-width: 768px)")`）下接管「推荐短片」与「最新发布短片」；
+     - 采用原生 CSS 惯性横向轻扫（`overflow-x: auto; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity;`），卡片宽度 250px，首屏透出下张卡片（Peek Effect）提供自然滑动诱导；
+     - 卡片集成 16:9 高清封面、右下角时长角标（`TextUtils.secondsToTimestamp`）、左上角超清分辨率标签（4K/1440p/1080p）、右上角制片商浮标、单行截断标题、主演列表与发布日期；
+  2. **首页所有其他分类推荐（制片商、系列、演员、相册、图片、标签）全面适配横向滚动条**：
+     - 升级 `FilteredRecommendationRow.tsx`，在移动端自动对子元素进行轻量化剪裁（前 16 项），并在 `styles.scss` 中将 `.wall-cards-container` 转化为移动端横向滑动轨；
+     - 各实体卡片定制适配尺寸：演员卡片宽 135px 高 180px 竖向肖像、制片商卡片宽 155px、系列海报宽 140px、相册/图片宽 155px、标签宽 130px，左右轻扫即可快速浏览；
+     - 整个首页垂直高度压缩至 2~3 个屏幕高度，各分类井然有序，一目了然；
+  3. **手机端与触屏环境下视频墙文字永久常显**：
+     - 在 `Scenes/styles.scss` 中引入 `@media (hover: none), (max-width: 768px)` 规则，强置 `.lineargradient` 与 `.wall-item-footer` 的 `opacity: 1 !important`，并适配高对比度深色渐变底与紧凑字号，彻底根除“哑巴图”；
+  4. **全站列表页升级为精致双列网格（2-Column Responsive Grid）**：
+     - 重构 `_theme.scss` 中的移动端网格规则，对演员、制片商、系列、相册、图片、标签统一适配 `width: calc(50% - 5px) !important;` 双列流排版；
+     - 配合肖像比例 `aspect-ratio: 2 / 3` 与紧凑气泡，一屏可同时浏览 4~6 项，信息密度与美观度大幅飞跃；
+     - 短片与标记卡片保留 100% 满宽单列视频流，符合竖屏浏览习惯；
+  5. **首页标题栏流媒体现代视觉重构**：
+     - 标题左侧加入 3.5px 主色高亮竖线装饰条，提升视觉锚点；
+     - 右侧「查看全部」链接重构为现代胶囊药丸触控按钮（微磨砂半透明背景 + 触控热区放大），配合页面边距自适应，呈现媲美 Netflix/Apple TV 原生 App 般的流媒体质感。
+
 ---
 
 *文档更新时间：2026-10-02*  
 *维护者：Antigravity & User Pair-Programming*
+
 

@@ -260,6 +260,7 @@ interface ISceneWallProps {
 const SceneGallery = Gallery as unknown as GalleryI<IScenePhoto>;
 
 const breakpointZoomHeights = [
+  { minWidth: 0, heights: [100, 130, 160, 220] },
   { minWidth: 576, heights: [100, 120, 240, 360] },
   { minWidth: 768, heights: [120, 160, 240, 480] },
   { minWidth: 1200, heights: [120, 160, 240, 300] },
@@ -369,7 +370,7 @@ const SceneWall: React.FC<ISceneWallProps> = ({
 
   const targetRowHeight = useCallback(
     (containerWidth: number) => {
-      let zoomHeight = 280;
+      let zoomHeight = 160;
       breakpointZoomHeights.forEach((e) => {
         if (containerWidth >= e.minWidth) {
           zoomHeight = e.heights[zoomIndex];

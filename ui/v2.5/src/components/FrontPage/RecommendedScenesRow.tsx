@@ -4,6 +4,8 @@ import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import { SceneQueue } from "src/models/sceneQueue";
 import { SceneWallPanel } from "../Scenes/SceneWallPanel";
+import { SceneRecommendationRail } from "./SceneRecommendationRail";
+import ScreenUtils from "src/utils/screen";
 import { RecommendationRow } from "./RecommendationRow";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { PatchComponent } from "src/patch";
@@ -19,6 +21,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
   PatchComponent("RecommendedScenesRow", ({ header }) => {
     const intl = useIntl();
     const { configuration } = useConfigurationContext();
+    const isMobile = ScreenUtils.useMediaQuery("only screen and (max-width: 768px)");
 
     // 1. Query recently/frequently played scenes
     const playedResult = GQL.useFindScenesQuery({
@@ -202,11 +205,18 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
           </Link>
         }
       >
-        <SceneWallPanel
-          scenes={recommendedScenes}
-          sceneQueue={queue}
-          zoomIndex={2}
-        />
+        {isMobile ? (
+          <SceneRecommendationRail
+            scenes={recommendedScenes.slice(0, 16)}
+            sceneQueue={queue}
+          />
+        ) : (
+          <SceneWallPanel
+            scenes={recommendedScenes}
+            sceneQueue={queue}
+            zoomIndex={2}
+          />
+        )}
       </RecommendationRow>
     );
   });

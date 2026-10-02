@@ -864,16 +864,11 @@ hr {
 // Comprehensive Mobile UI Responsive Adaptations
 // =============================================================================
 
-// 1. Mobile Global Card Grids (Scenes, Performers, Images, Studios, Tags, Groups)
+// 1. Mobile Global Card Grids (Refined 2-column for items & 1-column for scenes)
 @media (max-width: 576px) {
-  .grid-card,
+  // Scenes & Markers: full width 1-column stream
   .scene-card.card,
-  .scene-marker-card.card,
-  .performer-card,
-  .image-card.card,
-  .studio-card,
-  .tag-card,
-  .group-card {
+  .scene-marker-card.card {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
@@ -881,19 +876,61 @@ hr {
     margin-bottom: 0.75rem !important;
   }
 
-  .row.justify-content-center {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
+  // Performers, Studios, Groups, Images, Galleries, Tags in list pages: elegant 2-column grid
+  .performer-card,
+  .image-card.card,
+  .gallery-card.card,
+  .studio-card,
+  .tag-card,
+  .group-card {
+    width: calc(50% - 5px) !important;
+    max-width: calc(50% - 5px) !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-bottom: 0.65rem !important;
+
+    .performer-card-image {
+      aspect-ratio: 2 / 3 !important;
+      object-fit: cover !important;
+    }
+
+    .studio-card-image {
+      height: 80px !important;
+      object-fit: contain !important;
+      padding: 4px;
+    }
+
+    .group-card-image {
+      aspect-ratio: 2 / 3 !important;
+      object-fit: cover !important;
+    }
+
+    .card-section.title {
+      font-size: 0.85rem !important;
+      padding: 4px 6px !important;
+    }
+
+    .performer-name {
+      font-size: 0.85rem !important;
+    }
+
+    .card-popovers {
+      margin-bottom: 4px;
+      gap: 3px;
+
+      .btn {
+        padding: 1px 5px !important;
+        font-size: 0.72rem !important;
+      }
+    }
   }
 
-  .card-popovers {
-    margin-bottom: 6px;
-    gap: 4px;
-
-    .btn {
-      padding: 2px 6px;
-      font-size: 0.8rem;
-    }
+  .row.justify-content-center {
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: space-between !important;
   }
 }
 

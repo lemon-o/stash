@@ -34,6 +34,7 @@ const ScreenUtils = {
   isMobile,
   isTouch,
   matchesMediaQuery,
+  useMediaQuery,
 };
 
 export default ScreenUtils;

@@ -6,6 +6,8 @@ import { SceneQueue } from "src/models/sceneQueue";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { PatchComponent } from "src/patch";
 import { SceneWallPanel } from "./SceneWallPanel";
+import { SceneRecommendationRail } from "../FrontPage/SceneRecommendationRail";
+import ScreenUtils from "src/utils/screen";
 import { RecommendationRow } from "../FrontPage/RecommendationRow";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 
@@ -31,6 +33,8 @@ export const SceneRecommendationRow: React.FC<IProps> = PatchComponent(
       return null;
     }
 
+    const isMobile = ScreenUtils.useMediaQuery("only screen and (max-width: 768px)");
+
     return (
       <RecommendationRow
         className="scene-recommendations"
@@ -43,6 +47,11 @@ export const SceneRecommendationRow: React.FC<IProps> = PatchComponent(
       >
         {result.loading ? (
           <LoadingIndicator />
+        ) : isMobile ? (
+          <SceneRecommendationRail
+            scenes={scenes.slice(0, 16)}
+            sceneQueue={queue}
+          />
         ) : (
           <SceneWallPanel
             scenes={scenes}

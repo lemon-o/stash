@@ -8,6 +8,7 @@ import { FormattedMessage } from "react-intl";
 import { PatchComponent } from "src/patch";
 import { UnsupportedCriterion } from "src/models/list-filter/criteria/criterion";
 import { PopoverCard, WarningHoverPopover } from "../Shared/HoverPopover";
+import ScreenUtils from "src/utils/screen";
 
 interface IProps {
   className?: string;
@@ -51,9 +52,15 @@ export const FilteredRecommendationRow: React.FC<IProps> = PatchComponent(
       props.heading
     );
 
+    const isMobile = ScreenUtils.useMediaQuery("only screen and (max-width: 768px)");
+
     if (!props.loading && !cardCount) {
       return null;
     }
+
+    const displayedChildren = isMobile
+      ? React.Children.toArray(props.children).slice(0, 16)
+      : props.children;
 
     return (
       <RecommendationRow
@@ -66,7 +73,7 @@ export const FilteredRecommendationRow: React.FC<IProps> = PatchComponent(
         }
       >
         <div className="wall-cards-container d-flex flex-wrap justify-content-start">
-          {props.children}
+          {displayedChildren}
         </div>
       </RecommendationRow>
     );
