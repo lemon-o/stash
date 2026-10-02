@@ -101,32 +101,22 @@ const ImageWall: React.FC<IImageWallProps> = ({
 
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-  const photos: {
-    src: string;
-    srcSet?: string | string[] | undefined;
-    sizes?: string | string[] | undefined;
-    width: number;
-    height: number;
-    alt?: string | undefined;
-    key?: string | undefined;
-  }[] = [];
-
-  images.forEach((image, index) => {
-    const imageData = {
+  const photos = useMemo(() => {
+    return images.map((image, index) => ({
       src:
         image.paths.preview !== ""
           ? image.paths.preview!
           : image.paths.thumbnail!,
+      imagePath: image.paths.image ?? undefined,
       width: image.visual_files?.[0]?.width ?? 0,
       height: image.visual_files?.[0]?.height ?? 0,
       tabIndex: index,
       key: image.id,
-      loading: "lazy",
+      loading: "lazy" as const,
       className: "gallery-image",
       alt: objectTitle(image),
-    };
-    photos.push(imageData);
-  });
+    }));
+  }, [images]);
 
   const showLightboxOnClick = useCallback(
     (_event, { index }) => {
@@ -162,11 +152,13 @@ const ImageWall: React.FC<IImageWallProps> = ({
   const renderImage = useCallback(
     (props: RenderImageProps) => {
       // #6165 - only use targetRowHeight in row direction
+      const currentContainerWidth =
+        containerRef.current?.offsetWidth ||
+        (typeof window !== "undefined" ? window.innerWidth : 1200);
       const maxHeight =
         props.direction === "column"
           ? props.photo.height
-          : targetRowHeight(containerRef.current?.offsetWidth ?? 0) *
-            maxHeightFactor;
+          : targetRowHeight(currentContainerWidth) * maxHeightFactor;
       const imageId = props.photo.key;
       if (!imageId) {
         return null;
@@ -214,8 +206,6 @@ interface IImageListImages {
   pageCount: number;
   totalCount: number;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
-  slideshowRunning: boolean;
-  setSlideshowRunning: (running: boolean) => void;
   chapters?: GQL.GalleryChapterDataFragment[];
 }
 
@@ -229,8 +219,6 @@ const ImageList: React.FC<IImageListImages> = PatchComponent(
     pageCount,
     totalCount,
     onSelectChange,
-    slideshowRunning,
-    setSlideshowRunning,
     chapters = [],
   }) => {
     const handleLightBoxPage = useCallback(
@@ -259,10 +247,6 @@ const ImageList: React.FC<IImageListImages> = PatchComponent(
       [onChangePage, filter.currentPage, pageCount]
     );
 
-    const handleClose = useCallback(() => {
-      setSlideshowRunning(false);
-    }, [setSlideshowRunning]);
-
     const lightboxState = useMemo(() => {
       return {
         images,
@@ -272,8 +256,7 @@ const ImageList: React.FC<IImageListImages> = PatchComponent(
         pages: pageCount,
         pageSize: filter.itemsPerPage,
         totalCount,
-        slideshowEnabled: slideshowRunning,
-        onClose: handleClose,
+        slideshowEnabled: true,
       };
     }, [
       images,
@@ -281,8 +264,6 @@ const ImageList: React.FC<IImageListImages> = PatchComponent(
       totalCount,
       filter.currentPage,
       filter.itemsPerPage,
-      slideshowRunning,
-      handleClose,
       handleLightBoxPage,
     ]);
 
@@ -295,11 +276,10 @@ const ImageList: React.FC<IImageListImages> = PatchComponent(
     );
 
     const handleImageOpen = useCallback(
-      (index) => {
-        setSlideshowRunning(true);
+      (index: number) => {
         showLightbox({ initialIndex: index, slideshowEnabled: true });
       },
-      [showLightbox, setSlideshowRunning]
+      [showLightbox]
     );
 
     function onPreview(index: number, ev: MouseEvent) {
@@ -517,8 +497,6 @@ export const FilteredImageList = PatchComponent(
   "FilteredImageList",
   (props: IImageList) => {
     const intl = useIntl();
-
-    const [slideshowRunning, setSlideshowRunning] = useState<boolean>(false);
 
     const searchFocus = useFocus();
 
@@ -776,8 +754,6 @@ export const FilteredImageList = PatchComponent(
             pageCount={pageCount}
             totalCount={totalCount}
             selectedIds={selectedIds}
-            slideshowRunning={slideshowRunning}
-            setSlideshowRunning={setSlideshowRunning}
             chapters={chapters}
           />
         </LoadedContent>

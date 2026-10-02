@@ -1296,6 +1296,39 @@ npx pnpm run start
      - 标题左侧加入 3.5px 主色高亮竖线装饰条，提升视觉锚点；
      - 右侧「查看全部」链接重构为现代胶囊药丸触控按钮（微磨砂半透明背景 + 触控热区放大），配合页面边距自适应，呈现媲美 Netflix/Apple TV 原生 App 般的流媒体质感。
 
+### 任务四十二：图片大图浏览器（Lightbox）零黑屏零卡顿毫秒级瞬切与预加载渲染
+- **目标文件**：
+  - `ui/v2.5/src/hooks/Lightbox/Lightbox.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/LightboxImage.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/context.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/lightbox.scss`
+  - `ui/v2.5/src/components/Images/ImageCard.tsx`
+  - `ui/v2.5/src/components/Images/ImageList.tsx`
+  - `ui/v2.5/src/components/Images/ImageWallItem.tsx`
+  - `ui/v2.5/src/index.scss`
+- **问题与现状剖析**：
+  1. **切图时出现空白黑屏闪烁与布局重排**：
+     - 原版在切换下一张图片时，清空当前视图并等待原图网络下载和 `onLoad` 回调触发后才计算尺寸与位置；若原图高达 10MB~50MB，屏幕出现持续数百毫秒甚至数秒的刺眼黑屏与跳动；
+  2. **缺少缩略图渐进式过渡（Progressive Fallback）**：
+     - 原版直接展示完整原图，未利用浏览器已经缓存的 `preview` 或 `thumbnail` 封面进行 0ms 占位呈现；
+  3. **未预先计算缩放与居中坐标**：
+     - 原版没有在组件初始化时依据已知的图片元数据（width/height）同步计算好 `defaultZoom` 与 `initialPosition`，导致图片显示前有一次布局位移抖动；
+  4. **悬停与滑动缺少预加载（Preload on Hover/Touch）**：
+     - 在列表墙中鼠标悬停或手指触摸卡片时，未对对应高清原图执行预加载与异步解码（`img.decode()`）；
+  5. **滚动条隐现导致视口左右跳动（Layout Shift）**：
+     - 打开或关闭全屏/大图时，页面垂直滚动条的出现和消失导致页面宽度变化并发生横向抖动。
+- **机制与实现方案**：
+  1. **双层渐进式呈现机制（0ms 零白屏占位）**：
+     - 在 `LightboxImage.tsx` 中引入双层视图与 `displaySrc` 状态机；当切换至新图片时，若原图尚未完成解码，**立即同步显示已缓存的 `previewSrc` 缩略图**，并利用 `Image.decode()` 异步加载全量原图，一旦解码完毕无缝平滑替换，彻底根除切图时的黑屏与空白；
+  2. **基于元数据的同步尺寸与位置计算（Synchronous Layout Computation）**：
+     - 直接消费 GraphQL 返回的 `image.visual_files[0].width` 与 `height`，在初次渲染与切换时直接计算最佳 `defaultZoom` 与居中坐标 `initialPosition`，无需等待图片实际网络加载完成即可 100% 确定几何布局，彻底杜绝跳动；
+  3. **列表卡片悬浮与触控预加载（Eager Preload & Prefetch）**：
+     - 在 `ImageCard.tsx` 与 `ImageWallItem.tsx` 中挂载 `onPointerEnter` 与 `onTouchStart` 预加载钩子，当用户鼠标划过或手指触碰卡片瞬间，立即通过原生 `new Image()` 拉取高清大图并调用 `img.decode()`；
+     - 在 `context.tsx` 中预先导入 Lightbox 代码块，点击瞬间 0ms 唤起，无任何异步分包加载延迟；
+  4. **全屏防抖与交互平滑性提升**：
+     - 在 `index.scss` 中配置 `scrollbar-gutter: stable`，杜绝因滚动条显隐产生的页面横向跳动；
+     - 在 `lightbox.scss` 中加入 `overscroll-behavior: contain` 与 `touch-action: none`，消除移动端越界滑动导致的页面露底。
+
 ---
 
 *文档更新时间：2026-10-02*  

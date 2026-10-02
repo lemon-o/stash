@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as GQL from "src/core/generated-graphql";
 
 const ZOOM_STEP = 1.1;
@@ -52,6 +52,7 @@ function calculateDefaultZoom(
 
 interface IProps {
   src: string;
+  previewSrc?: string;
   width: number;
   height: number;
   displayMode: GQL.ImageLightboxDisplayMode;
@@ -65,17 +66,18 @@ interface IProps {
   firstScroll: React.MutableRefObject<number | null>;
   inScrollGroup: React.MutableRefObject<boolean>;
   current: boolean;
-  // set to true to align image with bottom instead of top
   alignBottom?: boolean;
   setZoom: (v: number) => void;
   debouncedScrollReset: () => void;
   onLeft: () => void;
   onRight: () => void;
   isVideo: boolean;
+  isFullscreen?: boolean;
 }
 
-export const LightboxImage: React.FC<IProps> = ({
+export const LightboxImage: React.FC<IProps> = React.memo(({
   src,
+  previewSrc,
   width,
   height,
   displayMode,
@@ -93,20 +95,45 @@ export const LightboxImage: React.FC<IProps> = ({
   onLeft,
   onRight,
   isVideo,
+  isFullscreen,
 }) => {
-  const [defaultZoom, setDefaultZoom] = useState(1);
   const [moving, setMoving] = useState(false);
-  const [positionX, setPositionX] = useState(0);
-  const [positionY, setPositionY] = useState(0);
+  const isImageComplete = useCallback((url?: string) => {
+    if (!url) return false;
+    if (typeof Image === "undefined") return false;
+    const test = new Image();
+    test.src = url;
+    return test.complete && test.naturalWidth > 0;
+  }, []);
+
+  const [displaySrc, setDisplaySrc] = useState<string>(() => {
+    if (isVideo) return src;
+    if (isImageComplete(src)) return src;
+    if (previewSrc && isImageComplete(previewSrc)) return previewSrc;
+    return previewSrc || src;
+  });
+
   const [imageWidth, setImageWidth] = useState(width);
   const [imageHeight, setImageHeight] = useState(height);
+
+  const dimensionsProvided = width > 0 && height > 0;
+  const currentWidth = dimensionsProvided ? width : imageWidth;
+  const currentHeight = dimensionsProvided ? height : imageHeight;
+
+  useEffect(() => {
+    setImageWidth(width);
+    setImageHeight(height);
+  }, [width, height]);
+
   const [boxWidth, setBoxWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 0
   );
-  const [boxHeight, setBoxHeight] = useState(() =>
-    typeof window !== "undefined" ? window.innerHeight : 0
-  );
-  const dimensionsProvided = width > 0 && height > 0;
+  const [boxHeight, setBoxHeight] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    return isFullscreen
+      ? window.innerHeight
+      : Math.max(0, window.innerHeight - 136);
+  });
 
   const mouseDownEvent = useRef<MouseEvent>();
   const resetPositionRef = useRef(resetPosition);
@@ -119,10 +146,22 @@ export const LightboxImage: React.FC<IProps> = ({
   const scrollAttempts = useRef(0);
 
   useEffect(() => {
+    const h = isFullscreen
+      ? window.innerHeight
+      : Math.max(0, window.innerHeight - 136);
+    setBoxHeight(h);
+    setBoxWidth(window.innerWidth);
+  }, [isFullscreen]);
+
+  useEffect(() => {
     const updateDimensions = () => {
       if (container.current) {
         const w = container.current.offsetWidth || window.innerWidth;
-        const h = container.current.offsetHeight || window.innerHeight;
+        const h =
+          container.current.offsetHeight ||
+          (isFullscreen
+            ? window.innerHeight
+            : Math.max(0, window.innerHeight - 136));
         if (w > 0 && h > 0) {
           setBoxWidth((prev) => (prev !== w ? w : prev));
           setBoxHeight((prev) => (prev !== h ? h : prev));
@@ -130,32 +169,67 @@ export const LightboxImage: React.FC<IProps> = ({
       }
     };
 
-    updateDimensions();
     window.addEventListener("resize", updateDimensions);
-
-    function toggleVideoPlay() {
-      if (container.current) {
-        const openVideo = container.current.getElementsByTagName("video");
-        if (openVideo.length > 0) {
-          const rect = openVideo[0].getBoundingClientRect();
-          if (Math.abs(rect.x) < document.body.clientWidth / 2) {
-            openVideo[0].play();
-          } else {
-            openVideo[0].pause();
-          }
-        }
-      }
-    }
-
-    const videoTimer = setTimeout(() => {
-      toggleVideoPlay();
-    }, 250);
-
     return () => {
-      clearTimeout(videoTimer);
       window.removeEventListener("resize", updateDimensions);
     };
-  }, [container]);
+  }, [isFullscreen]);
+
+  // Video play/pause declarative effect without layout thrashing
+  useEffect(() => {
+    if (!isVideo || !container.current) return;
+    const video = container.current.querySelector("video");
+    if (!video) return;
+    if (current) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, [isVideo, current]);
+
+  useEffect(() => {
+    if (isVideo) {
+      setDisplaySrc(src);
+      return;
+    }
+
+    // 1. If full-res image is already complete (preloaded in memory):
+    if (isImageComplete(src)) {
+      setDisplaySrc(src);
+      return;
+    }
+
+    // 2. Full image is not ready yet: show preview immediately so there is ZERO blank time
+    if (previewSrc) {
+      setDisplaySrc(previewSrc);
+    }
+
+    // 3. Load full-res image in background
+    let active = true;
+    const img = new Image();
+    img.src = src;
+
+    if (img.complete && img.naturalWidth > 0) {
+      setDisplaySrc(src);
+      return;
+    }
+
+    const onComplete = () => {
+      if (active) {
+        setDisplaySrc(src);
+      }
+    };
+
+    if (img.decode) {
+      img.decode().then(onComplete).catch(onComplete);
+    } else {
+      img.onload = onComplete;
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [src, previewSrc, isVideo, isImageComplete]);
 
   useEffect(() => {
     if (dimensionsProvided) {
@@ -171,48 +245,48 @@ export const LightboxImage: React.FC<IProps> = ({
     }
 
     img.onload = onLoad;
-    img.src = src;
+    img.src = previewSrc || src;
 
     return () => {
       mounted = false;
     };
-  }, [src, dimensionsProvided]);
+  }, [src, previewSrc, dimensionsProvided]);
 
   const minMaxY = useCallback(
     (appliedZoom: number) => {
       let minY: number, maxY: number;
-      const inBounds = appliedZoom * imageHeight <= boxHeight;
+      const inBounds = appliedZoom * currentHeight <= boxHeight;
 
       // NOTE: I don't even know how these work, but they do
       if (!inBounds) {
-        if (imageHeight > boxHeight) {
+        if (currentHeight > boxHeight) {
           minY =
-            (appliedZoom * imageHeight - imageHeight) / 2 -
-            appliedZoom * imageHeight +
+            (appliedZoom * currentHeight - currentHeight) / 2 -
+            appliedZoom * currentHeight +
             boxHeight;
-          maxY = (appliedZoom * imageHeight - imageHeight) / 2;
+          maxY = (appliedZoom * currentHeight - currentHeight) / 2;
         } else {
-          minY = (boxHeight - appliedZoom * imageHeight) / 2;
-          maxY = (appliedZoom * imageHeight - boxHeight) / 2;
+          minY = (boxHeight - appliedZoom * currentHeight) / 2;
+          maxY = (appliedZoom * currentHeight - boxHeight) / 2;
         }
       } else {
-        minY = Math.min((boxHeight - imageHeight) / 2, 0);
+        minY = Math.min((boxHeight - currentHeight) / 2, 0);
         maxY = minY;
       }
 
       return [minY, maxY];
     },
-    [imageHeight, boxHeight]
+    [currentHeight, boxHeight]
   );
 
   const calculateInitialPosition = useCallback(
     (appliedZoom: number) => {
       // Center image from container's center
-      const newPositionX = Math.min((boxWidth - imageWidth) / 2, 0);
+      const newPositionX = Math.min((boxWidth - currentWidth) / 2, 0);
       let newPositionY: number;
 
       if (displayMode === GQL.ImageLightboxDisplayMode.FitXy) {
-        newPositionY = Math.min((boxHeight - imageHeight) / 2, 0);
+        newPositionY = Math.min((boxHeight - currentHeight) / 2, 0);
       } else {
         // otherwise, align image with container
         const [minY, maxY] = minMaxY(appliedZoom);
@@ -228,60 +302,93 @@ export const LightboxImage: React.FC<IProps> = ({
     [
       displayMode,
       boxWidth,
-      imageWidth,
+      currentWidth,
       boxHeight,
-      imageHeight,
+      currentHeight,
       alignBottom,
       minMaxY,
     ]
   );
 
-  useEffect(() => {
-    // don't set anything until we have the dimensions
-    if (!imageWidth || !imageHeight || !boxWidth || !boxHeight) {
-      return;
+  const defaultZoom = useMemo(() => {
+    if (!currentWidth || !currentHeight || !boxWidth || !boxHeight) {
+      return 1;
     }
 
-    if (!scaleUp && imageWidth < boxWidth && imageHeight < boxHeight) {
-      setDefaultZoom(1);
-      setPositionX(0);
-      setPositionY(0);
-      return;
+    if (!scaleUp && currentWidth < boxWidth && currentHeight < boxHeight) {
+      return 1;
     }
 
-    // set initial zoom level based on options
-    const newZoom = calculateDefaultZoom(
-      imageWidth,
-      imageHeight,
+    return calculateDefaultZoom(
+      currentWidth,
+      currentHeight,
       boxWidth,
       boxHeight,
       displayMode,
       scaleUp
     );
+  }, [currentWidth, currentHeight, boxWidth, boxHeight, displayMode, scaleUp]);
 
-    setDefaultZoom(newZoom);
+  const initialPosition = useMemo(() => {
+    if (!currentWidth || !currentHeight || !boxWidth || !boxHeight) {
+      return [0, 0];
+    }
 
-    const [newPositionX, newPositionY] = calculateInitialPosition(newZoom * 1);
+    if (!scaleUp && currentWidth < boxWidth && currentHeight < boxHeight) {
+      return [0, 0];
+    }
 
-    setPositionX(newPositionX);
-    setPositionY(newPositionY);
+    return calculateInitialPosition(defaultZoom);
+  }, [
+    currentWidth,
+    currentHeight,
+    boxWidth,
+    boxHeight,
+    scaleUp,
+    defaultZoom,
+    calculateInitialPosition,
+  ]);
 
+  const [positionX, setPositionX] = useState(initialPosition[0]);
+  const [positionY, setPositionY] = useState(initialPosition[1]);
+
+  // Synchronous state adjustment when switching images (0ms latency, ZERO blank frame)
+  const [prevSrc, setPrevSrc] = useState(src);
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    pointerCache.current = [];
+    startPoints.current = [0, 0];
+    prevDiff.current = undefined;
+
+    if (isVideo) {
+      setDisplaySrc(src);
+    } else if (isImageComplete(src)) {
+      setDisplaySrc(src);
+    } else if (previewSrc && isImageComplete(previewSrc)) {
+      setDisplaySrc(previewSrc);
+    } else {
+      setDisplaySrc(previewSrc || src);
+    }
+
+    if (width > 0) setImageWidth(width);
+    if (height > 0) setImageHeight(height);
+
+    setPositionX(initialPosition[0]);
+    setPositionY(initialPosition[1]);
+  }
+
+  useEffect(() => {
+    setPositionX(initialPosition[0]);
+    setPositionY(initialPosition[1]);
+  }, [initialPosition]);
+
+  useEffect(() => {
     if (alignBottom) {
       scrollAttempts.current = scrollAttemptsBeforeChange;
     } else {
       scrollAttempts.current = -scrollAttemptsBeforeChange;
     }
-  }, [
-    imageWidth,
-    imageHeight,
-    boxWidth,
-    boxHeight,
-    displayMode,
-    scaleUp,
-    alignBottom,
-    calculateInitialPosition,
-    scrollAttemptsBeforeChange,
-  ]);
+  }, [alignBottom, scrollAttemptsBeforeChange]);
 
   useEffect(() => {
     if (resetPosition !== resetPositionRef.current) {
@@ -576,14 +683,19 @@ export const LightboxImage: React.FC<IProps> = ({
             })`,
           }}
         >
-          <source srcSet={src} media="(min-width: 800px)" />
           {/* XXbiome-ignore jsx-a11y/no-noninteractive-element-interactions */}
           <ImageView
             loop={isVideo}
-            src={src}
+            src={displaySrc}
             alt=""
+            decoding="async"
             draggable={false}
-            style={{ touchAction: "none" }}
+            width={currentWidth > 0 ? currentWidth : undefined}
+            height={currentHeight > 0 ? currentHeight : undefined}
+            style={{
+              touchAction: "none",
+              display: "block",
+            }}
             onWheel={current ? (e) => onImageScroll(e) : undefined}
             onMouseDown={onImageMouseDown}
             onMouseUp={onImageMouseUp}
@@ -598,4 +710,4 @@ export const LightboxImage: React.FC<IProps> = ({
       ) : undefined}
     </div>
   );
-};
+});

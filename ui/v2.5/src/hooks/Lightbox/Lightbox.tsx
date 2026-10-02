@@ -104,6 +104,23 @@ interface IProps {
   onDeleteImage?: (id: string) => void;
 }
 
+const getPreviewPath = (img?: ILightboxImage): string | undefined => {
+  if (!img?.paths) return undefined;
+  const visualFile = img.visual_files?.[0];
+  if (visualFile && isVideo(visualFile)) {
+    if (img.paths.preview && img.paths.preview !== "") {
+      return img.paths.preview;
+    }
+  }
+  if (img.paths.thumbnail && img.paths.thumbnail !== "") {
+    return img.paths.thumbnail;
+  }
+  if (img.paths.preview && img.paths.preview !== "") {
+    return img.paths.preview;
+  }
+  return undefined;
+};
+
 export const LightboxComponent: React.FC<IProps> = ({
   images,
   isVisible,
@@ -123,11 +140,10 @@ export const LightboxComponent: React.FC<IProps> = ({
   const [updateImage] = useImageUpdate();
 
   // zero-based
-  const [index, setIndex] = useState<number | null>(null);
-  const [movingLeft, setMovingLeft] = useState(false);
-  const oldIndex = useRef<number | null>(null);
-  const [instantTransition, setInstantTransition] = useState(false);
-  const [isSwitchingPage, setIsSwitchingPage] = useState(true);
+  const [index, setIndex] = useState<number>(initialIndex);
+  const oldIndex = useRef<number | null>(initialIndex);
+  const initialSwitching = isLoading || images.length === 0;
+  const [isSwitchingPage, setIsSwitchingPage] = useState(initialSwitching);
   // Synchronous mirror of isSwitchingPage. The nav handlers (handleLeft/
   // handleRight, reached by the arrow keys, the on-screen chevrons and the
   // image-edge clicks) fire on raw keydown/click events that can arrive faster
@@ -137,7 +153,7 @@ export const LightboxComponent: React.FC<IProps> = ({
   // index-range effect won't clamp a stale index while a (possibly
   // synchronously-cached) page is still swapping in. The landing index stays
   // under the handlers' control; this ref only gates, it never picks the index.
-  const isSwitchingPageRef = useRef(true);
+  const isSwitchingPageRef = useRef(initialSwitching);
   const [isFullscreen, setFullscreen] = useState(false);
   const [isControlsHidden, setIsControlsHidden] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -417,16 +433,6 @@ export const LightboxComponent: React.FC<IProps> = ({
     }
   }, [isSwitchingPage, isLoading, images, page, setSwitching]);
 
-  const disableInstantTransition = useDebounce(
-    () => setInstantTransition(false),
-    400
-  );
-
-  const setInstant = useCallback(() => {
-    setInstantTransition(true);
-    disableInstantTransition();
-  }, [disableInstantTransition]);
-
   useEffect(() => {
     if (images.length < 2) return;
     if (index === oldIndex.current) return;
@@ -443,27 +449,61 @@ export const LightboxComponent: React.FC<IProps> = ({
     oldIndex.current = index;
   }, [index, images.length, resetZoomOnNav]);
 
-  // Preload adjacent images in the background to eliminate switching stutter (debounced so it never interferes with opening)
+  // Persistent in-memory cache to retain decoded image references
+  const preloadedCache = useRef<Map<string, HTMLImageElement>>(new Map());
+
+  const preloadImage = useCallback((url?: string | null, decode = false) => {
+    if (!url || preloadedCache.current.has(url)) return;
+    const img = new Image();
+    img.src = url;
+    if (decode && img.decode) {
+      img.decode().catch(() => {});
+    }
+    preloadedCache.current.set(url, img);
+    if (preloadedCache.current.size > 40) {
+      const firstKey = preloadedCache.current.keys().next().value;
+      if (firstKey) preloadedCache.current.delete(firstKey);
+    }
+  }, []);
+
+  // Preload adjacent images IMMEDIATELY so next/prev switches have ZERO blank time
   useEffect(() => {
     if (!images.length) return;
-    const timer = setTimeout(() => {
-      const current = index ?? initialIndex;
-      for (const offset of [1, -1]) {
-        const targetIdx = current + offset;
-        if (targetIdx >= 0 && targetIdx < images.length) {
-          const imgPath = images[targetIdx]?.paths.image;
-          if (imgPath) {
-            const preloader = new Image();
-            preloader.src = imgPath;
-          }
-        }
-      }
-    }, 400);
+    const current = index ?? initialIndex;
 
-    return () => clearTimeout(timer);
-  }, [index, initialIndex, images]);
+    // 1. Preload previews (thumbnails) for the next 5 and previous 2 images so previews are always in memory
+    const previewTargets = [
+      current + 1,
+      current + 2,
+      current + 3,
+      current + 4,
+      current + 5,
+      current - 1,
+      current - 2,
+    ];
+    for (const targetIdx of previewTargets) {
+      const idx = (targetIdx + images.length) % images.length;
+      const img = images[idx];
+      if (img) {
+        const prevPath = getPreviewPath(img);
+        if (prevPath) preloadImage(prevPath, true);
+      }
+    }
+
+    // 2. Preload full-resolution images for the next 3 images and previous 1 image
+    const fullTargets = [current + 1, current + 2, current + 3, current - 1];
+    for (const targetIdx of fullTargets) {
+      const idx = (targetIdx + images.length) % images.length;
+      const img = images[idx];
+      if (img) {
+        const fullPath = img.paths.image;
+        if (fullPath) preloadImage(fullPath, true);
+      }
+    }
+  }, [index, initialIndex, images, preloadImage]);
 
   const getNavOffset = useCallback(() => {
+    if (!showNavigation || isFullscreen) return;
     if (images.length < 2) return;
     if (index === undefined || index === null) return;
 
@@ -477,7 +517,7 @@ export const LightboxComponent: React.FC<IProps> = ({
         return { left: `${offset}px` };
       }
     }
-  }, [index, images.length]);
+  }, [index, images.length, showNavigation, isFullscreen]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on images change
   useEffect(() => {
@@ -486,8 +526,10 @@ export const LightboxComponent: React.FC<IProps> = ({
   }, [images]);
 
   useEffect(() => {
-    setNavOffset(getNavOffset() ?? undefined);
-  }, [getNavOffset]);
+    if (showNavigation && !isFullscreen) {
+      setNavOffset(getNavOffset() ?? undefined);
+    }
+  }, [getNavOffset, showNavigation, isFullscreen]);
 
   useEffect(() => {
     if (displayMode !== oldDisplayMode.current) {
@@ -508,13 +550,8 @@ export const LightboxComponent: React.FC<IProps> = ({
   };
 
   useEffect(() => {
-    if (isVisible && index === null) setIndex(initialIndex);
-  }, [initialIndex, isVisible, index]);
-
-  useEffect(() => {
     if (!isVisible) return;
 
-    document.body.style.overflow = "hidden";
     Mousetrap.pause();
     return () => {
       const fullscreenElement = document.fullscreenElement;
@@ -522,9 +559,8 @@ export const LightboxComponent: React.FC<IProps> = ({
         fullscreenElement &&
         containerRef.current?.contains(fullscreenElement)
       ) {
-        document.exitFullscreen();
+        document.exitFullscreen().catch(() => {});
       }
-      document.body.style.overflow = "auto";
       Mousetrap.unpause();
     };
   }, [isVisible]);
@@ -545,7 +581,14 @@ export const LightboxComponent: React.FC<IProps> = ({
   });
 
   const close = useCallback(
-    (reason: LightboxHideReason = "dismiss") => {
+    async (reason: LightboxHideReason = "dismiss") => {
+      if (document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+        } catch {
+          // ignore
+        }
+      }
       hide(reason);
     },
     [hide]
@@ -564,12 +607,7 @@ export const LightboxComponent: React.FC<IProps> = ({
     (isUserAction = true) => {
       if (isSwitchingPageRef.current) return;
 
-      if (disableAnimation) {
-        setInstant();
-      }
-
       setShowChapters(false);
-      setMovingLeft(true);
 
       if (index === 0) {
         // go to previous page (landing on its last image), or loop back if no
@@ -583,18 +621,13 @@ export const LightboxComponent: React.FC<IProps> = ({
         resetIntervalCallback.current();
       }
     },
-    [images, pageCallback, index, disableAnimation, setInstant, startPageSwitch]
+    [images, pageCallback, index, startPageSwitch]
   );
 
   const handleRight = useCallback(
     (isUserAction = true) => {
       if (isSwitchingPageRef.current) return;
 
-      if (disableAnimation) {
-        setInstant();
-      }
-
-      setMovingLeft(false);
       setShowChapters(false);
 
       if (index === images.length - 1) {
@@ -609,7 +642,7 @@ export const LightboxComponent: React.FC<IProps> = ({
         resetIntervalCallback.current();
       }
     },
-    [images, pageCallback, index, disableAnimation, setInstant, startPageSwitch]
+    [images, pageCallback, index, startPageSwitch]
   );
 
   const firstScroll = useRef<number | null>(null);
@@ -622,18 +655,21 @@ export const LightboxComponent: React.FC<IProps> = ({
 
   useEffect(() => {
     return () => {
-      disableInstantTransition.cancel();
       debouncedScrollReset.cancel();
     };
-  }, [disableInstantTransition, debouncedScrollReset]);
+  }, [debouncedScrollReset]);
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
-      if (e.repeat && (e.key === "ArrowRight" || e.key === "ArrowLeft"))
-        setInstant();
       if (e.key === "ArrowLeft") handleLeft();
       else if (e.key === "ArrowRight") handleRight();
-      else if (e.key === "Escape") close();
+      else if (e.key === "Escape") {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+          return;
+        }
+        close();
+      }
       else if (e.key === "f" || e.key === "F") toggleFullscreen();
       else if (e.key === "d") {
         // Not while a page switch is in flight: the index is parked at 0 then,
@@ -648,7 +684,7 @@ export const LightboxComponent: React.FC<IProps> = ({
         }
       }
     },
-    [setInstant, handleLeft, handleRight, close, toggleFullscreen, images, index, initialIndex]
+    [handleLeft, handleRight, close, toggleFullscreen, images, index, initialIndex]
   );
 
   const [clearCallback, resetCallback] = useInterval(
@@ -690,15 +726,14 @@ export const LightboxComponent: React.FC<IProps> = ({
 
   const navItems = useMemo(
     () =>
-      images.map((image, i) =>
-        React.createElement(image.paths.preview !== "" ? "video" : "img", {
-          loop: image.paths.preview !== "",
-          autoPlay: image.paths.preview !== "",
-          playsInline: image.paths.preview !== "",
-          src:
-            image.paths.preview !== ""
-              ? (image.paths.preview ?? "")
-              : (image.paths.thumbnail ?? ""),
+      images.map((image, i) => {
+        const hasPreviewVideo = Boolean(image.paths.preview);
+        const navSrc = image.paths.preview || image.paths.thumbnail || "";
+        return React.createElement(hasPreviewVideo ? "video" : "img", {
+          loop: hasPreviewVideo,
+          autoPlay: hasPreviewVideo,
+          playsInline: hasPreviewVideo,
+          src: navSrc,
           alt: "",
           className: cx(CLASSNAME_NAVIMAGE, {
             [CLASSNAME_NAVSELECTED]: i === index,
@@ -706,10 +741,10 @@ export const LightboxComponent: React.FC<IProps> = ({
           onClick: (e: React.MouseEvent) => selectIndex(e, i),
           role: "presentation",
           loading: "lazy",
-          key: image.paths.thumbnail,
+          key: image.paths.thumbnail ?? i,
           onLoad: imageLoaded,
-        })
-      ),
+        });
+      }),
     [images, index]
   );
 
@@ -1107,39 +1142,30 @@ export const LightboxComponent: React.FC<IProps> = ({
             </Button>
           )}
 
-          <div
-            className={cx(CLASSNAME_CAROUSEL, {
-              [CLASSNAME_INSTANT]: instantTransition,
-            })}
-            style={{ left: `${currentIndex * -100}vw` }}
-            ref={carouselRef}
-          >
-            {images.map((image, i) => (
-              <div className={`${CLASSNAME_IMAGE}`} key={image.paths.image}>
-                {i >= currentIndex - 1 && i <= currentIndex + 1 ? (
-                  <LightboxImage
-                    src={image.paths.image ?? ""}
-                    width={image.visual_files?.[0]?.width ?? 0}
-                    height={image.visual_files?.[0]?.height ?? 0}
-                    displayMode={displayMode}
-                    scaleUp={scaleUp}
-                    scrollMode={scrollMode}
-                    resetPosition={resetPosition}
-                    zoom={i === currentIndex ? zoom : 1}
-                    scrollAttemptsBeforeChange={scrollAttemptsBeforeChange}
-                    firstScroll={firstScroll}
-                    inScrollGroup={inScrollGroup}
-                    current={i === currentIndex}
-                    alignBottom={movingLeft}
-                    setZoom={updateZoom}
-                    debouncedScrollReset={debouncedScrollReset}
-                    onLeft={handleLeft}
-                    onRight={handleRight}
-                    isVideo={isVideo(image.visual_files?.[0] ?? {})}
-                  />
-                ) : undefined}
-              </div>
-            ))}
+          <div className={CLASSNAME_CAROUSEL} ref={carouselRef}>
+            {currentImage && (
+              <LightboxImage
+                src={currentImage.paths.image ?? ""}
+                previewSrc={getPreviewPath(currentImage)}
+                width={currentImage.visual_files?.[0]?.width ?? 0}
+                height={currentImage.visual_files?.[0]?.height ?? 0}
+                displayMode={displayMode}
+                scaleUp={scaleUp}
+                scrollMode={scrollMode}
+                resetPosition={resetPosition}
+                zoom={zoom}
+                scrollAttemptsBeforeChange={scrollAttemptsBeforeChange}
+                firstScroll={firstScroll}
+                inScrollGroup={inScrollGroup}
+                current={true}
+                setZoom={updateZoom}
+                debouncedScrollReset={debouncedScrollReset}
+                onLeft={handleLeft}
+                onRight={handleRight}
+                isVideo={isVideo(currentImage.visual_files?.[0] ?? {})}
+                isFullscreen={isFullscreen}
+              />
+            )}
           </div>
 
           {allowNavigation && (
@@ -1250,6 +1276,7 @@ export const LightboxComponent: React.FC<IProps> = ({
       role="presentation"
       ref={containerRef}
       onClick={handleClose}
+      onWheel={(e) => e.stopPropagation()}
     >
       {renderBody()}
       {deleteTarget?.id !== undefined && (

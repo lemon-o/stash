@@ -181,10 +181,22 @@ const ImageCardImage = PatchComponent(
         : (props.image.paths.thumbnail ?? "");
     const video = source.includes("preview");
     const ImagePreview = video ? "video" : "img";
+    const handlePreload = () => {
+      const fullPath = props.image.paths.image;
+      if (fullPath) {
+        const img = new Image();
+        img.src = fullPath;
+        if (img.decode) img.decode().catch(() => {});
+      }
+    };
 
     return (
       <>
-        <div className={cx("image-card-preview", { portrait: isPortrait() })}>
+        <div
+          className={cx("image-card-preview", { portrait: isPortrait() })}
+          onPointerEnter={handlePreload}
+          onTouchStart={handlePreload}
+        >
           <ImagePreview
             loop={video}
             autoPlay={video}

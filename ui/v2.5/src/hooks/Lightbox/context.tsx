@@ -9,6 +9,10 @@ import { lazyComponent } from "src/utils/lazyComponent";
 import { ILightboxImage, IChapter } from "./types";
 
 const LightboxComponent = lazyComponent(() => import("./Lightbox"));
+// Eagerly prefetch Lightbox bundle so opening has zero script-load latency
+if (typeof window !== "undefined") {
+  import("./Lightbox");
+}
 const LIGHTBOX_HISTORY_KEY = "stashLightbox";
 
 export type LightboxHideReason = "dismiss" | "navigate";
@@ -162,6 +166,7 @@ export const LightboxProvider: React.FC = ({ children }) => {
         if (isDismissingRef.current) return;
 
         isDismissingRef.current = true;
+        closeLightbox();
         history.back();
         return;
       }

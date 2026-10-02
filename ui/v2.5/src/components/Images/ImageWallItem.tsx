@@ -53,6 +53,15 @@ export const ImageWallItem: React.FC<RenderImageProps & IExtraProps> = (
   const video = props.photo.src.includes("preview");
   const ImagePreview = video ? "video" : "img";
 
+  const handlePointerEnter = () => {
+    const fullPath = (props.photo as unknown as { imagePath?: string }).imagePath;
+    if (fullPath) {
+      const img = new Image();
+      img.src = fullPath;
+      if (img.decode) img.decode().catch(() => {});
+    }
+  };
+
   let shiftKey = false;
 
   return (
@@ -60,6 +69,8 @@ export const ImageWallItem: React.FC<RenderImageProps & IExtraProps> = (
       className="wall-item"
       style={divStyle}
       onClick={handleClick}
+      onPointerEnter={handlePointerEnter}
+      onTouchStart={handlePointerEnter}
       {...dragProps}
     >
       {props.onSelectedChanged && (
