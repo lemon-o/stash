@@ -40,6 +40,15 @@ const DEFAULT_PARAMS = {
   itemsPerPage: 40,
 };
 
+export function isDescDefault(sortBy: string | undefined): boolean {
+  return (
+    sortBy === "date" ||
+    sortBy === "created_at" ||
+    sortBy === "updated_at" ||
+    sortBy === "file_mod_time"
+  );
+}
+
 // TODO: handle customCriteria
 export class ListFilterModel {
   public readonly mode: FilterMode;
@@ -74,10 +83,12 @@ export class ListFilterModel {
       this.sortBy = options.defaultSortBy;
       if (options.defaultSortDir) {
         this.sortDirection = options.defaultSortDir;
+      } else if (isDescDefault(this.sortBy)) {
+        this.sortDirection = SortDirectionEnum.Desc;
       }
     } else {
       this.sortBy = defaultSortBy;
-      if (this.sortBy === "date") {
+      if (isDescDefault(this.sortBy)) {
         this.sortDirection = SortDirectionEnum.Desc;
       }
     }
@@ -146,11 +157,11 @@ export class ListFilterModel {
           : SortDirectionEnum.Asc;
     } else {
       // #3193 - sortdir undefined means asc
-      // #3559 - unless sortby is date, then desc
-      this.sortDirection =
-        params.sortby === "date"
-          ? SortDirectionEnum.Desc
-          : SortDirectionEnum.Asc;
+      // #3559 - unless sortby is date/created_at/updated_at/file_mod_time, then desc
+      const activeSort = params.sortby ?? this.sortBy;
+      this.sortDirection = isDescDefault(activeSort)
+        ? SortDirectionEnum.Desc
+        : SortDirectionEnum.Asc;
     }
     if (params.disp !== undefined) {
       this.displayMode = params.disp;
@@ -374,7 +385,7 @@ export class ListFilterModel {
           : undefined,
       sortby: this.getSortBy(),
       sortdir:
-        this.sortBy === "date"
+        isDescDefault(this.sortBy)
           ? this.sortDirection === SortDirectionEnum.Asc
             ? "asc"
             : undefined
@@ -554,6 +565,9 @@ export class ListFilterModel {
   public setSortBy(sortBy: string | undefined) {
     const ret = this.clone();
     ret.sortBy = sortBy;
+    if (isDescDefault(sortBy)) {
+      ret.sortDirection = SortDirectionEnum.Desc;
+    }
     ret.currentPage = 1; // reset to first page
     return ret;
   }

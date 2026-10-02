@@ -155,8 +155,19 @@ const CustomFilterResults: React.FC<ICustomFilterProps> = ({
   const filter = useMemo(() => {
     const itemsPerPage = 16;
     const ret = new ListFilterModel(customFilter.mode, config);
-    ret.sortBy = customFilter.sortBy;
-    ret.sortDirection = customFilter.direction;
+    let sortBy = customFilter.sortBy;
+    let sortDirection = customFilter.direction;
+
+    if (
+      customFilter.message?.id === "recently_released_objects" ||
+      sortBy === "date"
+    ) {
+      sortBy = "created_at";
+      sortDirection = GQL.SortDirectionEnum.Desc;
+    }
+
+    ret.sortBy = sortBy;
+    ret.sortDirection = sortDirection;
     ret.itemsPerPage = itemsPerPage;
     ret.currentPage = 1;
     ret.randomSeed = -1;

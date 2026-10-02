@@ -1456,6 +1456,19 @@ npx pnpm run start
      - 在前端 `RecommendedScenesRow.tsx` 中规范使用 `rating`；
      - 在后端 `pkg/sqlite/sql.go`、`scene.go`、`image.go`、`gallery.go`、`group.go` 的 `validateSort` 与 `getSort` 中，对 `rating100` 建立透明别名映射，统一转换为底层列名 `rating` 升降序，根除各类客户端及保存筛选的报错。
 
+### 任务四十七：短片与图片默认排序改为“创建于降序”，首页“最近发行”模块同步切换为“创建于降序”
+- **目标文件**：
+  - `ui/v2.5/src/models/list-filter/scenes.ts`（短片默认排序由 `date` 改为 `created_at`）
+  - `ui/v2.5/src/models/list-filter/images.ts`（图片默认排序由 `path` 改为 `created_at`）
+  - `ui/v2.5/src/models/list-filter/filter.ts`（对 `created_at`、`updated_at`、`file_mod_time` 时间类字段默认方向均设为 `Desc` 降序，并优化 URL 参数编码）
+  - `ui/v2.5/src/core/config.ts`（首页 `recentlyReleased` 默认生成配置改为 `sortBy: "created_at"`）
+  - `ui/v2.5/src/components/FrontPage/Control.tsx`（首页自定义与已保存的“最近发行/date排序”行统一透明切换为 `created_at` 降序）
+  - `ui/v2.5/src/components/FrontPage/RecommendedScenesRow.tsx`（冷启动及推荐候补短片排序切换为 `created_at` 降序）
+- **变更背景与逻辑**：
+  1. 原短片默认按 `date`（官方发售日）排序，刚扫入库且未刮削的视频因日期为空会被挤到最末尾；原图片默认按 `path` 升序排列。修改为 `created_at` 降序后，新入库的视频和图片均能第一时间置顶呈现在列表最前。
+  2. 首页原本按 `date` 排序的“最近发行”推荐行全部对齐为按 `created_at` 降序，确保新加库的内容能在首页立刻显示。
+  3. **修复 URL 参数解析器导致的升序回退**：原 `configureFromDecodedParams` 中存在历史遗留逻辑（若 URL 中无 `sortdir` 参数且 `sortby` 不等于精确的 `"date"` 时，强制回退为 `Asc` 升序，导致页面刷新或访问无参路由时显示为 `创建于 ▲`）。重构为通过 `isDescDefault(activeSort)` 智能匹配所有时间字段（`created_at`、`date`、`updated_at`、`file_mod_time`），彻底根绝回退为升序的 bug，确保无参默认与切换下拉框均恒定为 `Desc` 降序（`▼`）。
+
 ---
 
 *文档更新时间：2026-10-02*  

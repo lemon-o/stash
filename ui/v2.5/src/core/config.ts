@@ -150,7 +150,7 @@ function recentlyReleased(
       values: { objects: intl.formatMessage({ id: objectsID }, { count: 2 }) },
     },
     mode,
-    sortBy: "date",
+    sortBy: "created_at",
     direction: SortDirectionEnum.Desc,
   };
 }

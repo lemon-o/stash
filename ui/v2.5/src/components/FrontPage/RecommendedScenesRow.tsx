@@ -117,7 +117,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
           filter: {
             page: 1,
             per_page: 24,
-            sort: "date",
+            sort: "created_at",
             direction: GQL.SortDirectionEnum.Desc,
           },
           scene_filter: {
@@ -166,7 +166,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
 
     const dummyFilter = useMemo(() => {
       const f = new ListFilterModel(GQL.FilterMode.Scenes, configuration);
-      f.sortBy = hasHistory ? "rating" : "date";
+      f.sortBy = hasHistory ? "rating" : "created_at";
       f.sortDirection = GQL.SortDirectionEnum.Desc;
       return f;
     }, [configuration, hasHistory]);
