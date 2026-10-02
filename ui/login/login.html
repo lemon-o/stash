@@ -52,14 +52,17 @@
 <body class="login">
     <div class="dialog">
         <div class="card">
+            <div class="login-header">
+                <h3 class="login-title">Stash</h3>
+            </div>
             <form action="login" method="POST" onsubmit="event.preventDefault(); login();">
                 <div class="form-group">
                     <label for="username"><h6 id="username-heading">用户名</h6></label>
-                    <input class="text-input form-control" id="username" name="username" type="text" placeholder="用户名" />
+                    <input class="text-input form-control" id="username" name="username" type="text" placeholder="用户名" autocomplete="username" autofocus />
                 </div>
                 <div class="form-group">
                     <label for="password"><h6 id="password-heading">密码</h6></label>
-                    <input class="text-input form-control" id="password" name="password" type="password" placeholder="密码" />
+                    <input class="text-input form-control" id="password" name="password" type="password" placeholder="密码" autocomplete="current-password" />
                 </div>
                 <div class="login-error">
                     {{.Error}}
@@ -67,7 +70,7 @@
 
                 <input type="hidden" id="returnURL" name="returnURL" value="{{.URL}}" />
 
-                <div>
+                <div class="form-submit">
                     <input id="login-button" class="btn btn-primary" type="submit" value="登录">
                 </div>
             </form>

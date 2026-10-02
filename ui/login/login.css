@@ -1,28 +1,90 @@
-/* try to reflect the default css as much as possible */
+/* Stash Monochrome Dark Theme - Login Page UI */
+:root {
+    --login-bg: #0c0c0c;
+    --login-card-bg: #141414;
+    --login-card-border: #242424;
+    --login-input-bg: #181818;
+    --login-input-focus-bg: #1e1e1e;
+    --login-input-color: #ffffff;
+    --login-input-border: #383838;
+    --login-input-placeholder: #666666;
+    --login-btn-bg: #ffffff;
+    --login-btn-color: #0c0c0c;
+    --login-btn-hover-bg: #e5e5e5;
+    --login-text-color: #e5e5e5;
+    --login-text-muted: #888888;
+    --login-error-color: #db3737;
+}
+
 * {
     box-sizing: border-box;
 }
+
 html {
     font-size: 14px;
 }
 
-body {
-    background-color: #202b33;
-    color: #f5f8fa;
-    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
+body.login, body {
+    background-color: var(--login-bg, #0c0c0c);
+    color: var(--login-text-color, #e5e5e5);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
     padding: 0;
+    min-height: 100vh;
     overflow-y: hidden;
 }
 
-h6 {
-    font-size: 1rem;
+.dialog {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 100vh;
+    padding: 1.5rem;
+    margin: 0 auto;
+}
+
+.card {
+    background-color: var(--login-card-bg, #141414);
+    border: 1px solid var(--login-card-border, #242424);
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    padding: 32px 28px;
+    width: 360px;
+    max-width: 100%;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.login-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #ffffff;
+    margin: 0;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+label {
+    margin-bottom: 0.45rem;
+    display: block;
+}
+
+h6, label h6 {
+    font-size: 0.875rem;
     margin-top: 0;
-    margin-bottom: .5rem;
+    margin-bottom: 0.45rem;
     font-weight: 500;
     line-height: 1.2;
+    color: var(--login-text-muted, #888888);
 }
 
 button, input {
@@ -32,101 +94,92 @@ button, input {
     line-height: inherit;
 }
 
-.card {
-    background-color: #30404d;
-    border-radius: 3px;
-    box-shadow: 0 0 0 1px rgba(16,22,26,.4), 0 0 0 rgba(16,22,26,0), 0 0 0 rgba(16,22,26,0);
-    padding: 20px;
-}
-
-.dialog {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    width: 100%;
-    height: 100vh;
-    padding-right: 15px;
-    padding-left: 15px;
-    margin-right: auto;
-    margin-left: auto;
-}
-
-.form-group {
-    margin-bottom: 1rem;
-}
-
-.form-control {
+.form-control, .text-input {
     display: block;
     width: 100%;
-    height: calc(1.5em + .75rem + 2px);
-    padding: .375rem .75rem;
-    font-size: 1rem;
+    height: 40px;
+    padding: 8px 12px;
+    font-size: 0.95rem;
     font-weight: 400;
     line-height: 1.5;
-    color: #495057;
+    color: var(--login-input-color, #ffffff);
+    background-color: var(--login-input-bg, #181818);
     background-clip: padding-box;
-    border: 1px solid #ced4da;
-    border-radius: .25rem;
-    -webkit-transition: border-color .15s ease-in-out,box-shadow .15s ease-in-out;
-    transition: border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+    border: 1px solid var(--login-input-border, #383838);
+    border-radius: 4px;
+    box-shadow: none;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out, background-color 0.15s ease-in-out;
 }
 
-.text-input {
-    border: 0;
-    box-shadow: 0 0 0 0 rgba(19,124,189,0), 0 0 0 0 rgba(19,124,189,0), 0 0 0 0 rgba(19,124,189,0), inset 0 0 0 1px rgba(16,22,26,.3), inset 0 1px 1px rgba(16,22,26,.4);
-    color: #f5f8fa;
+.text-input::placeholder, .form-control::placeholder {
+    color: var(--login-input-placeholder, #666666);
+    opacity: 1;
 }
 
-.text-input, .text-input:focus, .text-input[readonly] {
-    background-color: rgba(16,22,26,.3);
+.text-input:focus, .form-control:focus {
+    background-color: var(--login-input-focus-bg, #1e1e1e);
+    color: #ffffff;
+    border-color: #ffffff;
+    outline: none;
+    box-shadow: 0 0 0 1px #ffffff;
+}
+
+.login-error {
+    color: var(--login-error-color, #db3737);
+    font-size: 0.85rem;
+    font-weight: 500;
+    min-height: 1.25rem;
+    margin-bottom: 0.75rem;
+    text-align: center;
 }
 
 .btn {
     display: inline-block;
-    font-weight: 400;
-    color: #212529;
+    font-weight: 600;
     text-align: center;
     vertical-align: middle;
     cursor: pointer;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
     user-select: none;
-    background-color: initial;
     border: 1px solid transparent;
-    padding: .375rem .75rem;
-    font-size: 1rem;
+    padding: 0.55rem 1rem;
+    font-size: 0.95rem;
     line-height: 1.5;
-    border-radius: .25rem;
-    -webkit-transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
-    transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+    border-radius: 4px;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, opacity 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
 .btn-primary {
-    color: #fff;
-    background-color: #137cbd;
-    border-color: #137cbd;
+    width: 100%;
+    height: 40px;
+    color: var(--login-btn-color, #0c0c0c);
+    background-color: var(--login-btn-bg, #ffffff);
+    border-color: var(--login-btn-bg, #ffffff);
 }
 
-.login-error {
-    color: #db3737;
-    font-size: 80%;
-    font-weight: 500;
-    padding-bottom: 1rem;
+.btn-primary:hover {
+    background-color: var(--login-btn-hover-bg, #e5e5e5);
+    border-color: var(--login-btn-hover-bg, #e5e5e5);
+    color: var(--login-btn-color, #0c0c0c);
+}
+
+.btn-primary:focus, .btn-primary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.btn-primary:active {
+    background-color: #cccccc;
+    border-color: #cccccc;
+    color: #0c0c0c;
 }
 
 @media (max-width: 576px) {
+    .dialog {
+        padding: 1rem;
+    }
+
     .card {
         width: 100%;
-    }
-
-    .dialog {
-        height: auto;
-        margin-top: 50%;
-    }
-
-    .btn-primary {
-        width: 100%;
+        padding: 24px 20px;
     }
 }

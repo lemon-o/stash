@@ -139,6 +139,12 @@ const (
 	CreateImageClipsFromVideos        = "create_image_clip_from_videos"
 	createImageClipsFromVideosDefault = false
 
+	AutoScan        = "auto_scan"
+	autoScanDefault = true
+
+	AutoScanInterval        = "auto_scan_interval"
+	autoScanIntervalDefault = 300
+
 	Host        = "host"
 	hostDefault = "0.0.0.0"
 
@@ -886,6 +892,18 @@ func (i *Config) GetVideoFileNamingAlgorithm() models.HashAlgorithm {
 
 func (i *Config) GetSequentialScanning() bool {
 	return i.getBool(SequentialScanning)
+}
+
+func (i *Config) GetAutoScan() bool {
+	return i.getBoolDefault(AutoScan, autoScanDefault)
+}
+
+func (i *Config) GetAutoScanInterval() int {
+	val := i.getInt(AutoScanInterval)
+	if val <= 0 {
+		return autoScanIntervalDefault
+	}
+	return val
 }
 
 func (i *Config) GetGalleryCoverRegex() string {
@@ -1994,6 +2012,8 @@ func (i *Config) setDefaultValues() {
 
 	i.setDefault(WriteImageThumbnails, writeImageThumbnailsDefault)
 	i.setDefault(CreateImageClipsFromVideos, createImageClipsFromVideosDefault)
+	i.setDefault(AutoScan, autoScanDefault)
+	i.setDefault(AutoScanInterval, autoScanIntervalDefault)
 
 	i.setDefault(Database, defaultDatabaseFilePath)
 

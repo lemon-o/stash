@@ -1329,9 +1329,42 @@ npx pnpm run start
      - 在 `index.scss` 中配置 `scrollbar-gutter: stable`，杜绝因滚动条显隐产生的页面横向跳动；
      - 在 `lightbox.scss` 中加入 `overscroll-behavior: contain` 与 `touch-action: none`，消除移动端越界滑动导致的页面露底。
 
+### 任务四十三：内核级媒体库实时变动监听与定时智能探测自动扫描守护引擎（类 Jellyfin 实时监控）
+- **目标文件**：
+  - `internal/manager/autoscan.go`（新建）
+  - `internal/manager/manager.go`
+  - `internal/manager/init.go`
+  - `internal/manager/config/config.go`
+  - `data/config.yml`
+- **问题与现状剖析**：
+  1. **Stash 原版架构缺乏自动扫描与文件系统监听守护机制**：
+     - 原版 Stash 仅设计为“手动触发”，用户在媒体目录新增、拷入或下载了新短片/相册后，系统不会自动感知，用户必须每次手动前往「设置→任务」点击「扫描」才能入库；
+     - 相比于 Jellyfin / Plex 成熟的“实时监控”（Real-time Monitoring）与“定时扫描”，Stash 用户体验割裂且滞后；
+  2. **网络存储与大文件传输冲突挑战**：
+     - 用户媒体通常存放在 NAS 共享卷（SMB/NFS）或 Docker 挂载目录下，网络文件系统事件易丢失；
+     - 此外，大体积视频（数 GB）在 BT 下载或网络拷贝过程中，若在文件尚未写完时草率抢跑扫描，极易读到残缺损坏文件导致入库异常。
+- **机制与实现方案**：
+  1. **fsnotify 原生底层文件系统事件监听（Real-Time File Watching）**：
+     - 新建 `internal/manager/autoscan.go`，由 Manager 统一托管 `AutoScanManager` 生命周期；
+     - 递归监听所有已配置的媒体库目录（自动排除 `@eaDir`、`#recycle` 等系统垃圾缓存目录）；
+     - 实时捕获文件 `Create`、`Write`、`Rename`、`Remove` 事件，当有新目录创建时自动挂载递归监控；
+  2. **10 秒静默防抖保护窗口（10s Write-Silence Debounce Window）**：
+     - 引入防抖机制：当检测到文件变动时，不立即扫描，而是启动 10 秒倒计时；
+     - 在大文件拷贝或下载写入过程中，连续的写入事件会持续刷新计时器；只有当文件传输彻底完成、连续 10 秒没有新的写入事件时，才触发扫描；
+     - 彻底避免在视频拷贝中途读取残缺文件；
+  3. **并发作业排队互斥锁保护（Task Deduplication Guard）**：
+     - 在触发扫描前，检查 `JobManager` 队列中是否已有 `Scanning...` 任务正在运行；
+     - 若已有扫描在跑，自动推迟等待当前扫描结束后再无缝衔接，杜绝重复并发任务冲突；
+  4. **NAS / Docker 挂载网络卷定期探测兜底（5分钟定时智能自愈）**：
+     - 针对 SMB/NFS 等无法穿透 inotify 事件的远程挂载场景，内置 5 分钟周期的轻量定时巡检循环；
+     - 采用纳秒级轻量探测：仅检查媒体文件的修改时间（`ModTime > lastScanTime`），若无新文件，毫秒级跳出（0% CPU 占用，且不在前端任务列表产生任何干扰日志）；若检测到新文件，自动唤醒增量扫描；
+  5. **流式增量呈现与全自动集合归类协同**：
+     - 自动触发的扫描任务与任务二十四（增量实时流式推送）及任务二十六（开机自释放 `auto_group` 插件）完美联动，新视频考入 10 秒后全自动生成封面、自动归类进集合并实时呈现在前端页面上，达成同 Jellyfin 般行云流水的纯自动体验。
+
 ---
 
 *文档更新时间：2026-10-02*  
 *维护者：Antigravity & User Pair-Programming*
+
 
 

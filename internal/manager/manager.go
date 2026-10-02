@@ -69,6 +69,8 @@ type Manager struct {
 	GroupService   GroupService
 
 	scanSubs *subscriptionManager
+
+	AutoScanManager *AutoScanManager
 }
 
 var instance *Manager
@@ -118,6 +120,10 @@ func (s *Manager) RefreshConfig() {
 
 		s.ImageThumbnailGenerateWaitGroup.Size = cfg.GetParallelTasksWithAutoDetection()
 	}
+
+	if s.AutoScanManager != nil {
+		s.RefreshAutoScan()
+	}
 }
 
 // RefreshPluginCache refreshes the plugin cache.
@@ -156,6 +162,19 @@ func (s *Manager) RefreshDLNA() {
 		if err := dlnaService.Start(nil); err != nil {
 			logger.Warnf("error starting DLNA service: %v", err)
 		}
+	}
+}
+
+// RefreshAutoScan starts/stops or re-configures the automatic library scanning service.
+func (s *Manager) RefreshAutoScan() {
+	if s.AutoScanManager != nil {
+		s.AutoScanManager.Stop()
+		s.AutoScanManager = nil
+	}
+
+	if s.Config.GetAutoScan() {
+		s.AutoScanManager = NewAutoScanManager(s)
+		s.AutoScanManager.Start()
 	}
 }
 
@@ -398,6 +417,11 @@ func (s *Manager) GetSystemStatus() *SystemStatus {
 // Shutdown gracefully stops the manager
 func (s *Manager) Shutdown() {
 	// TODO: Each part of the manager needs to gracefully stop at some point
+
+	if s.AutoScanManager != nil {
+		s.AutoScanManager.Stop()
+		s.AutoScanManager = nil
+	}
 
 	if s.StreamManager != nil {
 		s.StreamManager.Shutdown()
