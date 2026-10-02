@@ -1397,11 +1397,31 @@ npx pnpm run start
      - 在 `index.scss` 中针对移动端将 `.detail-body` 外边距安全清零（`margin: 0 !important; width: 100% !important; padding: 0 4px !important;`），杜绝 30px 横向溢出；
      - `#group-page` 封面居中自适应缩放（`max-height: 260px`），属性标题宽度由 150px 自适应降至 85px，确保小屏设备上文字清爽整齐。
 
+### 任务四十五：首页（FrontPage）流式视口懒加载与轻量查询极速化重构（根绝首屏深层 Join 压力与渲染卡顿）
+- **目标文件**：
+  - `ui/v2.5/src/hooks/useInView.ts`（新增通用视口感知 Hook）
+  - `ui/v2.5/src/components/FrontPage/Control.tsx`
+  - `ui/v2.5/src/components/Galleries/GalleryRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Groups/GroupRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Groups/GroupWallCard.tsx`
+- **问题与现状剖析**：
+  1. **首屏全量并发深层查询引发数据库与前端渲染过载**：
+     - 首页（FrontPage）通常配置了多个推荐行（短片、集合、图库、自定义标签筛选等）；
+     - 原版各推荐行在组件初次挂载时即刻并发发起全量 GraphQL 查询（如 `useFindGalleries`、`useFindGroups`）；
+     - 原生查询拉取了完整的嵌套片段（如包含全部关联短片、章节 chapters、表演者 performers、所有嵌套集合及文件列表），深层递归 Join 导致数据库负载急剧上升，尤其当媒体库庞大时首屏白屏时间较长；
+  2. **视口外元素盲目渲染浪费带宽与算力**：
+     - 用户未向下滚动查看的后续行同样被强行加载和绘制，浪费网络与 DOM 节点内存。
+- **机制与实现方案**：
+  1. **构建高性能 `useInView` 视口感知引擎**：
+     - 基于现代原生 `IntersectionObserver` 监听 DOM 可见性，预留 `400px` 舒适预加载边缘（`rootMargin: "400px"`）；
+     - 内置后台智能兜底延时定时器（`prefetchDelayMs`），即使未滚动也在后台平滑温和静默预拉取，杜绝空白等待；
+  2. **设计首页专用轻量级极速 GraphQL 查询**：
+     - 在 `GalleryRecommendationRow` 中定义 `FIND_FRONTPAGE_GALLERIES`，仅提取封面、标题、评分、照片数量与片商等核心展示字段，彻底剔除庞大的文件列表与多对多关联；
+     - 在 `GroupRecommendationRow` 中定义 `FIND_FRONTPAGE_GROUPS`，仅获取封面路径、分集数、上映日期与评分，避免递归拉取内含所有短片与表演者；
+  3. **细化卡片布局与异步解码**：
+     - 优化自定义筛选每页条目数为更适宜瀑布排布的 16 条，并在 `GroupWallCard` 封面图片中引入 `decoding="async"`，彻底消除图片解码阻塞主线程。
+
 ---
 
 *文档更新时间：2026-10-02*  
 *维护者：Antigravity & User Pair-Programming*
-
-
-
-

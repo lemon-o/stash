@@ -128,6 +128,7 @@ export const GroupWallCard: React.FC<IGroupWallCardProps> = PatchComponent(
         {cover ? (
           <img
             loading="lazy"
+            decoding="async"
             src={cover}
             alt={group.name}
             className={`${CLASSNAME}-img`}

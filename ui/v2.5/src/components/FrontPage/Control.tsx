@@ -153,7 +153,7 @@ const CustomFilterResults: React.FC<ICustomFilterProps> = ({
   const intl = useIntl();
 
   const filter = useMemo(() => {
-    const itemsPerPage = 25;
+    const itemsPerPage = 16;
     const ret = new ListFilterModel(customFilter.mode, config);
     ret.sortBy = customFilter.sortBy;
     ret.sortDirection = customFilter.direction;
