@@ -2,7 +2,6 @@ package manager
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"math"
 	"os"
@@ -312,14 +311,14 @@ func (a *AutoScanManager) hasChanges(ctx context.Context) (bool, error) {
 			if !exists {
 				logger.Infof("[AutoScan] Detected unindexed file on disk: %s", path)
 				hasDiff = true
-				return fs.SkipAll
+				return filepath.SkipAll
 			}
 
 			// Check if file was modified (size differs or mtime differs by more than 2 seconds)
 			if info.Size() != dbItem.Size || math.Abs(info.ModTime().Sub(dbItem.ModTime).Seconds()) > 2 {
 				logger.Infof("[AutoScan] Detected modified file on disk: %s", path)
 				hasDiff = true
-				return fs.SkipAll
+				return filepath.SkipAll
 			}
 
 			return nil
