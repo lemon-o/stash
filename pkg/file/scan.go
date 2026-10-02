@@ -113,6 +113,10 @@ type ScannedFile struct {
 
 // AcceptEntry determines if the file entry should be accepted for scanning
 func (s *Scanner) AcceptEntry(ctx context.Context, path string, info fs.FileInfo, zipFilePath string) bool {
+	if IsIgnoredSystemOrThumbnailPath(path) || (zipFilePath != "" && IsIgnoredSystemOrThumbnailPath(zipFilePath)) {
+		return false
+	}
+
 	// always accept if there's no filters
 	accept := len(s.ScanFilters) == 0
 	for _, filter := range s.ScanFilters {

@@ -5,6 +5,7 @@ import re
 import base64
 import sqlite3
 import tempfile
+import time
 import subprocess
 import urllib.request
 import urllib.error
@@ -49,6 +50,34 @@ def get_sqlite_path():
         if os.path.exists(c):
             return c
     return candidates[0]
+
+IGNORED_SYSTEM_DIRS = {
+    "@eadir", ".@eadir", "#recycle", "@recycle", ".@__thumb",
+    "__macosx", ".thumbnails", "$recycle.bin", "system volume information",
+    ".trashes", ".spotlight-v100", ".fseventsd", ".temporaryitems"
+}
+
+def is_ignored_path(path):
+    if not path:
+        return False
+    norm = os.path.normpath(path).replace("\\", "/")
+    parts = norm.split("/")
+    for p in parts:
+        if p.strip().lower() in IGNORED_SYSTEM_DIRS:
+            return True
+    base = os.path.basename(norm).strip()
+    lower_base = base.lower()
+    if lower_base in {".ds_store", "thumbs.db", "ehthumbs.db", "ehthumbs_vista.db", "desktop.ini", ".nomedia"}:
+        return True
+    if base.startswith("._"):
+        return True
+    upper_base = base.upper()
+    if (upper_base.startswith("SYNOFILE_THUMB_") or
+        upper_base.startswith("SYNOPHOTO_THUMB_") or
+        upper_base.startswith("SYNOPHOTO_FILM_") or
+        upper_base.startswith("@SYNOEASTREAM")):
+        return True
+    return False
 
 class StashClient:
     def __init__(self, conn=None):
@@ -99,6 +128,7 @@ class StashClient:
                     id
                     name
                     front_image_path
+                    scene_count
                 }
             }
         }
@@ -107,7 +137,14 @@ class StashClient:
         groups = data.get("findGroups", {}).get("groups", [])
         group_map = {}
         for g in groups:
-            group_map[g["name"].strip().lower()] = g
+            key = g["name"].strip().lower()
+            # If duplicates exist in list, prioritize the one with highest scene_count or with front_image
+            if key not in group_map:
+                group_map[key] = g
+            else:
+                existing = group_map[key]
+                if (g.get("scene_count") or 0) > (existing.get("scene_count") or 0) or (g.get("front_image_path") and not existing.get("front_image_path")):
+                    group_map[key] = g
         return group_map
 
     def create_group(self, name, front_image=None):
@@ -138,6 +175,16 @@ class StashClient:
         inp = {"id": str(group_id), "front_image": front_image}
         data = self.graphql(mutation, {"input": inp})
         return data.get("groupUpdate")
+
+    def destroy_group(self, group_id):
+        mutation = """
+        mutation DestroyGroup($input: GroupDestroyInput!) {
+            groupDestroy(input: $input)
+        }
+        """
+        inp = {"id": str(group_id)}
+        data = self.graphql(mutation, {"input": inp})
+        return data.get("groupDestroy")
 
     def get_scene(self, scene_id):
         query = """
@@ -288,21 +335,62 @@ def determine_collection_info(file_path, library_roots):
       - is_subfolder: boolean (True if in a subfolder, False if directly in root library or drive root)
       - collection_name: string or None
       - collection_dir: string or None
+    
+    Collection logic:
+      A collection corresponds to the 1st-level subfolder directly under the matched library root.
+      Any files nested deeper under that subfolder belong to that same top-level collection.
+      Files located directly in the root of the library are excluded.
     """
-    if not file_path:
+    if not file_path or is_ignored_path(file_path):
         return False, None, None
 
-    norm = os.path.normpath(file_path)
-    parent = os.path.dirname(norm)
-    if not parent or parent == norm:
+    norm_file = os.path.normpath(file_path)
+    real_file = resolve_real_path(norm_file)
+
+    # 1. Match against configured library roots
+    matched_root = None
+    sorted_roots = sorted(library_roots, key=lambda r: len(r), reverse=True)
+    for r in sorted_roots:
+        norm_r = os.path.normcase(os.path.normpath(r))
+        n_file = os.path.normcase(norm_file)
+        if n_file.startswith(norm_r + os.sep):
+            matched_root = r
+            break
+        if real_file:
+            r_file = os.path.normcase(real_file)
+            r_root = os.path.normcase(resolve_real_path(r) or r)
+            if r_file.startswith(r_root + os.sep):
+                matched_root = r
+                break
+
+    if matched_root:
+        try:
+            rel = os.path.relpath(norm_file, matched_root)
+        except Exception:
+            rel = os.path.relpath(real_file, resolve_real_path(matched_root))
+
+        parts = os.path.normpath(rel).split(os.sep)
+        # parts[0] is the top-level directory directly under library root
+        if len(parts) <= 1:
+            # File is directly in library root -> not a subfolder collection
+            return False, None, None
+
+        col_name = parts[0].strip()
+        if not col_name or is_ignored_path(col_name):
+            return False, None, None
+
+        col_dir = os.path.join(matched_root, parts[0])
+        return True, col_name, col_dir
+
+    # 2. Fallback if no library root was matched
+    parent = os.path.dirname(norm_file)
+    if not parent or parent == norm_file:
         return False, None, None
 
-    # Check if parent is a drive root e.g. "D:\" or "\"
     drive, tail = os.path.splitdrive(parent)
     if tail in ("", "\\", "/"):
         return False, None, None
 
-    # Check if parent is a disc/part folder (e.g. CD1, Season 1)
     base_parent = os.path.basename(parent)
     if MULTIPART_RE.match(base_parent):
         grandparent = os.path.dirname(parent)
@@ -310,18 +398,158 @@ def determine_collection_info(file_path, library_roots):
         if grandparent and g_tail not in ("", "\\", "/"):
             parent = grandparent
 
-    # Check if parent is one of the library roots (二级子文件夹逻辑：仅对媒体库子文件夹创建集合，排除直接位于媒体库根目录下的文件)
     norm_parent = os.path.normcase(os.path.normpath(parent))
     real_parent = os.path.normcase(resolve_real_path(parent))
     if norm_parent in library_roots or real_parent in library_roots:
-        # Directly under library root -> not a subfolder collection
         return False, None, None
 
     col_name = os.path.basename(parent).strip()
-    if not col_name:
+    if not col_name or is_ignored_path(col_name):
         return False, None, None
 
     return True, col_name, parent
+
+
+class AutoGroupLock:
+    """
+    Cross-platform, multi-process mutual exclusion file lock.
+    Guarantees thread-safe and process-safe group creation and deduplication.
+    """
+    def __init__(self, lock_file=None, timeout=60):
+        if lock_file is None:
+            self.lock_file = os.path.join(tempfile.gettempdir(), "stash_auto_group.lock")
+        else:
+            self.lock_file = lock_file
+        self.timeout = timeout
+        self.fd = None
+
+    def __enter__(self):
+        start_time = time.time()
+        while True:
+            try:
+                self.fd = os.open(self.lock_file, os.O_CREAT | os.O_RDWR)
+                if sys.platform == "win32":
+                    import msvcrt
+                    msvcrt.locking(self.fd, msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except (OSError, IOError):
+                if self.fd is not None:
+                    try:
+                        os.close(self.fd)
+                    except Exception:
+                        pass
+                    self.fd = None
+                if time.time() - start_time > self.timeout:
+                    log.LogWarning(f"等待自动集合互斥锁超时 ({self.timeout}s)，继续执行以防死锁")
+                    return self
+                time.sleep(0.05)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.fd is not None:
+            try:
+                if sys.platform == "win32":
+                    import msvcrt
+                    os.lseek(self.fd, 0, os.SEEK_SET)
+                    msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.fd, fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                os.close(self.fd)
+            except Exception:
+                pass
+            self.fd = None
+
+
+def cleanup_duplicate_groups(client):
+    """
+    Scans for duplicate groups having identical normalized names.
+    Consolidates scene associations into the primary group and deletes redundant groups.
+    """
+    try:
+        query = """
+        query GetAllGroupsWithScenes {
+            findGroups(filter: { per_page: -1 }) {
+                count
+                groups {
+                    id
+                    name
+                    front_image_path
+                    scene_count
+                }
+            }
+        }
+        """
+        data = client.graphql(query)
+        groups = data.get("findGroups", {}).get("groups", [])
+        if not groups:
+            return
+
+        name_groups = {}
+        for g in groups:
+            name = (g.get("name") or "").strip()
+            if not name:
+                continue
+            norm_name = name.lower()
+            if norm_name not in name_groups:
+                name_groups[norm_name] = []
+            name_groups[norm_name].append(g)
+
+        db_path = get_sqlite_path()
+        for norm_name, dups in name_groups.items():
+            if len(dups) <= 1:
+                continue
+
+            # Prioritize: highest scene count, has front cover, lowest ID
+            dups.sort(
+                key=lambda x: (
+                    -(x.get("scene_count") or 0),
+                    0 if x.get("front_image_path") else 1,
+                    int(x.get("id", 999999))
+                )
+            )
+            primary = dups[0]
+            redundant = dups[1:]
+
+            display_name = primary.get("name")
+            primary_id = primary["id"]
+            redundant_ids = [r["id"] for r in redundant]
+
+            log.LogInfo(f"检测到重复集合【{display_name}】共 {len(dups)} 个 (主集合 ID: {primary_id}, 冗余 ID: {redundant_ids})，正在自动合并关联短片并清理冗余...")
+
+            if os.path.exists(db_path):
+                try:
+                    conn = sqlite3.connect(db_path)
+                    cur = conn.cursor()
+                    for r in redundant:
+                        rid = int(r["id"])
+                        scenes = cur.execute("SELECT scene_id, scene_index FROM groups_scenes WHERE group_id = ?", (rid,)).fetchall()
+                        for sid, sidx in scenes:
+                            cur.execute(
+                                "INSERT OR IGNORE INTO groups_scenes (group_id, scene_id, scene_index) VALUES (?, ?, ?)",
+                                (int(primary_id), sid, sidx)
+                            )
+                        cur.execute("DELETE FROM groups_scenes WHERE group_id = ?", (rid,))
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    log.LogWarning(f"合并重复集合短片关系时发生错误: {e}")
+
+            for r in redundant:
+                rid = r["id"]
+                try:
+                    client.destroy_group(rid)
+                    log.LogInfo(f"已清理冗余重复集合 ID #{rid}")
+                except Exception as e:
+                    log.LogWarning(f"删除冗余集合 #{rid} 失败: {e}")
+
+    except Exception as e:
+        log.LogWarning(f"清理重复集合时发生错误: {e}")
 
 
 def find_cover_image_on_disk(folder_dir, col_name):
@@ -331,7 +559,6 @@ def find_cover_image_on_disk(folder_dir, col_name):
     if not os.path.exists(folder_dir):
         return None
 
-    # Search candidates in folder_dir
     patterns = [
         re.compile(r"^(poster|cover|folder|front)\.(jpe?g|png|webp)$", re.IGNORECASE),
         re.compile(rf"^{re.escape(col_name)}\.(jpe?g|png|webp)$", re.IGNORECASE),
@@ -345,13 +572,16 @@ def find_cover_image_on_disk(folder_dir, col_name):
 
     for pat in patterns:
         for entry in entries:
+            if is_ignored_path(entry):
+                continue
             if pat.match(entry):
                 img_path = os.path.join(folder_dir, entry)
                 if os.path.isfile(img_path):
                     return file_to_data_uri(img_path)
 
-    # Any image file in folder
     for entry in entries:
+        if is_ignored_path(entry):
+            continue
         if entry.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
             img_path = os.path.join(folder_dir, entry)
             if os.path.isfile(img_path):
@@ -407,13 +637,6 @@ def get_scene_cover_from_sqlite(scene_id):
 
 
 def is_image_black_or_blank(raw_bytes):
-    """
-    Evaluates raw image bytes and returns:
-      - is_unusable: bool (True if black or blank/solid color)
-      - score: float (quality score based on contrast and brightness)
-      - mean: float (average luminance 0-255)
-      - stddev: float (standard deviation of luminance)
-    """
     try:
         from PIL import Image, ImageStat
         import io
@@ -424,9 +647,7 @@ def is_image_black_or_blank(raw_bytes):
         extrema = im.getextrema()
         min_val, max_val = extrema[0], extrema[1]
 
-        # Black frame check: mean too low or maximum brightness still very dark
         is_black = (mean < 20.0 and max_val < 45.0) or mean < 15.0
-        # Blank / Solid color frame check: no variance or contrast
         is_blank = stddev < 6.0 or (max_val - min_val) < 15.0
 
         exp_w = 1.0
@@ -484,7 +705,6 @@ def extract_optimal_frame_ffmpeg(video_path, duration=None):
                     first_data_uri = data_uri
 
                 is_unusable, score, mean, stddev = is_image_black_or_blank(raw_bytes)
-                # 只要不是黑屏且非纯色空白屏（not is_unusable），立即返回，避免多轮 FFmpeg 串行抽取
                 if not is_unusable:
                     log.LogDebug(f"提取到清晰画面 ({os.path.basename(video_path)} @ {t:.2f}s, mean={mean:.1f}, stddev={stddev:.1f})")
                     return data_uri
@@ -574,8 +794,78 @@ def resolve_group_cover(folder_dir, col_name, scene_id, video_path):
     return None
 
 
+def get_or_create_group(client, col_name, folder_dir, scene_id, file_path, groups_map):
+    """
+    Process-safe, idempotent group lookup and creation.
+    Guarantees no duplicate groups will ever be created.
+    """
+    col_key = col_name.strip().lower()
+    group = groups_map.get(col_key) if groups_map is not None else None
+
+    if group:
+        if not group.get("front_image_path"):
+            log.LogInfo(f"集合 【{col_name}】 暂无封面图，正在自动生成...")
+            cover_data_uri = resolve_group_cover(folder_dir, col_name, scene_id, file_path)
+            if cover_data_uri:
+                client.update_group_cover(group["id"], cover_data_uri)
+                group["front_image_path"] = "updated"
+                log.LogInfo(f"成功为集合 【{col_name}】 设置封面图")
+        return group
+
+    # Synchronize creation with inter-process lock
+    with AutoGroupLock():
+        # Double check database directly under lock
+        db_path = get_sqlite_path()
+        existing = None
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path)
+                c = conn.cursor()
+                row = c.execute(
+                    "SELECT id, name, front_image_blob FROM groups WHERE LOWER(TRIM(name)) = ? ORDER BY id ASC LIMIT 1",
+                    (col_key,)
+                ).fetchone()
+                conn.close()
+                if row:
+                    existing = {
+                        "id": str(row[0]),
+                        "name": row[1],
+                        "front_image_path": row[2]
+                    }
+            except Exception as e:
+                log.LogDebug(f"SQLite check failed: {e}")
+
+        if not existing:
+            latest_groups = client.get_all_groups()
+            if col_key in latest_groups:
+                existing = latest_groups[col_key]
+
+        if existing:
+            group = existing
+            if groups_map is not None:
+                groups_map[col_key] = group
+            if not group.get("front_image_path"):
+                cover_data_uri = resolve_group_cover(folder_dir, col_name, scene_id, file_path)
+                if cover_data_uri:
+                    client.update_group_cover(group["id"], cover_data_uri)
+                    group["front_image_path"] = "updated"
+            return group
+
+        # Truly does not exist anywhere -> create it
+        log.LogInfo(f"创建新集合: 【{col_name}】")
+        cover_data_uri = resolve_group_cover(folder_dir, col_name, scene_id, file_path)
+        new_group = client.create_group(col_name, front_image=cover_data_uri)
+        if new_group:
+            group = new_group
+            if groups_map is not None:
+                groups_map[col_key] = group
+            log.LogInfo(f"集合创建成功: 【{col_name}】(ID: {group['id']})")
+            return group
+
+    return None
+
+
 def process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=False):
-    # 仅在明确开启核验时修复短片缩略图（扫描与日常入库时 Go 后端已生成封面，避免重复调用 FFmpeg）
     if fix_scene_thumb:
         check_and_repair_scene_thumbnail(scene, client)
 
@@ -593,28 +883,7 @@ def process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=Fals
     if not is_subfolder or not col_name:
         return
 
-    col_key = col_name.strip().lower()
-    group = groups_map.get(col_key)
-
-    # If group does not exist, create it with cover
-    if not group:
-        log.LogInfo(f"创建新集合: 【{col_name}】")
-        cover_data_uri = resolve_group_cover(folder_dir, col_name, scene_id, file_path)
-        new_group = client.create_group(col_name, front_image=cover_data_uri)
-        if new_group:
-            group = new_group
-            groups_map[col_key] = group
-            log.LogInfo(f"集合创建成功: 【{col_name}】(ID: {group['id']})")
-    else:
-        # Group exists. Check if it lacks a front cover image
-        if not group.get("front_image_path"):
-            log.LogInfo(f"集合 【{col_name}】 暂无封面图，正在自动生成...")
-            cover_data_uri = resolve_group_cover(folder_dir, col_name, scene_id, file_path)
-            if cover_data_uri:
-                client.update_group_cover(group["id"], cover_data_uri)
-                group["front_image_path"] = "updated"
-                log.LogInfo(f"成功为集合 【{col_name}】 设置封面图")
-
+    group = get_or_create_group(client, col_name, folder_dir, scene_id, file_path, groups_map)
     if not group:
         return
 
@@ -641,6 +910,10 @@ def process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=Fals
 
 def run_full(client):
     log.LogInfo("开始根据媒体库子文件夹自动整理集合与封面图...")
+    # First: Clean up any duplicate groups
+    with AutoGroupLock():
+        cleanup_duplicate_groups(client)
+
     library_roots = get_library_roots(client)
     log.LogDebug(f"媒体库根目录: {library_roots}")
     groups_map = client.get_all_groups()

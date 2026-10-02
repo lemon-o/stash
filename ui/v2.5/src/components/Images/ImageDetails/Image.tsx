@@ -23,6 +23,7 @@ import { OrganizedButton } from "src/components/Scenes/SceneDetails/OrganizedBut
 import { ImageFileInfoPanel } from "./ImageFileInfoPanel";
 import { ImageEditPanel } from "./ImageEditPanel";
 import { ImageDetailPanel } from "./ImageDetailPanel";
+import { useLightbox } from "src/hooks/Lightbox/hooks";
 import { DeleteImagesDialog } from "../DeleteImagesDialog";
 import { faEllipsisV } from "@fortawesome/free-solid-svg-icons";
 import { imagePath, imageTitle } from "src/core/files";
@@ -59,6 +60,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
   const [resetO] = useImageResetO(image.id);
 
   const [updateImage] = useImageUpdate();
+  const showLightbox = useLightbox({ images: [image] });
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
@@ -384,10 +386,15 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
             playsInline={image.visual_files[0].__typename === "VideoFile"}
             controls={image.visual_files[0].__typename === "VideoFile"}
             className="m-sm-auto no-gutter image-image"
+            onClick={
+              image.visual_files[0].__typename !== "VideoFile"
+                ? () => showLightbox()
+                : undefined
+            }
             style={
               image.visual_files[0].__typename === "VideoFile"
                 ? { width: "100%", height: "100%" }
-                : {}
+                : { cursor: "pointer" }
             }
             alt={title}
             src={image.paths.image ?? ""}

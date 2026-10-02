@@ -1,6 +1,6 @@
 import React from "react";
 import { useFindGroups } from "src/core/StashService";
-import { GroupCard } from "./GroupCard";
+import { GroupWallCard } from "./GroupWallCard";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { PatchComponent } from "src/patch";
 import { FilteredRecommendationRow } from "../FrontPage/FilteredRecommendationRow";
@@ -31,9 +31,13 @@ export const GroupRecommendationRow: React.FC<IProps> = PatchComponent(
           ? [...Array(props.filter.itemsPerPage)].map((i) => (
               <div key={`_${i}`} className="group-skeleton skeleton-card"></div>
             ))
-          : result.data?.findGroups.groups.map((g) => (
-              <GroupCard key={g.id} group={g} zoomIndex={2} />
-            ))}
+          : (
+            <div className="GroupWall zoom-2 w-100">
+              {result.data?.findGroups.groups.map((g) => (
+                <GroupWallCard key={g.id} group={g} zoomIndex={2} />
+              ))}
+            </div>
+          )}
       </FilteredRecommendationRow>
     );
   }

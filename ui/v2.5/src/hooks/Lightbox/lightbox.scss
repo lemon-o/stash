@@ -9,6 +9,39 @@
   top: 0;
   z-index: 1040;
 
+  &:fullscreen,
+  &:-webkit-full-screen {
+    background-color: #000;
+  }
+
+  &-header,
+  &-footer,
+  &-navbutton {
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+  }
+
+  &.controls-hidden {
+    cursor: none;
+
+    .Lightbox-header,
+    .Lightbox-footer,
+    .Lightbox-navbutton {
+      opacity: 0;
+      pointer-events: none;
+      visibility: hidden;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+
+    img,
+    video,
+    .Lightbox-carousel-image,
+    .Lightbox-display,
+    .Lightbox-carousel,
+    .Lightbox-navzone {
+      cursor: none !important;
+    }
+  }
+
   &-header {
     align-items: center;
     display: flex;

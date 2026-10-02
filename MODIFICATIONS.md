@@ -479,6 +479,45 @@
 
 ---
 
+### 任务十六：“集合”（Groups）真·沉浸式预览墙（GroupWall）组件全新研发与自适应布局重构
+
+* **机制与根本原因剖析**：
+  1. **旧逻辑中预览墙与网格模式代码共用（罪魁祸首）**：
+     - 在原生 Stash 中，“集合”（Groups）从未设计过专属预览墙组件（只有 `GroupCardGrid`）；
+     - 上一任务中在支持 `DisplayMode.Wall` 时，`GroupList.tsx` 直接将 `Wall` 与 `Grid` 合并在同一分支返回 `<GroupCardGrid>`；
+     - `GroupCardGrid` 内部基于 Bootstrap 的传统 `<GridCard>` 渲染，容器具有固定的宽高限制（固定 240px 宽度卡片外壳），由上层“图片缩略图区（`.thumbnail-section`）”与下层“卡片文本区（`.card-section`）”强制上下拼接组成；
+     - 当集合封面为竖屏比例（如 9:16、3:4 或手机竖拍视频）时，图片无法铺满，导致顶部图片区出现黑边，而下半部分则是巨大的空置黑色文本块（仅放了标题和 `▶ 6` 播放次数图标），既浪费视觉空间，又与“格状显示”完全雷同，失去预览墙意义。
+  2. **真正的“预览墙（Wall）”范式规范**：
+     - 像短片（`SceneWallPanel`）、图库（`GalleryWallCard`）、图片（`ImageWall`）一样，真正的预览墙应当是**无下置独立文本块的纯视觉照片/媒体墙**；
+     - 封面图片以 `object-fit: cover` 100% 填充满整个卡片容器，彻底消灭下方与两侧的空置黑边；
+     - 标题、场景计数、日期、工作室等元数据应当作为下沉半透明渐变（`.lineargradient` + `.GroupWallCard-footer`）**在鼠标悬停（Hover）时浮层显示**；
+     - 容器宽度应根据图片真实天然宽高比（`naturalWidth / naturalHeight`）动态自适应计算，竖版海报窄长排列、横版海报宽展舒展，多行无缝砖墙拼接。
+* **目标文件**：
+  - `ui/v2.5/src/components/Groups/GroupWallCard.tsx`（新增专属组件）
+  - `ui/v2.5/src/components/Groups/GroupWall.tsx`（新增预览墙容器组件）
+  - `ui/v2.5/src/components/Groups/GroupList.tsx`
+  - `ui/v2.5/src/components/Groups/GroupRecommendationRow.tsx`
+  - `ui/v2.5/src/components/Groups/styles.scss`
+* **代码修改点**：
+  1. **构建全新 `GroupWallCard` 媒体浮层卡片**：
+     - 容器采用 `<section className="GroupWallCard wall-item">`，封面图片（`group.front_image_path` / `group.back_image_path`）以 `100%` 宽高及 `object-fit: cover` 饱满填充；无封面时优雅降级为深色渐变与收藏夹图标；
+     - 挂载 `onImageLoad` 实时读取图片的 `naturalWidth / naturalHeight`，动态计算其实际宽高比（竖屏如 0.5625，横屏如 1.778，海报如 0.667）；
+     - 剥离下置 `.card-section`，重构为现代流媒体标准的下浮渐变层：悬浮时浮现平滑暗色渐变（`linear-gradient(to top, rgba(0,0,0,0.92)...)`），优雅展示集合标题、场景数量胶囊徽章（`<Icon icon={faPlayCircle} /> {sceneCount}`）、发布日期与工作室；
+     - 支持批量选择多选框（`.wall-item-check`，悬停时显现，选中时常驻）与评分角标（`RatingBanner`）。
+  2. **构建行高锁定与比例自适应的 `GroupWall` 墙式容器**：
+     - 在 `GroupWall` 中映射 `zoomIndex` 为基准行高（0: 160px, 1: 220px, 2: 300px, 3: 420px，70% 缩放下精准锁定为 `300px`）；
+     - 每张卡片根据自身宽高比自适应宽度（`width = Math.round(rowHeight * effectiveRatio)`），并通过 `flex-grow` 按比例微微平摊行宽，使得整行两侧精准对齐如砖石拼合；
+     - 容器尾部注入 `&::after { content: ""; flex: auto; flex-grow: 9999; }`，彻底杜绝最后一行卡片被非正常拉扯变长。
+  3. **分流 `GroupList.tsx` 与首页推荐栏**：
+     - `GroupList.tsx` 中分流 `filter.displayMode === DisplayMode.Grid` 返回传统网格 `<GroupCardGrid>`，`filter.displayMode === DisplayMode.Wall` 返回全新自适应预览墙 `<GroupWall>`，两者差异一目了然；
+     - 首页（FrontPage）的 `GroupRecommendationRow.tsx` 同步重构为使用 `<GroupWallCard zoomIndex={2}>`。
+* **效果**：
+  - 点击或默认进入“集合”预览墙时，卡片呈现完整的全幅封面视觉冲击力，原本挤在底部占了一半空间的黑色文本块与固定方盒彻底消失；
+  - 竖屏视频/封面保持优雅的竖版海报形态（如截图中的小野猫视频封面自动适配为竖屏海报），横屏保持宽展全景，完全告别上下黑框与容器呆板问题；
+  - 鼠标悬浮时，标题、剧集数（如 `▶ 6`）与日期在封面底部渐变浮现，视觉质感与流媒体级体验拉满。
+
+---
+
 ## 3. 本地开发热重载与生产联调指南
 
 无需在本地搭建庞大的 Go 和 SQLite/PostgreSQL 后端，可以通过 Vite 代理直接连接你现有的生产服务器（`https://stash.lemjoo.top`）：
@@ -1032,7 +1071,97 @@ npx pnpm run start
      - 在 `JobTable.tsx` 中，引入 `remainingMS = Math.max(0, estimatedLength - elapsedMS)`，精准计算真正的**剩余所需时间**；
      - 当任务进度未达到 1（未完成）时，通过 `Math.min(99, Math.floor(progress))` 限制最高展示 99%，杜绝任务尚未结束却提前显示 100% 的误导体验。
 
+### 任务三十五：根治自动集合并发竞态与集合重复生成问题（两个子文件夹生成7个集合 Bug）
+- **目标文件**：
+  - `data/plugins/auto_group/auto_group.py`
+  - `pkg/plugin/builtin/auto_group/auto_group.py`
+- **问题与现状剖析**：
+  1. **多进程并发竞争导致集合重复创建（Race Condition）**：
+     - 当 Stash 扫描媒体库或批量添加入库时，多个新短片并发完成封面生成，触发 `Scene.Create.Post` 钩子，瞬间拉起多个并行的 `python auto_group.py` 进程；
+     - 由于各独立 Python 进程未加锁，且在启动时分别调用 `get_all_groups()`。在第 1 个进程完成封面抽取与 `createGroup` 创建之前，其余进程均认为该集合“尚不存在”，于是争相调用 `createGroup`；
+     - Stash 后端 GraphQL 的 `groupCreate` 并未对集合名称实施数据库唯一性校验（SQLite `groups.name` 允许重名），最终导致 2 个文件夹（“凸凸兔”与“土豆喵”）分别被并发创建了 4 个与 3 个同名集合，总计生成了 7 个重复集合；
+  2. **缺少自动查重与合并机制**：
+     - 当扫描完成执行全量任务时，集合列表中已残留大量多余同名集合（部分集合孤立且短片计数为 0），UI 视图依然展示这 7 个散乱的集合卡片；
+  3. **深层嵌套子文件夹的归类边界缺失**：
+     - 原版依据单个视频文件的即时父目录（`os.path.dirname`）提取名称，若子文件夹内部存在分集或日期子目录，会导致集合被进一步碎片化为多余集合。
+- **机制与实现方案**：
+  1. **跨平台跨进程原子文件排他锁（AutoGroupLock）**：
+     - 在 `auto_group.py` 中引入基于操作系统底层的非阻塞排他文件锁 `AutoGroupLock`（Windows 采用 `msvcrt.locking`，Linux/macOS 采用 `fcntl.flock`）；
+     - 所有集合查询与创建临界区均受排他锁保护，杜绝并发竞争；
+  2. **双重校验锁与数据库实时查验（Double-Checked Locking）**：
+     - 在获取锁后，通过直接查询底层 SQLite（`SELECT id, name FROM groups WHERE LOWER(TRIM(name)) = ?`）与 GraphQL 实时接口进行二次查验；
+     - 一旦发现集合已被前序并发进程创建，立即复用既有集合 ID 并直接进行短片关联，彻底杜绝重复调用 `createGroup`；
+  3. **历史冗余集合自动检测、关联短片合并与多余清理（cleanup_duplicate_groups）**：
+     - 每次执行插件任务或全量整理时，自动扫描全库同名集合；
+     - 自动选定最佳主集合（优先保留短片数量多、包含封面图的集合），自动将冗余集合下的所有短片归并关联至主集合，并通过 `groupDestroy` 彻底清除多余冗余集合记录；
+  4. **顶层媒体库子文件夹精准层级判定**：
+     - 优化 `determine_collection_info`，严格计算短片文件相对于匹配媒体库根目录（Library Roots）的相对路径；
+     - 以第一级有效子文件夹名称作为集合名称，无论该子文件夹内部有多少层下级目录或分段文件夹，均统一归属于该一级集合，不再碎片化生成多余集合。
+
+### 任务三十六：图片全屏浏览模式无操作自动隐藏全部组件与沉浸式体验优化
+- **目标文件**：
+  - `ui/v2.5/src/hooks/Lightbox/Lightbox.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/lightbox.scss`
+  - `ui/v2.5/src/components/Images/ImageDetails/Image.tsx`
+- **问题与现状剖析**：
+  1. **图片全屏浏览时控件常驻遮挡画面**：
+     - 在图片大图浏览模式（Lightbox）进入全屏后，顶部的标尺、菜单、缩放控制栏、底部的评分高潮计数器、标题与图库跳转栏，以及两侧的翻页箭头按钮持续显示并遮挡画面，无法提供纯粹沉浸的观影/看图体验；
+  2. **缺少无操作空闲计时器（Idle Detection）**：
+     - 原版没有在全屏状态下监听用户的交互状态，鼠标指针也始终常驻显示在图片上方；
+  3. **详情页图片点击交互缺位**：
+     - 单张图片详情页（`/images/:id`）中的图片元素缺少便捷点击唤起 Lightbox 大图/全屏浏览器的交互。
+- **机制与实现方案**：
+  1. **全屏状态 2 秒空闲计时器机制（2s Idle Auto-Hide）**：
+     - 在 `Lightbox.tsx` 中定义 `FULLSCREEN_IDLE_TIMEOUT = 2000`；
+     - 引入 `isControlsHidden` 状态与 `idleTimerRef` 引用；
+     - 当处于全屏状态时，全局监听 `mousemove`、`mousedown`、`touchstart`、`keydown`、`wheel` 事件；
+     - 任何用户活动立即唤醒组件并重置 2 秒计时器；若连续 2 秒无操作，自动激活 `controls-hidden` 状态；
+     - 保护机制：若用户当前打开了设置选项菜单（`showOptions`）或删图确认弹窗（`deleteTarget`），暂停自动隐藏，确保操作便利；
+  2. **平滑淡入淡出动画与鼠标指针彻底隐藏**：
+     - 在 `lightbox.scss` 中，`.Lightbox-header`、`.Lightbox-footer`、`.Lightbox-navbutton` 统一配置 `transition: opacity 0.3s ease, visibility 0.3s ease`；
+     - 当进入 `.controls-hidden` 模式时，所有操作条与翻页按钮平滑过渡至 `opacity: 0`、`pointer-events: none` 与 `visibility: hidden`；
+     - 容器全局应用 `cursor: none !important`，将鼠标光标彻底隐藏，呈现 100% 纯净全黑背景无黑边沉浸式画质；
+  3. **控件隐藏状态下的误触防退出保护**：
+     - 在控件处于隐藏状态时，点击屏幕背景优先唤醒全部控件，避免用户误触关闭 Lightbox；
+  4. **全屏快捷键支持与图片详情页直达全屏大图模式**：
+     - `Lightbox.tsx` 的键盘事件中新增 `F` / `f` 快捷键，支持一键切换全屏；
+     - 在 `Image.tsx` 中挂载 `useLightbox`，单张图片详情页点击图片即可直接开启沉浸式大图模式。
+
+### 任务三十七：系统级排除 NAS 与操作系统垃圾缩略图（拦截群晖 @eaDir、SYNOFILE_THUMB 等并支持一键清理）
+- **目标文件**：
+  - `pkg/file/ignore_system.go`
+  - `pkg/file/ignore_system_test.go`
+  - `pkg/file/scan.go`
+  - `internal/manager/task_scan.go`
+  - `internal/manager/task_clean.go`
+  - `pkg/plugin/builtin/auto_group/auto_group.py`
+  - `data/plugins/auto_group/auto_group.py`
+- **问题根源剖析**：
+  1. **群晖 DSM 与 NAS 索引机制自动生成海量缩略图缓存**：
+     - 群晖 NAS（Synology DSM）在文件索引、Synology Photos、Video Station 等服务运行时，会自动在媒体文件夹中隐式创建 `@eaDir` 目录，并在其中生成大量的多规格缩略图文件（如 `SYNOFILE_THUMB_S.jpg`、`SYNOFILE_THUMB_M.jpg`、`SYNOFILE_THUMB_L.jpg`、`SYNOPHOTO_THUMB_*.jpg` 等）；
+     - QNAP（`.@__thumb`）、macOS（`__MACOSX`、`._*` 资源分叉文件）、Windows（`Thumbs.db`、`$RECYCLE.BIN`）等系统也会在网络共享文件夹中生成大量垃圾文件与缩略图；
+  2. **Stash 原版扫描器缺乏底层系统垃圾过滤器**：
+     - 原版 Stash 仅依赖用户手动在设置中配置复杂的正则表达式（`exclude` / `image_exclude`）或在每个文件夹编写 `.stashignore`；
+     - 若未配置，扫描器会将 `@eaDir` 视为普通图片图库文件夹遍历进入，并将其中包含的全部低分辨率缩略图（如 `SYNOFILE_THUMB_S.jpg`）当作正常图片入库并生成图库，造成媒体库被海量缩略图严重污染；
+  3. **自动集合封面误选低画质缩略图**：
+     - 插件在检测本地封面（`find_cover_image_on_disk`）时，若扫描到同目录下的系统缩略图，容易误将其作为集合的高清封面图。
+- **机制与实现方案**：
+  1. **底层全域系统缩略图与垃圾路径判定引擎（`IsIgnoredSystemOrThumbnailPath`）**：
+     - 在 `pkg/file/ignore_system.go` 中建立系统级黑名单判定规则：
+       - **目录级黑名单**：群晖 `@eaDir`、`.@eaDir`、`#recycle`、QNAP `.@__thumb`、`@recycle`、macOS `__MACOSX`、`.Spotlight-V100`、`.Trashes`、`.fseventsd`、Windows `$RECYCLE.BIN`、`System Volume Information`、Linux `.thumbnails` 等；
+       - **文件级黑名单**：群晖 `SYNOFILE_THUMB_*`、`SYNOPHOTO_THUMB_*`、`SYNOPHOTO_FILM_*`、`@synoEAStream*`、macOS `._*`（AppleDouble 文件）、`.DS_Store`、Windows `Thumbs.db`、`ehthumbs.db`、`desktop.ini`、`.nomedia` 等；
+       - 采用大小写不敏感与路径分段标准化拆解，只要路径中的任何一段父目录或文件名命中规则，即刻判定为忽略项；
+  2. **扫描器深度拦截与剪枝跳过（`AcceptEntry` & `fs.SkipDir`）**：
+     - 在 `pkg/file/scan.go` 的 `Scanner.AcceptEntry` 与 `internal/manager/task_scan.go` 的 `scanFilter.Accept` 最前置入口注入拦截；
+     - 当遍历器遇到 `@eaDir` 等目录时，直接返回 `fs.SkipDir`，**彻底杜绝递归深入群晖缩略图目录**，扫描速度成倍提升，从源头上杜绝缩略图入库；
+  3. **清理任务（Clean）自动清除历史已入库缩略图**：
+     - 在 `internal/manager/task_clean.go` 的 `cleanFilter.Accept` 中加入相同校验；
+     - 用户此前若已被误扫入库 `SYNOFILE_THUMB_*.jpg`，只需在「设置→任务→清理」中运行一次清理任务，系统便会自动识别出所有已入库的垃圾缩略图与空图库并将其从数据库中彻底抹除；
+  4. **自动集合插件（`auto_group.py`）同步免疫**：
+     - 在 `auto_group.py` 中引入 `is_ignored_path`，在计算子文件夹集合归属、遍历短片以及搜寻磁盘海报封面时，全方位跳过系统垃圾与缩略图文件，杜绝将 `@eaDir` 误建为集合或将低画质缩略图设为封面。
+
 ---
 
 *文档更新时间：2026-10-02*  
 *维护者：Antigravity & User Pair-Programming*
+

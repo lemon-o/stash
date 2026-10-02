@@ -84,6 +84,7 @@ const MIN_VALID_INTERVAL_SECONDS = 1;
 const MIN_ZOOM = 0.1;
 const SCROLL_ZOOM_TIMEOUT = 250;
 const ZOOM_NONE_EPSILON = 0.015;
+const FULLSCREEN_IDLE_TIMEOUT = 2000;
 
 interface IProps {
   images: ILightboxImage[];
@@ -138,6 +139,8 @@ export const LightboxComponent: React.FC<IProps> = ({
   // under the handlers' control; this ref only gates, it never picks the index.
   const isSwitchingPageRef = useRef(true);
   const [isFullscreen, setFullscreen] = useState(false);
+  const [isControlsHidden, setIsControlsHidden] = useState(false);
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
   const [imagesLoaded, setImagesLoaded] = useState(0);
@@ -209,6 +212,77 @@ export const LightboxComponent: React.FC<IProps> = ({
   const navRef = useRef<HTMLDivElement | null>(null);
   const clearIntervalCallback = useRef<() => void>();
   const resetIntervalCallback = useRef<() => void>();
+
+  const toggleFullscreen = useCallback(() => {
+    if (!isFullscreen) containerRef.current?.requestFullscreen();
+    else document.exitFullscreen();
+  }, [isFullscreen]);
+
+  const handleUserActivity = useCallback(() => {
+    if (!isFullscreen) {
+      setIsControlsHidden(false);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      return;
+    }
+
+    setIsControlsHidden(false);
+
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+
+    if (showOptions || deleteTarget !== null) {
+      return;
+    }
+
+    idleTimerRef.current = setTimeout(() => {
+      setIsControlsHidden(true);
+    }, FULLSCREEN_IDLE_TIMEOUT);
+  }, [isFullscreen, showOptions, deleteTarget]);
+
+  useEffect(() => {
+    if (isFullscreen) {
+      handleUserActivity();
+    } else {
+      setIsControlsHidden(false);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+    };
+  }, [isFullscreen, handleUserActivity]);
+
+  useEffect(() => {
+    if (!isVisible || !isFullscreen) return;
+
+    const onActivity = () => {
+      handleUserActivity();
+    };
+
+    window.addEventListener("mousemove", onActivity, { passive: true });
+    window.addEventListener("mousedown", onActivity, { passive: true });
+    window.addEventListener("touchstart", onActivity, { passive: true });
+    window.addEventListener("keydown", onActivity, { passive: true });
+    window.addEventListener("wheel", onActivity, { passive: true });
+
+    return () => {
+      window.removeEventListener("mousemove", onActivity);
+      window.removeEventListener("mousedown", onActivity);
+      window.removeEventListener("touchstart", onActivity);
+      window.removeEventListener("keydown", onActivity);
+      window.removeEventListener("wheel", onActivity);
+    };
+  }, [isVisible, isFullscreen, handleUserActivity]);
 
   const allowNavigation = images.length > 1 || pageCallback;
 
@@ -458,6 +532,10 @@ export const LightboxComponent: React.FC<IProps> = ({
   );
 
   const handleClose = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isFullscreen && isControlsHidden) {
+      handleUserActivity();
+      return;
+    }
     const { className } = e.target as Element;
     if (className?.includes?.(CLASSNAME_IMAGE)) close();
   };
@@ -536,6 +614,7 @@ export const LightboxComponent: React.FC<IProps> = ({
       if (e.key === "ArrowLeft") handleLeft();
       else if (e.key === "ArrowRight") handleRight();
       else if (e.key === "Escape") close();
+      else if (e.key === "f" || e.key === "F") toggleFullscreen();
       else if (e.key === "d") {
         // Not while a page switch is in flight: the index is parked at 0 then,
         // so the shortcut would target an image the user isn't viewing.
@@ -549,7 +628,7 @@ export const LightboxComponent: React.FC<IProps> = ({
         }
       }
     },
-    [setInstant, handleLeft, handleRight, close, images, index, initialIndex]
+    [setInstant, handleLeft, handleRight, close, toggleFullscreen, images, index, initialIndex]
   );
 
   const [clearCallback, resetCallback] = useInterval(
@@ -579,11 +658,6 @@ export const LightboxComponent: React.FC<IProps> = ({
       document.removeEventListener("fullscreenchange", handleFullScreenChange);
     };
   }, [isVisible, handleKey]);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!isFullscreen) containerRef.current?.requestFullscreen();
-    else document.exitFullscreen();
-  }, [isFullscreen]);
 
   function imageLoaded() {
     setImagesLoaded((loaded) => loaded + 1);
@@ -1145,7 +1219,9 @@ export const LightboxComponent: React.FC<IProps> = ({
 
   return (
     <div
-      className={CLASSNAME}
+      className={cx(CLASSNAME, {
+        "controls-hidden": isFullscreen && isControlsHidden,
+      })}
       role="presentation"
       ref={containerRef}
       onClick={handleClose}

@@ -161,14 +161,22 @@ func newCleanFilter(c *config.Config) *cleanFilter {
 }
 
 func (f *cleanFilter) Accept(ctx context.Context, path string, info fs.FileInfo, zipFilePath string) bool {
+	fileOrFolder := "File"
+	if info.IsDir() {
+		fileOrFolder = "Folder"
+	}
+
+	if file.IsIgnoredSystemOrThumbnailPath(path) || (zipFilePath != "" && file.IsIgnoredSystemOrThumbnailPath(zipFilePath)) {
+		logger.Infof("%s matches system thumbnail/junk patterns. Marking to clean: %q", fileOrFolder, path)
+		return false
+	}
+
 	//  #1102 - clean anything in generated path
 	generatedPath := f.generatedPath
 
 	var stash *config.StashConfig
-	fileOrFolder := "File"
 
 	if info.IsDir() {
-		fileOrFolder = "Folder"
 		stash = f.stashPaths.GetStashFromDirPath(path)
 	} else {
 		stash = f.stashPaths.GetStashFromPath(path)

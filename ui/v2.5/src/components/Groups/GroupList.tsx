@@ -15,6 +15,7 @@ import { useFilteredItemList } from "../List/ItemList";
 import { ExportDialog } from "../Shared/ExportDialog";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { GroupCardGrid } from "./GroupCardGrid";
+import { GroupWall } from "./GroupWall";
 import { EditGroupsDialog } from "./EditGroupsDialog";
 import { View } from "../List/views";
 import {
@@ -62,10 +63,7 @@ const GroupList: React.FC<{
       return null;
     }
 
-    if (
-      filter.displayMode === DisplayMode.Grid ||
-      filter.displayMode === DisplayMode.Wall
-    ) {
+    if (filter.displayMode === DisplayMode.Grid) {
       return (
         <GroupCardGrid
           groups={groups ?? []}
@@ -74,6 +72,17 @@ const GroupList: React.FC<{
           onSelectChange={onSelectChange}
           fromGroupId={fromGroupId}
           onMove={onMove}
+        />
+      );
+    }
+
+    if (filter.displayMode === DisplayMode.Wall) {
+      return (
+        <GroupWall
+          groups={groups ?? []}
+          zoomIndex={filter.zoomIndex}
+          selectedIds={selectedIds}
+          onSelectChange={onSelectChange}
         />
       );
     }
