@@ -801,7 +801,6 @@ type imageGenerators struct {
 func (g *imageGenerators) Generate(ctx context.Context, i *models.Image, f models.File) error {
 	const overwrite = false
 
-	progress := g.progress
 	t := g.input
 	path := f.Base().Path
 
