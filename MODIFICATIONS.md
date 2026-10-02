@@ -1361,10 +1361,47 @@ npx pnpm run start
   5. **流式增量呈现与全自动集合归类协同**：
      - 自动触发的扫描任务与任务二十四（增量实时流式推送）及任务二十六（开机自释放 `auto_group` 插件）完美联动，新视频考入 10 秒后全自动生成封面、自动归类进集合并实时呈现在前端页面上，达成同 Jellyfin 般行云流水的纯自动体验。
 
+### 任务四十四：“集合”页签与集合列表移动端适配重构（解决横向溢出、悬停信息丢失与短片集合面板体验升级）
+- **目标文件**：
+  - `ui/v2.5/src/components/Groups/GroupWallCard.tsx`
+  - `ui/v2.5/src/components/Groups/GroupCard.tsx`
+  - `ui/v2.5/src/components/Groups/styles.scss`
+  - `ui/v2.5/src/components/Scenes/SceneDetails/SceneGroupPanel.tsx`
+  - `ui/v2.5/src/components/Scenes/styles.scss`
+  - `ui/v2.5/src/index.scss`
+- **问题与现状剖析**：
+  1. **集合墙（GroupWallCard）在移动端横向溢出破损**：
+     - 移动端（375px~412px）下，`GroupWallCard` 默认 `rowHeight` 为 300px，横版封面卡片宽度计算达 533px 且 `flex-shrink: 0`，严重超出屏幕视口宽度，导致集合列表页横向溢出破损、出现水平滚动条与页面撕裂；
+     - 竖版封面卡片宽度 200px 无法在小屏并排，单张拉伸至 100% 宽度 300px 高度造成图片过度拉伸与裁剪失衡；
+  2. **触控设备悬停信息（Hover Overlay）彻底丢失**：
+     - 原版 `.GroupWallCard .lineargradient` 设为 `opacity: 0` 且仅在 `:hover` 时显示；在手机触摸屏上没有鼠标悬停动作，导致集合列表中的所有卡片成为没有任何标题、短片数量、上映年份与工作室名称的“盲盒图片”；
+  3. **短片详情页“集合”页签（SceneGroupPanel）排版简陋与功能缺位**：
+     - 原版短片详情页点击“集合”页签仅渲染一个 `GroupCard`，在移动端被约束在 50% 宽度（~180px）居中显示，字体挤压、图片畸变、且依赖悬停的短片列表弹出层在移动端完全失效；
+     - 用户无法在集合页签内看到该集合包含的其他分集短片，无法便捷切换下一集或查看全套内容；
+  4. **集合详情页（#group-page）与通用详情容器（.detail-body）宽度溢出**：
+     - `.detail-body` 存在 `margin-left: 15px; margin-right: 15px; width: 100%`，导致移动端视口宽度增加 30px 造成横向溢出；
+     - `#group-page` 顶部封面在移动端固定为 13rem，属性标题宽度固定为 150px，严重压缩移动端属性内容的显示空间。
+- **机制与实现方案**：
+  1. **GroupWallCard 移动端动态自适应高度与防溢出约束**：
+     - 引入 `ScreenUtils.useMediaQuery("(max-width: 576px)")` 动态侦测屏幕尺寸；
+     - 定义移动端阶梯高度 `mobileZoomHeights: { 0: 120, 1: 145, 2: 175, 3: 220 }`，默认 175px 恰到好处适配手机双列竖图或单行横图；
+     - 样式中赋予 `maxWidth: isMobile ? "100%" : ...` 与 `flexShrink: isMobile ? 1 : 0`，彻底根除横版卡片突破视口的横向滚动条；
+  2. **触控与移动端常驻透明渐变信息栏（Touch-Friendly Metadata Display）**：
+     - 在 `Groups/styles.scss` 中加入 `@media (hover: none), (max-width: 768px)`；
+     - 强制将 `.lineargradient` 设为 `opacity: 1 !important` 与 `pointer-events: auto !important`，以暗色半透明渐变底色永久呈现集合名称、分集数量角标、上映日期与片商；
+  3. **短片详情页“集合”页签全新 Netflix/Bilibili 风格分集交互面板（SceneGroupPanel）**：
+     - 重构 `SceneGroupPanel.tsx`，采用现代化展示卡片：左侧（移动端居上）高清集合封面（带评级角标与自适应比例），右侧结构化呈现集合标题、所属片商（支持直达）、上映日期、总片数；
+     - 醒目高亮呈现短片在集合中的序号：“第 X 集 (Scene #X)”；
+     - **内置集合全分集短片导航列表（Collection Scenes / Episodes List）**：自动提取集合下关联的全部短片分集，当前播放短片突出高亮为“正在播放”，其他分集支持一键点击直接无缝跳转播放，并在移动端提供触控优化的平滑滚动列表与播放图标；
+  4. **.detail-body 与 #group-page 移动端无死角修复**：
+     - 在 `index.scss` 中针对移动端将 `.detail-body` 外边距安全清零（`margin: 0 !important; width: 100% !important; padding: 0 4px !important;`），杜绝 30px 横向溢出；
+     - `#group-page` 封面居中自适应缩放（`max-height: 260px`），属性标题宽度由 150px 自适应降至 85px，确保小屏设备上文字清爽整齐。
+
 ---
 
 *文档更新时间：2026-10-02*  
 *维护者：Antigravity & User Pair-Programming*
+
 
 
 

@@ -59,6 +59,7 @@ import { goBackOrReplace } from "src/utils/history";
 import { FormattedDate } from "src/components/Shared/Date";
 import { StudioLogo } from "src/components/Shared/StudioLogo";
 import { JobFragment, useMonitorJob } from "src/utils/job";
+import { useScrollToTopOnMount } from "src/hooks/scrollToTop";
 
 const SubmitStashBoxDraft = lazyComponent(
   () => import("src/components/Dialogs/SubmitDraft")
@@ -781,6 +782,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   const { id } = match.params;
   const { configuration } = useConfigurationContext();
   const { data, loading, error, refetch } = useFindScene(id);
+
+  useScrollToTopOnMount();
 
   const [scene, setScene] = useState<GQL.SceneDataFragment>();
 

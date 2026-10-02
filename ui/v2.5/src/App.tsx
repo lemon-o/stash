@@ -20,6 +20,7 @@ import {
   useConfigureUI,
   useSystemStatus,
 } from "src/core/StashService";
+import { useScrollRestoration } from "src/hooks/useScrollRestoration";
 import flattenMessages from "./utils/flattenMessages";
 import * as yup from "yup";
 import Mousetrap from "mousetrap";
@@ -232,6 +233,8 @@ export const App: React.FC = () => {
   const location = useLocation();
   const history = useHistory();
   const setupMatch = useRouteMatch(["/setup", "/migrate", "/welcome"]);
+
+  useScrollRestoration();
 
   // dispatch event when location changes
   useEffect(() => {

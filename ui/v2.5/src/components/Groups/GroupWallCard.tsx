@@ -10,6 +10,7 @@ import { useDragMoveSelect } from "../Shared/GridCard/dragMoveSelect";
 import { Icon } from "../Shared/Icon";
 import { faPlayCircle, faFolderOpen } from "@fortawesome/free-solid-svg-icons";
 import { PatchComponent } from "src/patch";
+import ScreenUtils from "src/utils/screen";
 import cx from "classnames";
 
 const CLASSNAME = "GroupWallCard";
@@ -27,6 +28,13 @@ const zoomHeights: Record<number, number> = {
   1: 220,
   2: 300,
   3: 420,
+};
+
+const mobileZoomHeights: Record<number, number> = {
+  0: 120,
+  1: 145,
+  2: 175,
+  3: 220,
 };
 
 export const GroupWallCard: React.FC<IGroupWallCardProps> = PatchComponent(
@@ -66,7 +74,10 @@ export const GroupWallCard: React.FC<IGroupWallCardProps> = PatchComponent(
       history.push(`/groups/${group.id}`);
     }
 
-    const rowHeight = zoomHeights[zoomIndex] ?? 300;
+    const isMobile = ScreenUtils.useMediaQuery("(max-width: 576px)");
+    const rowHeight = isMobile
+      ? (mobileZoomHeights[zoomIndex] ?? 175)
+      : (zoomHeights[zoomIndex] ?? 300);
     const effectiveRatio = aspectRatio ?? (orientation === "landscape" ? 1.777 : 0.667);
     const cardWidth = Math.round(rowHeight * effectiveRatio);
     const flexGrow = Math.max(1, Math.round(effectiveRatio * 10));
@@ -94,8 +105,8 @@ export const GroupWallCard: React.FC<IGroupWallCardProps> = PatchComponent(
           height: `${rowHeight}px`,
           width: `${cardWidth}px`,
           flexGrow: flexGrow,
-          flexShrink: 0,
-          maxWidth: `${Math.round(rowHeight * 2.5)}px`,
+          flexShrink: isMobile ? 1 : 0,
+          maxWidth: isMobile ? "100%" : `${Math.round(rowHeight * 2.5)}px`,
         }}
         {...dragProps}
       >

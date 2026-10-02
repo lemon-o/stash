@@ -1,7 +1,11 @@
 import { useEffect } from "react";
+import { useHistory } from "react-router-dom";
 
 export function useScrollToTopOnMount() {
+  const history = useHistory();
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+    if (history.action !== "POP") {
+      window.scrollTo(0, 0);
+    }
+  }, [history.action]);
 }

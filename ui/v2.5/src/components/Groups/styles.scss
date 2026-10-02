@@ -46,6 +46,41 @@
     width: auto;
   }
 
+  @media (max-width: 576px) {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+
+    .detail-header {
+      padding: 0.75rem 0.5rem;
+
+      .detail-header-image {
+        float: none !important;
+        width: 100% !important;
+        margin-bottom: 0.75rem;
+
+        .group-images {
+          justify-content: center !important;
+
+          img {
+            max-width: 100% !important;
+            max-height: 260px !important;
+            object-fit: contain;
+          }
+        }
+      }
+
+      .detail-item .detail-item-title {
+        width: 85px !important;
+        font-size: 0.82rem;
+      }
+
+      .detail-item-value {
+        font-size: 0.82rem;
+      }
+    }
+  }
+
   // the detail element ids are the same as field type name
   // which don't follow the correct convention
   /* stylelint-disable selector-class-pattern */
@@ -189,6 +224,11 @@ div.GroupWall {
   margin: 0 auto;
   width: 100%;
 
+  @media (max-width: 576px) {
+    gap: 8px;
+    padding: 8px 4px;
+  }
+
   /* Prevents last row from overstretching across screen */
   &::after {
     content: "";
@@ -205,6 +245,11 @@ div.GroupWall {
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.25s cubic-bezier(0.2, 0, 0, 1);
+
+  @media (max-width: 576px) {
+    max-width: 100% !important;
+    border-radius: 6px;
+  }
 
   &:hover {
     transform: translateY(-3px) scale(1.01);
@@ -310,6 +355,41 @@ div.GroupWall {
     .group-studio {
       opacity: 0.85;
       font-weight: 500;
+    }
+  }
+
+  @media (hover: none), (max-width: 768px) {
+    .lineargradient {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+      background: linear-gradient(
+        to top,
+        rgba(0, 0, 0, 0.92) 0%,
+        rgba(0, 0, 0, 0.5) 60%,
+        rgba(0, 0, 0, 0) 100%
+      ) !important;
+      height: 60% !important;
+      min-height: 52px !important;
+    }
+
+    .GroupWallCard-footer {
+      padding: 0.45rem 0.55rem !important;
+    }
+
+    .GroupWallCard-title {
+      font-size: 0.82rem !important;
+      line-height: 1.25 !important;
+      margin-bottom: 0.2rem !important;
+    }
+
+    .GroupWallCard-subinfo {
+      font-size: 0.72rem !important;
+      gap: 0.35rem !important;
+
+      .group-scene-badge {
+        padding: 0.1rem 0.35rem !important;
+        font-size: 0.7rem !important;
+      }
     }
   }
 

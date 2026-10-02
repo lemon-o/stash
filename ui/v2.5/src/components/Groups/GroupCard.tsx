@@ -147,6 +147,8 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
       }
     }
 
+    const cover = group.front_image_path || group.back_image_path || "";
+
     return (
       <GridCard
         className={`group-card zoom-${zoomIndex}`}
@@ -162,7 +164,7 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
               loading="lazy"
               className="group-card-image"
               alt={group.name ?? ""}
-              src={group.front_image_path ?? ""}
+              src={cover}
             />
             <RatingBanner rating={group.rating100} />
           </>
