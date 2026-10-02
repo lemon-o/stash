@@ -14,6 +14,7 @@ import (
 type mockScanConfig struct{}
 
 func (m *mockScanConfig) GetCreateGalleriesFromFolders() bool { return false }
+func (m *mockScanConfig) IsRootFolder(path string) bool       { return false }
 
 func TestAssociateExisting_UpdatePartialOnContentChange(t *testing.T) {
 	const (

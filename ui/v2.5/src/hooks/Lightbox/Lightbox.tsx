@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Col,
@@ -140,7 +140,7 @@ export const LightboxComponent: React.FC<IProps> = ({
   const isSwitchingPageRef = useRef(true);
   const [isFullscreen, setFullscreen] = useState(false);
   const [isControlsHidden, setIsControlsHidden] = useState(false);
-  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
   const [imagesLoaded, setImagesLoaded] = useState(0);
@@ -443,6 +443,26 @@ export const LightboxComponent: React.FC<IProps> = ({
     oldIndex.current = index;
   }, [index, images.length, resetZoomOnNav]);
 
+  // Preload adjacent images in the background to eliminate switching stutter (debounced so it never interferes with opening)
+  useEffect(() => {
+    if (!images.length) return;
+    const timer = setTimeout(() => {
+      const current = index ?? initialIndex;
+      for (const offset of [1, -1]) {
+        const targetIdx = current + offset;
+        if (targetIdx >= 0 && targetIdx < images.length) {
+          const imgPath = images[targetIdx]?.paths.image;
+          if (imgPath) {
+            const preloader = new Image();
+            preloader.src = imgPath;
+          }
+        }
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [index, initialIndex, images]);
+
   const getNavOffset = useCallback(() => {
     if (images.length < 2) return;
     if (index === undefined || index === null) return;
@@ -668,25 +688,29 @@ export const LightboxComponent: React.FC<IProps> = ({
     }
   }
 
-  const navItems = images.map((image, i) =>
-    React.createElement(image.paths.preview !== "" ? "video" : "img", {
-      loop: image.paths.preview !== "",
-      autoPlay: image.paths.preview !== "",
-      playsInline: image.paths.preview !== "",
-      src:
-        image.paths.preview !== ""
-          ? (image.paths.preview ?? "")
-          : (image.paths.thumbnail ?? ""),
-      alt: "",
-      className: cx(CLASSNAME_NAVIMAGE, {
-        [CLASSNAME_NAVSELECTED]: i === index,
-      }),
-      onClick: (e: React.MouseEvent) => selectIndex(e, i),
-      role: "presentation",
-      loading: "lazy",
-      key: image.paths.thumbnail,
-      onLoad: imageLoaded,
-    })
+  const navItems = useMemo(
+    () =>
+      images.map((image, i) =>
+        React.createElement(image.paths.preview !== "" ? "video" : "img", {
+          loop: image.paths.preview !== "",
+          autoPlay: image.paths.preview !== "",
+          playsInline: image.paths.preview !== "",
+          src:
+            image.paths.preview !== ""
+              ? (image.paths.preview ?? "")
+              : (image.paths.thumbnail ?? ""),
+          alt: "",
+          className: cx(CLASSNAME_NAVIMAGE, {
+            [CLASSNAME_NAVSELECTED]: i === index,
+          }),
+          onClick: (e: React.MouseEvent) => selectIndex(e, i),
+          role: "presentation",
+          loading: "lazy",
+          key: image.paths.thumbnail,
+          onLoad: imageLoaded,
+        })
+      ),
+    [images, index]
   );
 
   const onDelayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1220,6 +1244,7 @@ export const LightboxComponent: React.FC<IProps> = ({
   return (
     <div
       className={cx(CLASSNAME, {
+        "is-fullscreen": isFullscreen,
         "controls-hidden": isFullscreen && isControlsHidden,
       })}
       role="presentation"

@@ -716,10 +716,21 @@ type scanConfig struct {
 	isGenerateClipPreviews bool
 
 	createGalleriesFromFolders bool
+	stashPaths                 config.StashConfigs
 }
 
 func (c *scanConfig) GetCreateGalleriesFromFolders() bool {
 	return c.createGalleriesFromFolders
+}
+
+func (c *scanConfig) IsRootFolder(path string) bool {
+	cleanPath := filepath.Clean(path)
+	for _, sp := range c.stashPaths {
+		if filepath.Clean(sp.Path) == cleanPath {
+			return true
+		}
+	}
+	return false
 }
 
 func videoFileFilter(ctx context.Context, f models.File) bool {
@@ -758,6 +769,7 @@ func getScanHandlers(options ScanMetadataInput, taskQueue *job.TaskQueue, progre
 					isGenerateThumbnails:       options.ScanGenerateThumbnails,
 					isGenerateClipPreviews:     options.ScanGenerateClipPreviews,
 					createGalleriesFromFolders: c.GetCreateGalleriesFromFolders(),
+					stashPaths:                 c.GetStashPaths(),
 				},
 				PluginCache: pluginCache,
 				Paths:       instance.Paths,

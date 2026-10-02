@@ -1160,6 +1160,103 @@ npx pnpm run start
   4. **自动集合插件（`auto_group.py`）同步免疫**：
      - 在 `auto_group.py` 中引入 `is_ignored_path`，在计算子文件夹集合归属、遍历短片以及搜寻磁盘海报封面时，全方位跳过系统垃圾与缩略图文件，杜绝将 `@eaDir` 误建为集合或将低画质缩略图设为封面。
 
+### 任务三十八：图片全屏模式组件悬浮化与真全屏画面填充优化（全屏无黑边沉浸式架构）
+- **目标文件**：
+  - `ui/v2.5/src/hooks/Lightbox/Lightbox.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/LightboxImage.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/lightbox.scss`
+- **问题与现状剖析**：
+  1. **全屏状态下工具栏占据实体垂直高度，导致非“真全屏”**：
+     - 原版 `.Lightbox` 采用 `display: flex; flex-direction: column` 布局，顶部的 `.Lightbox-header`（4rem/64px）与底部的 `.Lightbox-footer`（4.5rem/72px）作为实体文档流块常驻，占用了合计 136px 的高度；
+     - 中间的图片展示区 `.Lightbox-display` 仅能获得 `100vh - 8.5rem` 的受限视口高度，导致竖屏照片无法铺满屏幕，上下产生巨大的空置黑条，严重破坏全屏震撼感；
+  2. **全屏切换时图片未能自适应视口尺寸重算缩放比（Zoom）**：
+     - `LightboxImage.tsx` 原逻辑仅在初次挂载时读取一次 `container.current.offsetHeight`，未监听视口变化与全屏尺寸变更，导致全屏后画面依然按非全屏时的尺寸缩放，无法自动舒展至物理全屏；
+  3. **控件缺乏视觉悬浮层级与微光阴影**：
+     - 控制按钮与文字缺少阴影保护，悬浮在不同明暗底色的大图上时可能与背景杂色融为一体。
+- **机制与实现方案**：
+  1. **全屏组件绝对定位浮空化与非流式悬浮层（Absolute Floating Controls）**：
+     - 在 `lightbox.scss` 的 `&.is-fullscreen, &:fullscreen` 规则中，将顶部操作区（`.Lightbox-header`）设为 `position: absolute; top: 0; left: 0; right: 0; z-index: 1050; pointer-events: none`，以渐变遮罩 `linear-gradient(to bottom, rgba(0,0,0,0.75), transparent)` 优雅悬浮于图片顶部边缘；
+     - 将底部信息区（`.Lightbox-footer`）设为 `position: absolute; bottom: 0; left: 0; right: 0; z-index: 1050; pointer-events: none`，以渐变遮罩 `linear-gradient(to top, rgba(0,0,0,0.75), transparent)` 优雅浮于图片底部边缘；
+     - 左右翻页箭头（`.Lightbox-navbutton`）设为 `position: absolute; top: 50%; transform: translateY(-50%)` 分别悬浮于屏幕左、右正边缘两侧；
+     - 核心视口 `.Lightbox-display` 设为 `flex: 1; width: 100%; height: 100%`，由于 Header 与 Footer 抽离文档流，视口自然扩展至物理全屏；
+     - 所有非按钮空白区域设置 `pointer-events: none`，内部所有实际按钮、星星评分、链接、输入框启用 `pointer-events: auto`，确保浮空展示的同时点击事件精准传导；
+  2. **避免轮播轨与缩放平移机制冲突（根除图片左漂移 Bug）**：
+     - 深入排查发现：Stash 的看图器依赖横向长轮播轨 `.Lightbox-carousel`（内含数十或上百张 `100vw` 宽度的幻灯片），通过行内样式 `style={{ left: "-N00vw" }}` 进行翻页平移；
+     - 同时，图片居中依赖 Stash 内部算法 `calculateInitialPosition` 计算的 `positionX = Math.min((boxWidth - imageWidth) / 2, 0)` 与 `transform: translate(positionX, positionY)`；
+     - 若全屏模式下给 `.Lightbox-carousel` 强加 `width: 100%; right: 0; left: 0` 或给 `.Lightbox-carousel-image` 强加 `align-items: center; justify-content: center`，会强行压缩轮播轨并与自带的 translate 产生二次偏移叠加大漂移（使图片被挤压至屏幕极左侧 `[-80px, 280px]` 导致右侧大面积黑屏）；
+     - **精确修复方案**：保持轮播轨的原生弹性无约束布局，给 `.Lightbox-carousel-image` 补充 `flex-shrink: 0` 保证幻灯片永远不被挤压，将 `LightboxImage.tsx` 中的 `container` 由不稳定的 `React.createRef()` 改为稳定挂载的 `useRef<HTMLDivElement>(null)`，确保缩放与中心平移绝对严丝合缝；
+  3. **ResizeObserver 动态尺寸感知与真全屏自适应缩放（True Fullscreen Scale）**：
+     - 在 `LightboxImage.tsx` 中引入 `ResizeObserver` 与 `window.resize` 联动监听；
+     - 当用户切换至全屏时，`container.current` 瞬间自适应到物理屏幕高度（如 1080px/1440px/2160px），`ResizeObserver` 即时捕获并触发 `calculateDefaultZoom`；
+     - 图片瞬间无缝铺满整个显示器高度，彻底告别上下黑边，达成真正极致的真全屏视觉呈现；
+  4. **高对比微光文字阴影与毛玻璃背景胶囊**：
+     - 悬浮在画面之上的序号指示器（`2 / 91`）、标题、操作图标配置高质感 `text-shadow` 与 `filter: drop-shadow`；
+     - 标题配置毛玻璃半透明胶囊背景（`background: rgba(0,0,0,0.5); backdrop-filter: blur(6px)`），确保无论图片色彩多明亮杂乱均始终清晰可读；
+  5. **结合 2 秒无操作平滑淡隐**：
+     - 悬浮控件在全屏 2 秒无交互后平滑隐形消失，触碰鼠标或按键瞬间唤醒，打造兼顾绝佳交互与极致纯净画面的看图体验。
+
+### 任务三十九：图片看图器打开关闭闪烁与切图偶发卡顿深度优化（消除 GPU 巨型纹理层闪烁、视口即时渲染与平滑预载）
+- **目标文件**：
+  - `ui/v2.5/src/hooks/Lightbox/Lightbox.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/LightboxImage.tsx`
+  - `ui/v2.5/src/hooks/Lightbox/lightbox.scss`
+- **问题与现状剖析**：
+  1. **打开与关闭图片时的闪白/闪黑现象（Opening/Closing Flash）**：
+     - 若给长轮播轨 `.Lightbox-carousel` 强加 `will-change: transform` 或 `transform: translate3d`，由于轮播轨横跨数十甚至数百张图片（如 91 张图片各 100vw，总宽超 17 万像素），Chromium 会尝试为这块超巨型区域在显存中分配 GPU 合成图层（Compositing Layer），造成打开与销毁时的显存分配撕裂与黑屏闪烁；
+     - 同时，CSS 中带有 `transition: transform` 会在弹窗刚挂载的第 1 帧由于初始值补间发生从 0vw 迅速滑向目标位置的视觉闪现；
+     - 给 `<img>` 标签添加 `decoding="async"` 时，浏览器会在后台完成解码前先绘制 1~2 帧透明空白占位，导致图片在初次渲染时产生显眼的“先白后现”跳闪；
+  2. **原版切换卡顿的根本诱因**：
+     - `LightboxImage` 内部的 `boxWidth` 和 `boxHeight` 初始值为 0，初次挂载无法计算 `defaultZoom`，必须经历 3 轮 React 状态更新（0 宽高 -> 获取宽高 -> 计算 Zoom -> 渲染图片）才显示，在切图动画期间频繁多重重绘；
+     - 每一张图片实例独立挂载 `ResizeObserver`，切图时触发微任务队列并发回调导致掉帧；
+     - `content-visibility: auto` 在幻灯片切入视口边缘时触发 Chromium 即时挂起；
+- **机制与实现方案**：
+  1. **平稳回归标准化纯净位移（消除巨型图层闪烁）**：
+     - `.Lightbox-carousel` 坚决剔除 `will-change: transform` 与 `translate3d`，回归经典的 `left: -N00vw` 与 `transition: left 400ms`，由浏览器原生视口按需光栅化裁剪，不预分配巨型 GPU 显存缓冲，**彻底消除打开与关闭弹窗时的黑白屏闪动**；
+     - 移除 `decoding="async"`，保持图片首帧绘制的同步一致性，杜绝图片透明闪现；
+  2. **视口尺寸首帧秒知（消灭 3 轮级联重绘瀑布流）**：
+     - 在 `LightboxImage.tsx` 中将 `boxWidth` 和 `boxHeight` 的初始状态由 `0` 重构为懒加载读取真实视口尺寸：
+       ```typescript
+       const [boxWidth, setBoxWidth] = useState(() => typeof window !== "undefined" ? window.innerWidth : 0);
+       const [boxHeight, setBoxHeight] = useState(() => typeof window !== "undefined" ? window.innerHeight : 0);
+       ```
+     - 首帧挂载时即可同步计算出精准的 `defaultZoom` 与 `positionX/Y`，无需再等待多次 `useEffect` 重新渲染，切图瞬间 1 帧立现；
+  3. **精简监听架构（移除图片级 ResizeObserver）**：
+     - 移除每张图片内部多余的 `ResizeObserver`，仅保留轻量的全局 `window.addEventListener("resize", updateDimensions)` 与 `setBoxWidth((prev) => prev !== w ? w : prev)` 防抖拦截，大幅降低 CPU 开销；
+  4. **防抖静默预加载（Debounced Preloader）**：
+     - 预加载器配置 400ms 防抖延时：在用户打开弹窗或快速连点翻页时不抢占网络/磁盘 IO，仅在停留静止时才在后台静默预载相邻 `+1 / -1` 图片，确保主图带宽独占且后续翻页流畅秒开；
+  5. **缩略图轨记忆化（`useMemo`）与锁定不可压缩（`flex-shrink: 0`）**：
+     - 配合已优化的悬浮 Header/Footer，实现全屏沉浸、打开关闭无闪烁、切图顺滑连贯的极致体验。
+
+### 任务四十：“图库”（Galleries）按图片子文件夹名称自动创建与封面提取归类逻辑
+- **目标文件**：
+  - `internal/manager/config/config.go`
+  - `data/config.yml`
+  - `internal/manager/task_scan.go`
+  - `pkg/image/scan.go`
+  - `pkg/image/scan_test.go`
+  - `pkg/plugin/builtin/auto_group/auto_group.py`
+  - `pkg/plugin/builtin/auto_group/auto_group.yml`
+  - `data/plugins/auto_group/auto_group.py`
+  - `data/plugins/auto_group/auto_group.yml`
+- **需求与背景**：
+  - 用户反馈：“图库”也要像“集合”一样按子文件夹名称创建集合（自动将图片子文件夹建为图库，以文件夹名作为图库标题，提取海报/首图作为封面，文件夹内所有图片归入该图库）。
+  - 在原生 Stash 中，图片文件夹在扫描时默认不创建图库（`create_galleries_from_folders` 默认为 `false`）；即使手动开启，所创建图库的 `Title` 字段也为空白，且原 `auto_group` 插件仅处理短片（Scenes -> Groups），不处理图片（Images -> Galleries）。
+- **机制与实现方案**：
+  1. **Go 后端扫描引擎默认开启与标题自动注入**：
+     - 在 `internal/manager/config/config.go` 中将 `GetCreateGalleriesFromFolders()` 默认值改为 `true`（`getBoolDefault(CreateGalleriesFromFolders, true)`），并在 `data/config.yml` 中持久化；
+     - 在 `pkg/image/scan.go` 的 `getOrCreateFolderBasedGallery` 中：
+       - 创建文件夹图库时自动提取父文件夹名称：`newGallery.Title = filepath.Base(filepath.Dir(f.Base().Path))`；
+       - 若此前已存在空标题图库，扫描时自动修复补全其标题；
+       - 严密过滤：排除系统垃圾与缩略图目录（`file.IsIgnoredSystemOrThumbnailPath`）以及媒体库根目录（`h.ScanConfig.IsRootFolder`），避免根目录散图将整库误建为巨型图库；
+  2. **内置自动整理插件（auto_group）全量图库同步（sync_folder_galleries）**：
+     - 升级 `auto_group.py` 与 `auto_group.yml`，在执行「自动创建集合与封面图」（全量任务）时，不仅整理短片集合，同时自动整理图片图库；
+     - 自动检测所有包含图片的子文件夹，自动创建对应名称的图库（Galleries）；
+     - 自动关联文件夹下的所有图片，智能匹配提取最佳封面（优先级：`poster.*` / `cover.*` / `folder.*` / `0001.*` / 文件夹内首张图），将其设置为图库封面（`galleries_images.cover = 1`）；
+     - 若同文件夹内存在关联短片，自动将其关联入图库（`scenes_galleries`）；
+  3. **实时钩子与向后兼容**：
+     - 增加 `Image.Create.Post` 钩子，当新增图片入库时自动执行图库归类；
+     - 保持现有 UI 任务接口调用兼容性，一键扫描或点击任务卡片即可完成全库短片集合与图片图库的双重自动化整理。
+
 ---
 
 *文档更新时间：2026-10-02*  

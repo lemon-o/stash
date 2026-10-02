@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/paths"
@@ -47,6 +48,7 @@ type ScanSceneFinderUpdater interface {
 
 type ScanConfig interface {
 	GetCreateGalleriesFromFolders() bool
+	IsRootFolder(path string) bool
 }
 
 type ScanGenerator interface {
@@ -251,20 +253,34 @@ func (h *ScanHandler) getOrCreateFolderBasedGallery(ctx context.Context, f model
 		return nil, fmt.Errorf("finding folder based gallery: %w", err)
 	}
 
+	folderPath := filepath.Dir(f.Base().Path)
+	folderTitle := filepath.Base(folderPath)
+
 	if len(g) > 0 {
 		gg := g[0]
+		// If existing gallery has an empty title, update it with the folder name
+		if gg.Title == "" && folderTitle != "" && folderTitle != "." && folderTitle != "/" && folderTitle != "\\" {
+			partial := models.NewGalleryPartial()
+			partial.Title = models.NewOptionalString(folderTitle)
+			if updated, err := h.GalleryFinder.UpdatePartial(ctx, gg.ID, partial); err == nil && updated != nil {
+				gg = updated
+			} else {
+				gg.Title = folderTitle
+			}
+		}
 		return gg, nil
 	}
 
 	// create a new folder-based gallery
 	newGallery := models.NewGallery()
 	newGallery.FolderID = &folderID
+	newGallery.Title = folderTitle
 
 	input := models.CreateGalleryInput{
 		Gallery: &newGallery,
 	}
 
-	logger.Infof("Creating folder-based gallery for %s", filepath.Dir(f.Base().Path))
+	logger.Infof("Creating folder-based gallery for %s (title: %q)", folderPath, newGallery.Title)
 
 	if err := h.GalleryFinder.Create(ctx, &input); err != nil {
 		return nil, fmt.Errorf("creating folder based gallery: %w", err)
@@ -370,6 +386,16 @@ func (h *ScanHandler) getOrCreateGallery(ctx context.Context, f models.File) (*m
 
 	// Look for specific filename in Folder to find out if the Folder is marked to be handled differently as the setting
 	folderPath := filepath.Dir(f.Base().Path)
+
+	// Exclude system junk / thumbnail directories (e.g. @eaDir, .thumbnails)
+	if file.IsIgnoredSystemOrThumbnailPath(folderPath) {
+		return nil, nil
+	}
+
+	// Exclude direct media library root directory (do not create gallery for the entire root stash folder)
+	if h.ScanConfig.IsRootFolder(folderPath) {
+		return nil, nil
+	}
 
 	forceGallery := false
 	if _, err := os.Stat(filepath.Join(folderPath, ".forcegallery")); err == nil {

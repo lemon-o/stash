@@ -851,7 +851,7 @@ func (i *Config) GetGalleryExtensions() []string {
 }
 
 func (i *Config) GetCreateGalleriesFromFolders() bool {
-	return i.getBool(CreateGalleriesFromFolders)
+	return i.getBoolDefault(CreateGalleriesFromFolders, true)
 }
 
 func (i *Config) GetLanguage() string {

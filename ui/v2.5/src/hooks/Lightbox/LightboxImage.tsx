@@ -100,14 +100,18 @@ export const LightboxImage: React.FC<IProps> = ({
   const [positionY, setPositionY] = useState(0);
   const [imageWidth, setImageWidth] = useState(width);
   const [imageHeight, setImageHeight] = useState(height);
-  const [boxWidth, setBoxWidth] = useState(0);
-  const [boxHeight, setBoxHeight] = useState(0);
+  const [boxWidth, setBoxWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 0
+  );
+  const [boxHeight, setBoxHeight] = useState(() =>
+    typeof window !== "undefined" ? window.innerHeight : 0
+  );
   const dimensionsProvided = width > 0 && height > 0;
 
   const mouseDownEvent = useRef<MouseEvent>();
   const resetPositionRef = useRef(resetPosition);
 
-  const container = React.createRef<HTMLDivElement>();
+  const container = useRef<HTMLDivElement>(null);
   const startPoints = useRef<number[]>([0, 0]);
   const pointerCache = useRef<React.PointerEvent[]>([]);
   const prevDiff = useRef<number | undefined>();
@@ -115,11 +119,19 @@ export const LightboxImage: React.FC<IProps> = ({
   const scrollAttempts = useRef(0);
 
   useEffect(() => {
-    const box = container.current;
-    if (box) {
-      setBoxWidth(box.offsetWidth);
-      setBoxHeight(box.offsetHeight);
-    }
+    const updateDimensions = () => {
+      if (container.current) {
+        const w = container.current.offsetWidth || window.innerWidth;
+        const h = container.current.offsetHeight || window.innerHeight;
+        if (w > 0 && h > 0) {
+          setBoxWidth((prev) => (prev !== w ? w : prev));
+          setBoxHeight((prev) => (prev !== h ? h : prev));
+        }
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener("resize", updateDimensions);
 
     function toggleVideoPlay() {
       if (container.current) {
@@ -135,9 +147,14 @@ export const LightboxImage: React.FC<IProps> = ({
       }
     }
 
-    setTimeout(() => {
+    const videoTimer = setTimeout(() => {
       toggleVideoPlay();
     }, 250);
+
+    return () => {
+      clearTimeout(videoTimer);
+      window.removeEventListener("resize", updateDimensions);
+    };
   }, [container]);
 
   useEffect(() => {

@@ -908,8 +908,163 @@ def process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=Fals
         client.update_scene_groups(scene_id, new_groups_input)
 
 
+def sync_folder_galleries(client, library_roots=None):
+    """
+    遍历媒体库中所有包含图片的目录子文件夹，根据文件夹名称自动创建或更新“图库”（Galleries），
+    设置图库标题为子文件夹名称，提取首图/海报作为图库封面，并将文件夹内所有图片全部归类到该图库中。
+    同时如果该文件夹内存在短片（Scene），也会自动将图库与短片关联。
+    """
+    db_path = get_sqlite_path()
+    if not os.path.exists(db_path):
+        return
+
+    if library_roots is None:
+        library_roots = get_library_roots(client)
+
+    log.LogInfo("开始根据媒体库图片子文件夹自动创建与整理“图库”...")
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+
+        # 查询所有包含图片的文件夹
+        folders = cur.execute("""
+            SELECT DISTINCT fold.id, fold.path, fold.parent_folder_id, fold.basename
+            FROM folders fold
+            JOIN files f ON f.parent_folder_id = fold.id
+            JOIN images_files ifl ON ifl.file_id = f.id
+        """).fetchall()
+
+        if not folders:
+            conn.close()
+            log.LogInfo("未发现包含图片的文件夹")
+            return
+
+        created_galleries = 0
+        updated_galleries = 0
+
+        for fold_id, fold_path, parent_id, basename in folders:
+            # 1. 忽略系统垃圾与缩略图目录（如 @eaDir, .thumbnails 等）
+            if is_ignored_path(fold_path):
+                continue
+
+            # 2. 排除媒体库直属根目录（根目录下的散图不作为独立图库）
+            if parent_id is None:
+                continue
+
+            norm_path = os.path.normcase(os.path.normpath(fold_path)) if fold_path else ""
+            real_path = os.path.normcase(resolve_real_path(fold_path) or "")
+            if norm_path in library_roots or real_path in library_roots:
+                continue
+
+            # 3. 提取图库名称（优先使用 basename，其次文件夹名）
+            title = (basename or os.path.basename(fold_path) or "").strip()
+            if not title or is_ignored_path(title):
+                continue
+
+            target_folder_id = fold_id
+
+            # 4. 检查该文件夹是否已有图库
+            grow = cur.execute("SELECT id, title FROM galleries WHERE folder_id = ?", (target_folder_id,)).fetchone()
+            if grow:
+                gallery_id = grow[0]
+                curr_title = (grow[1] or "").strip()
+                if not curr_title and title:
+                    cur.execute("UPDATE galleries SET title = ?, updated_at = datetime('now') WHERE id = ?", (title, gallery_id))
+                    updated_galleries += 1
+                    log.LogInfo(f"更新图库 #{gallery_id} 标题为 【{title}】")
+            else:
+                now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+                cur.execute(
+                    "INSERT INTO galleries (folder_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                    (target_folder_id, title, now_str, now_str)
+                )
+                gallery_id = cur.lastrowid
+                created_galleries += 1
+                log.LogInfo(f"根据子文件夹自动创建新图库: 【{title}】 (ID: #{gallery_id})")
+
+            # 5. 将该文件夹内的所有图片关联到图库中
+            img_rows = cur.execute("""
+                SELECT DISTINCT i.id, f.basename
+                FROM images i
+                JOIN images_files ifl ON ifl.image_id = i.id
+                JOIN files f ON ifl.file_id = f.id
+                WHERE f.parent_folder_id = ?
+                ORDER BY f.basename ASC
+            """, (fold_id,)).fetchall()
+
+            if not img_rows:
+                continue
+
+            existing_img_ids = set(
+                r[0] for r in cur.execute("SELECT image_id FROM galleries_images WHERE gallery_id = ?", (gallery_id,)).fetchall()
+            )
+
+            cover_row = cur.execute(
+                "SELECT image_id FROM galleries_images WHERE gallery_id = ? AND cover = 1 LIMIT 1", (gallery_id,)
+            ).fetchone()
+            has_cover = cover_row is not None
+
+            # 寻找最佳封面图（优先 poster / cover / 0001 / 第一张图）
+            best_cover_img_id = None
+            cover_patterns = [
+                re.compile(r"^(poster|cover|folder|front)\.(jpe?g|png|webp)$", re.IGNORECASE),
+                re.compile(rf"^{re.escape(title)}\.(jpe?g|png|webp)$", re.IGNORECASE),
+                re.compile(r"^0*1\.(jpe?g|png|webp)$", re.IGNORECASE),
+                re.compile(r".*(poster|cover|folder|front).*\.(jpe?g|png|webp)$", re.IGNORECASE),
+            ]
+            for pat in cover_patterns:
+                for img_id, bname in img_rows:
+                    if pat.match(bname or ""):
+                        best_cover_img_id = img_id
+                        break
+                if best_cover_img_id:
+                    break
+            if not best_cover_img_id and img_rows:
+                best_cover_img_id = img_rows[0][0]
+
+            for img_id, bname in img_rows:
+                if img_id not in existing_img_ids:
+                    is_cover = 1 if (not has_cover and img_id == best_cover_img_id) else 0
+                    if is_cover:
+                        has_cover = True
+                    cur.execute(
+                        "INSERT OR IGNORE INTO galleries_images (gallery_id, image_id, cover) VALUES (?, ?, ?)",
+                        (gallery_id, img_id, is_cover)
+                    )
+
+            if not has_cover and best_cover_img_id:
+                cur.execute(
+                    "UPDATE galleries_images SET cover = 1 WHERE gallery_id = ? AND image_id = ?",
+                    (gallery_id, best_cover_img_id)
+                )
+                has_cover = True
+                log.LogInfo(f"为图库 【{title}】 设置封面图 (Image ID #{best_cover_img_id})")
+
+            # 6. 同文件夹若有短片，自动关联短片与图库
+            scene_rows = cur.execute("""
+                SELECT DISTINCT s.id
+                FROM scenes s
+                JOIN scenes_files sf ON sf.scene_id = s.id
+                JOIN files f ON sf.file_id = f.id
+                WHERE f.parent_folder_id = ?
+            """, (fold_id,)).fetchall()
+            for s_id, in scene_rows:
+                cur.execute(
+                    "INSERT OR IGNORE INTO scenes_galleries (scene_id, gallery_id) VALUES (?, ?)",
+                    (s_id, gallery_id)
+                )
+
+        conn.commit()
+        conn.close()
+
+        log.LogInfo(f"子文件夹“图库”自动整理完成！新建图库: {created_galleries} 个，更新/补全: {updated_galleries} 个。")
+    except Exception as e:
+        log.LogWarning(f"自动创建与整理图库发生错误: {e}")
+
+
 def run_full(client):
-    log.LogInfo("开始根据媒体库子文件夹自动整理集合与封面图...")
+    log.LogInfo("开始根据媒体库子文件夹自动整理集合与图库封面...")
     # First: Clean up any duplicate groups
     with AutoGroupLock():
         cleanup_duplicate_groups(client)
@@ -930,9 +1085,13 @@ def run_full(client):
             log.LogWarning(f"处理短片 #{scene.get('id')} 发生错误: {e}")
 
         if (i + 1) % 5 == 0 or i == total - 1:
-            log.LogProgress((i + 1) / max(1, total))
+            log.LogProgress(((i + 1) / max(1, total)) * 0.7)
 
-    log.LogInfo("根据子文件夹自动创建集合与封面图完成！")
+    # 自动处理图片文件夹与图库
+    sync_folder_galleries(client, library_roots)
+    log.LogProgress(1.0)
+
+    log.LogInfo("根据子文件夹自动创建集合与图库完成！")
 
 
 def run_fix_thumbnails(client):
@@ -967,6 +1126,15 @@ def run_hook(client, hook_context):
         log.LogInfo(f"短片 #{scene_id} 集合归类处理完成")
 
 
+def run_image_hook(client, hook_context):
+    image_id = hook_context.get("id") if hook_context else None
+    log.LogInfo(f"检测到新图片创建或更新 (ID: {image_id})，正在执行图库归类...")
+    library_roots = get_library_roots(client)
+    sync_folder_galleries(client, library_roots)
+    if image_id:
+        log.LogInfo(f"图片 #{image_id} 图库归类处理完成")
+
+
 def main():
     plugin_input = None
     if not sys.stdin.isatty():
@@ -991,6 +1159,8 @@ def main():
     try:
         if mode == "fix_thumbnails":
             run_fix_thumbnails(client)
+        elif mode == "image_hook" or (hook_context and hook_context.get("type") == "image"):
+            run_image_hook(client, hook_context)
         elif hook_context and hook_context.get("id"):
             run_hook(client, hook_context)
         elif mode == "hook" and hook_context:

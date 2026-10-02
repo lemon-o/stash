@@ -36,7 +36,7 @@ export const useLightbox = (
   ]);
 
   const show = useCallback(
-    (props: Partial<IState>) => {
+    (props: Partial<IState> = {}) => {
       setLightboxState({
         ...props,
         isVisible: true,
