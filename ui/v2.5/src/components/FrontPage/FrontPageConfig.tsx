@@ -155,7 +155,7 @@ const AddContentModal: React.FC<IAddSavedFilterModalProps> = ({
               {c.message!.id === "recommendations"
                 ? intl.formatMessage({
                     id: "recommendations",
-                    defaultMessage: "推荐",
+                    defaultMessage: "每日推荐",
                   })
                 : intl.formatMessage(
                     { id: c.message!.id },
@@ -255,7 +255,7 @@ const ContentRow: React.FC<IFilterRowProps> = (props: IFilterRowProps) => {
         if (asCustomFilter.message?.id === "recommendations") {
           return intl.formatMessage({
             id: "recommendations",
-            defaultMessage: "推荐",
+            defaultMessage: "每日推荐",
           });
         }
         if (asCustomFilter.message) {

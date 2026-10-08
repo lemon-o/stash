@@ -1469,7 +1469,34 @@ npx pnpm run start
   2. 首页原本按 `date` 排序的“最近发行”推荐行全部对齐为按 `created_at` 降序，确保新加库的内容能在首页立刻显示。
   3. **修复 URL 参数解析器导致的升序回退**：原 `configureFromDecodedParams` 中存在历史遗留逻辑（若 URL 中无 `sortdir` 参数且 `sortby` 不等于精确的 `"date"` 时，强制回退为 `Asc` 升序，导致页面刷新或访问无参路由时显示为 `创建于 ▲`）。重构为通过 `isDescDefault(activeSort)` 智能匹配所有时间字段（`created_at`、`date`、`updated_at`、`file_mod_time`），彻底根绝回退为升序的 bug，确保无参默认与切换下拉框均恒定为 `Desc` 降序（`▼`）。
 
+### 任务四十八：首页「每日推荐」智能轮换引擎重构（支持每日自动更新、伪随机确定性种子与自适应冷启动兜底）
+- **目标文件**：
+  - `ui/v2.5/src/components/FrontPage/RecommendedScenesRow.tsx`（引入日期哈希种子、每日自动跨天检测、Top 12 核心偏好演员聚合筛选、未看/已看分层排序、自适应冷启动兜底及“换一批”交互）
+  - `ui/v2.5/src/components/FrontPage/Control.tsx`（更新默认标题为“每日推荐”）
+  - `ui/v2.5/src/components/FrontPage/FrontPageConfig.tsx`（预设选项及自定义筛选统一展示为“每日推荐”）
+  - `ui/v2.5/src/components/FrontPage/styles.scss`（新增日期胶囊徽标、换一批按钮及其悬浮动画与极窄屏自适应隐藏设计）
+  - `ui/v2.5/src/locales/zh-CN.json`（更新 `recommendations: "每日推荐"`，新增 `shuffle_batch: "换一批"`, `daily_updated_hint: "每日 00:00 自动更新推荐内容"`）
+  - `ui/v2.5/src/locales/en-GB.json`（新增英文国际化对照）
+- **变更背景与问题剖析**：
+  1. **原推荐模块排序完全静态（Static Freezing）**：
+     - 原 `RecommendedScenesRow.tsx` 使用硬编码的 `sort: "rating"` 或 `sort: "date"`，且仅截取前 4 位演员（`topPerformerIds.slice(0, 4)`）；
+     - 每次打开首页、次日甚至数周后访问，返回的永远是该 4 位演员评分最高的前 24 部短片，列表长年一成不变，丧失推荐价值；
+     - 冷启动时仅按 `rating` 降序，若用户未打分则永久固定为同一批视频。
+- **机制与实现方案**：
+  1. **确定性每日伪随机种子（Daily Deterministic Seed）**：
+     - 利用客户端本地日期计算哈希数值（`YYYYMMDD` + 32 位 Murmur-inspired 混淆），生成稳定落在 `[10000000, 99999999]`（`< 1e8`）区间的 8 位正整数；
+     - 完美契合 Go 后端 `pkg/sqlite/sql.go` 对 `random_<seed>` 的解析器与 SQLite `mod((id + seed)^2 * p1 + (id + seed) * p2, p3)` 随机排序计算公式；
+     - 当天内刷新页面保持排列一致性（不跳动），跨过午夜零点或次日打开时自动步进到新种子，呈现全新排布；
+  2. **用户口味多维聚合与未播放优先（Unplayed Discovery & Taste Matching）**：
+     - 从历史播放记录中动态提取 Top 12 核心偏好演员或标签，采用 `CriterionModifier.Includes` 扩大候选池至 36 部；
+     - 结合 `random_${dailySeed}` 数据库级伪随机排序，优先推送未播放短片（未看新内容探索），后续衔接经典回味（已看短片温习），杜绝固定短片霸屏；
+  3. **自适应冷启动与低库量兜底机制（Adaptive Fallback）**：
+     - 当库内该演员偏好短片不足 16 部，或处于无播放记录的冷启动状态时，自动触发全库随机补位，确保首页推荐墙恒定保持丰满美观；
+  4. **“换一批”与今日日期胶囊交互**：
+     - 在标题旁展示今日日期胶囊徽标（如 `10月8日`），操作区增加高质感暗黑风「换一批」按钮（点击附带平滑旋转特效）；
+     - 支持在当天内手动换批微调，移动端（<= 480px）自适应隐藏文字保留纯图标，兼顾美感与操作体验。
+
 ---
 
-*文档更新时间：2026-10-02*  
+*文档更新时间：2026-10-09*  
 *维护者：Antigravity & User Pair-Programming*

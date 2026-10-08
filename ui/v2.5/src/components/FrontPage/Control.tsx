@@ -184,7 +184,7 @@ const CustomFilterResults: React.FC<ICustomFilterProps> = ({
   if (customFilter.message?.id === "recommendations") {
     header = intl.formatMessage({
       id: "recommendations",
-      defaultMessage: "推荐",
+      defaultMessage: "每日推荐",
     });
   } else if (customFilter.message) {
     let objects = customFilter.message.values?.objects;
