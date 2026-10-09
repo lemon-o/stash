@@ -1524,7 +1524,7 @@ npx pnpm run start
   6. **移动端列表工具栏与顶部导航栏垂直堆叠遮挡彻底根除**：
      - **根因剖析**：原移动端 `.top-nav` 具有 `0.25rem` 上下内边距，实际外高为 `58px + safe-area`，而 `body` 仅设了 `50px + safe-area` 边距；同时 `.main` 在移动端（`xs`）缺少内边距（为 0），而 `.filtered-list-toolbar` 又自带 `-0.5rem`（-8px）负外边距，导致列表工具栏顶部向上刺入导航栏内 16px 以上，造成导航栏 Logo / 新增按钮直接压在工具栏排序与分页组件之上；
      - **方案**：
-       1. 锁定移动端 `.top-nav` 高度为精准的 `calc(50px + env(safe-area-inset-top, 0px))`，垂直内容居中，消除多余内边距；
+       1. 保持移动端 `.top-nav` 具有 `flex-wrap: wrap !important;` 与自适应高度，并精准配赋 Flexbox 序数（`navbar-brand` 序数 1、`navbar-buttons` 序数 2、`navbar-collapse` 序数 10 带 100% 宽度），确保闭合时顶栏外高恒等于 `50px + safe-area`，展开汉堡菜单时菜单平滑折行在第二行展开而不发生横向挤压与侧边穿透；
        2. 移除 `.main` 在 `xs` 下的零内边距限制，恒定保持 `0.5rem`；
        3. 在移动端将 `.filtered-list-toolbar` 的负边距重设为 `margin-top: 0.25rem !important;`，并同步给 `_theme.scss`；
        4. 收起移动端 `.sidebar-pane .filtered-list-toolbar` 右侧无效浪费的 `40px` 边距（`margin-right: 0 !important; margin-left: 36px !important;`），使工具栏与顶栏之间拥有舒适自然的 12px 留白，彻底消除堆叠。
