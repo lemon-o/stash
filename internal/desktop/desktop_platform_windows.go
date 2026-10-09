@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/go-toast/toast"
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/logger"
 	"golang.org/x/sys/windows/svc"
 )
@@ -67,6 +68,7 @@ func isServerDockerized() bool {
 }
 
 func sendNotification(notificationTitle string, notificationText string) {
+	labels := systrayLabelsFor(config.GetInstance().GetLanguage())
 	notification := toast.Notification{
 		AppID:   "Stash",
 		Title:   notificationTitle,
@@ -74,7 +76,7 @@ func sendNotification(notificationTitle string, notificationText string) {
 		Icon:    getIconPath(),
 		Actions: []toast.Action{{
 			Type:      "protocol",
-			Label:     "Open Stash",
+			Label:     labels.open,
 			Arguments: getServerURL(""),
 		}},
 	}

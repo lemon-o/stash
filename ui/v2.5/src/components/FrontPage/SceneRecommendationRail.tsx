@@ -5,6 +5,11 @@ import { SceneQueue } from "src/models/sceneQueue";
 import { objectTitle } from "src/core/files";
 import TextUtils from "src/utils/text";
 import { useIntl } from "react-intl";
+import {
+  getMainVideoFile,
+  getVideoResolutionLabel,
+  formatVideoDuration,
+} from "src/utils/resolution";
 
 interface ISceneRecommendationRailProps {
   scenes: GQL.SlimSceneDataFragment[];
@@ -25,24 +30,11 @@ export const SceneRecommendationRail: React.FC<ISceneRecommendationRailProps> = 
   return (
     <div className="scene-recommendation-rail">
       {scenes.map((scene, index) => {
-        const file = scene.files.length > 0 ? scene.files[0] : undefined;
+        const file = getMainVideoFile(scene.files);
         const title = objectTitle(scene);
         const performers = scene.performers.map((p) => p.name).join(", ");
-        const duration = file?.duration
-          ? TextUtils.secondsToTimestamp(file.duration)
-          : undefined;
-
-        const resolution = file?.height
-          ? file.height >= 2160
-            ? "4K"
-            : file.height >= 1440
-            ? "1440p"
-            : file.height >= 1080
-            ? "1080p"
-            : file.height >= 720
-            ? "720p"
-            : `${file.height}p`
-          : undefined;
+        const duration = formatVideoDuration(file?.duration);
+        const resolution = getVideoResolutionLabel(file?.width, file?.height);
 
         const link = sceneQueue
           ? sceneQueue.makeLink(scene.id, { sceneIndex: index })

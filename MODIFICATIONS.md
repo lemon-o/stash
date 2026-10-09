@@ -1863,6 +1863,44 @@ npx pnpm run start
 
 ---
 
+### 任务六十一：推荐卡片浮动时长与分辨率标签高精准度修复（主文件智能识别、全画幅/宽银幕/竖屏自适应与播放器画质设置严格对齐）
+- **目标文件**：
+  - `ui/v2.5/src/utils/resolution.ts`（新增 `getVideoResolutionLabel`、`getEffectiveVideoHeight`、`getMainVideoFile`、`formatVideoDuration` 工具函数）
+  - `ui/v2.5/src/utils/text.ts`（改进 `secondsToTimestamp` 的四舍五入对齐与 `resolution` 的宽银幕/竖屏自适应）
+  - `ui/v2.5/src/components/Scenes/SceneDetails/SceneRecommendationsPanel.tsx`（推荐面板卡片接入智能主文件识别、规范化时长与分辨率计算）
+  - `ui/v2.5/src/components/FrontPage/SceneRecommendationRail.tsx`（首页推荐栏卡片同步对齐接入）
+  - `ui/v2.5/src/components/ScenePlayer/ScenePlayer.tsx`（接入 `getMainVideoFile` 与 `getEffectiveVideoHeight`，解决转码流档位被误剪裁问题）
+  - `ui/v2.5/src/components/Scenes/SceneDetails/Scene.tsx`（接入 `getMainVideoFile` 保证播放页头部参数与卡片完全一致）
+- **需求背景与 Bug 根因剖析**：
+  - 用户反馈：“bug：有的海报媒体：标准 16:9 圆角缩略图，浮动时长与分辨率标签（如 1080p / 720p）显示的不准，和播放界面的设置里的最高档画质对不上”；
+  - **核心病因**：
+    1. **竖屏视频高度误判（如 720x1280 / 720x1440 手机视频被误标为 1440p）**：
+       - 原代码使用单纯的 `file.height >= 1440 ? "1440p"` 判断；当用户收录竖屏短视频（如 720x1280 或 720x1440）时，其高度达到了 1440，被错误判定并显示为“1440p 2K”；但在播放器内按真实视频流短边判断时最高仅为 720p，产生巨大撕裂感；
+    2. **宽银幕/裁剪黑边导致的分辨率降级（如 1920x800 / 1920x1072 电影视频被误标为 720p）**：
+       - 蓝光原盘压制常裁掉上下黑边，导致 1080p 全高清视频的实际像素为 1920x800、1920x1040 或 1920x1072；原代码检查 `height >= 1080` 不成立，退化落入 `720p` 甚至 `800p`；而在播放器设置中用户看到的却是 1080p；
+       - 同时在 `ScenePlayer.tsx` 的转码档位过滤中，因采用 `videoHeight = Math.min(width, height)`，导致 1920x800 视频被错误过滤掉了 1080p 转码档位；
+    3. **多文件场景的错误索引与样本短片污染**：
+       - 原逻辑直接硬取 `scene.files[0]`；若场景存在多个关联文件（如 30 秒的短预览 Sample 片与 1 小时的正片），一旦 `files[0]` 排在首位，浮动时长便显示为短短的 `0:30`，分辨率也是预览片的极低分辨率；
+    4. **时长取整精度导致的 1 秒偏差**：
+       - 原 `secondsToTimestamp` 使用 `Math.trunc(secondsInput)` 截断小数，对于 `3599.98s` 或 `491.9s` 这类时间戳，截断后会显示为 `59:59` 或 `8:11`，而播放器内 Video.js 渲染为 `1:00:00` 或 `8:12`，肉眼可见不一致。
+- **机制与实现方案**：
+  1. **多文件主媒体智能识别算法（`getMainVideoFile`）**：
+     - 当视频存在多个文件时，优先比对各文件时长，自动过滤排除几十秒的 Sample/Preview 样本文件，选定正片；在时长相近时，优先选取像素总面积（`width * height`）更高的高清文件，彻底杜绝小样本文件污染。
+  2. **行业标准全画幅/宽银幕/竖屏智能判定引擎（`getVideoResolutionLabel` & `getEffectiveVideoHeight`）**：
+     - 同时提取长边（`maxDim`）与短边（`minDim`）：
+       - **4K**：`maxDim >= 3600 || minDim >= 1900`（囊括标准 3840x2160、宽银幕 3840x1600、VR 3840x1920、竖屏 2160x3840）；
+       - **1440p (2K)**：`maxDim >= 2400 || minDim >= 1400`（囊括 2560x1440、超宽屏 2560x1080）；
+       - **1080p (Full HD)**：`maxDim >= 1800 || minDim >= 1000`（精准覆盖 1920x1080、1920x800~1072 各种宽银幕与 1080x1920 竖屏）；
+       - **720p (HD)**：`maxDim >= 1200 || minDim >= 700`（覆盖 1280x720 与 720x1280~1440 手机竖屏，绝不误标 1440p）；
+       - **480p/540p/360p/240p**：阶梯化对齐标清挡位。
+  3. **播放器设置转码挡位与标签绝对对齐**：
+     - 在 `ScenePlayer.tsx` 中采用 `getEffectiveVideoHeight`，确保 1920x800 宽银幕视频也能准确匹配 1080p 转码档位与 `1080p ᴴᴰ` 标签；
+     - 卡片上的分辨率徽标与进入播放器后设置面板的最高清晰度档位实现 100% 严密对齐。
+  4. **四舍五入精准时长格式化（`formatVideoDuration`）**：
+     - 采用 `Math.round` 统一进行秒数取整，规避浮点数小数截断漂移，保证缩略图右下角浮动时长与播放器总时间轴数字分秒不差。
+
+---
+
 *文档更新时间：2026-10-09*  
 *维护者：Antigravity & User Pair-Programming*
 

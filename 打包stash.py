@@ -1,27 +1,30 @@
 # -*- coding: utf-8 -*-
-"""
-Stash 定制版（fork: lemon-o/stash，分支 custom-ui）一键打包与发布脚本
+r"""
+Stash（fork: lemon-o/stash，分支 custom-ui）Windows 构建与发布脚本
 
-本项目引擎是 Go 写的自托管 Web 服务，本脚本负责把它装进一个"看起来像独立软件"的
-Windows 桌面应用里：pywebview(Edge WebView2) 壳 + 随包前端 + Inno Setup 安装包。
-用户不需要浏览器、不需要命令行，装完双击图标即用。
+交付形态与上游一致：常驻系统托盘 + 用默认浏览器打开界面（和 Sunshine 同一种）。
+不套壳、不内嵌浏览器、不依赖 Python 运行时——安装目录里只有 Go 引擎本体与定制前端。
+
+    {app}\stash.exe      Go 引擎（GUI 子系统，无控制台窗口；托盘常驻 + 自动开浏览器）
+    {app}\ui\build\      定制前端（由 ui_location 指向，改前端不必重编 Go）
+    {app}\LICENSE
+
+脚本自身是本机构建工具，不会被打包、也不会分发。
 
 流程（弹窗可勾选产物，命令行也能指定）：
 1. 版本号与产物目标确认：以 git tag 为唯一真源，置顶弹窗或命令行指定
-2. 环境检查：git / pnpm(corepack) / Inno Setup ISCC / WebView2 运行时 / bin\\stash-win.exe
-3. Python 虚拟环境与依赖自愈：.venv + pywebview / pythonnet / pillow / pyinstaller（清华源优先）
-4. 前端构建：ui/v2.5 → pnpm install（按需）+ pnpm run build
-5. 图标生成：apple-touch-icon.png → 多尺寸 .ico（供壳 exe 与安装包共用）
-6. 桌面壳构建：PyInstaller onedir → dist/StashCustom/StashCustom.exe
-7. 安装暂存组装：StashCustom.exe + _internal + server\\stash.exe + ui\\build
-8. 安装包编译：回填版本号到 desktop/StashCustom.iss → ISCC → 桌面 Setup exe
-9. 源码归档至 NAS，以及（可选）推送分支+标签触发 docker-image.yml 出 GHCR 镜像
+2. 环境检查：git / pnpm(corepack) / Inno Setup ISCC / bin\stash-win.exe
+3. 前端构建：ui/v2.5 → pnpm install（按需）+ pnpm run build
+4. 组装暂存：stash.exe + ui\build → dist\package\
+5. 安装包编译：回填版本号到 desktop/Stash.iss → ISCC → 桌面 Setup exe
+6. 源码归档至 NAS，以及（可选）推送分支+标签触发 docker-image.yml 出 GHCR 镜像
 
 用法：
     python 打包stash.py                          # 交互模式
     python 打包stash.py 1.1.5 --installer --backup
     python 打包stash.py 1.1.5 --publish           # 另外推送标签触发 CI 镜像
     python 打包stash.py --skip-ui                 # 复用现有 ui/v2.5/build
+    python 打包stash.py --keep-dist               # 保留 dist\ 里的暂存内容，便于排查
 
     -y 跳过所有提问；若同时给了 --publish，将直接 git push（分支与标签）。
     工作区有未提交改动时发布步骤会拒绝执行，不会代为 commit。
@@ -49,24 +52,18 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(CURRENT_DIR)
 
 PROJECT_NAME = os.path.basename(CURRENT_DIR)
-APP_NAME = "StashCustom"
+APP_NAME = "Stash"
 
 UI_DIR = os.path.join(CURRENT_DIR, "ui", "v2.5")
 UI_BUILD_DIR = os.path.join(UI_DIR, "build")
 PACKAGE_JSON = os.path.join(UI_DIR, "package.json")
-ICON_SOURCE_PNG = os.path.join(UI_DIR, "public", "apple-touch-icon.png")
-DESKTOP_SCRIPT = os.path.join(CURRENT_DIR, "desktop", "stash_desktop.py")
+# 安装包/快捷方式图标直接复用仓库里已签入的 .ico，不再现场生成
+ICON_SOURCE_ICO = os.path.join(UI_DIR, "public", "favicon.ico")
 ISS_FILE = os.path.join(CURRENT_DIR, "desktop", f"{APP_NAME}.iss")
 EXE_SOURCE = os.path.join(CURRENT_DIR, "bin", "stash-win.exe")
 
-VENV_DIR = os.path.join(CURRENT_DIR, ".venv")
-VENV_SCRIPTS = os.path.join(VENV_DIR, "Scripts")
-VENV_PYTHON = os.path.join(VENV_SCRIPTS, "python.exe")
-
 DIST_DIR = os.path.join(CURRENT_DIR, "dist")
 STAGE_DIR = os.path.join(DIST_DIR, "package")
-PYI_OUT_DIR = os.path.join(DIST_DIR, APP_NAME)
-ICO_PATH = os.path.join(DIST_DIR, f"{APP_NAME}.ico")
 
 DESKTOP_DIR = os.path.join(os.path.expanduser("~"), "Desktop")
 NETWORK_BACKUP_DIR = r"\\sa6400\文档\programming"
@@ -74,23 +71,25 @@ NETWORK_BACKUP_DIR = r"\\sa6400\文档\programming"
 BRANCH = "custom-ui"
 WORKFLOW_FILE = "docker-image.yml"
 IMAGE_REPO = "ghcr.io/lemon-o/stash"
-PIP_MIRRORS = ["https://pypi.tuna.tsinghua.edu.cn/simple", "https://pypi.org/simple"]
-# 桌面壳运行时依赖：pywebview 需要 pythonnet(clr) 才能驱动 WebView2
-PY_DEPS = ["pywebview", "pythonnet", "pillow", "pyinstaller"]
 
 
 # ---------------- 通用子进程工具 ----------------
-def run(cmd, cwd=None, capture=False, env=None):
+def run(cmd, cwd=None, capture=False, env=None, merge_stderr=False):
     """执行命令；Windows 上 npm/pnpm/corepack 是 .cmd 垫片，CreateProcess 只找 .exe，
-    所以统一用 shutil.which 把裸命令名补成完整路径。"""
+    所以统一用 shutil.which 把裸命令名补成完整路径。
+
+    merge_stderr=True 时把子进程 stderr 并入 stdout：pip 的"Looking in indexes /
+    Collecting / Downloading"与进度条全部写在 stderr，若外层只抓 stdout（IDE、
+    日志包装器、把脚本输出重定向到文件），就会一个字都看不到、误以为进程卡死。"""
     cmd = list(cmd)
     prog = str(cmd[0])
     if not os.path.isabs(prog) and not os.path.exists(prog):
         resolved = shutil.which(prog)
         if resolved:
             cmd[0] = resolved
+    extra = {"stderr": subprocess.STDOUT} if (merge_stderr and not capture) else {}
     return subprocess.run(cmd, cwd=cwd, env=env, capture_output=capture,
-                          text=True, encoding="utf-8", errors="replace")
+                          text=True, encoding="utf-8", errors="replace", **extra)
 
 
 def git(*args):
@@ -126,7 +125,7 @@ def dir_stats(root):
 
 # ---------------- 1. 环境检查 ----------------
 def check_environment(need_ui, need_installer):
-    print("[2/9] 正在检查构建环境...")
+    print("[2/6] 正在检查构建环境...")
     problems = []
     info = {}
 
@@ -166,11 +165,8 @@ def check_environment(need_ui, need_installer):
             problems.append("未找到 Inno Setup 6 的 ISCC.exe，无法生成安装包。")
         if not os.path.exists(ISS_FILE):
             problems.append(f"缺少安装脚本 {os.path.relpath(ISS_FILE, CURRENT_DIR)}")
-        if not os.path.exists(DESKTOP_SCRIPT):
-            problems.append(f"缺少桌面壳源码 {os.path.relpath(DESKTOP_SCRIPT, CURRENT_DIR)}")
-
-    wv2 = find_webview2_runtime()
-    print(f"  WebView2 : {wv2 or '未检测到运行时（装机目标机需要它）'}")
+        if not os.path.exists(ICON_SOURCE_ICO):
+            problems.append(f"缺少安装包图标 {os.path.relpath(ICON_SOURCE_ICO, CURRENT_DIR)}")
 
     print(f"  go/docker: {'本机可用' if has_cli('go') else '本机未装'} / "
           f"{'本机可用' if has_cli('docker') else '本机未装（镜像由 CI 产出）'}")
@@ -225,18 +221,6 @@ def find_iscc_exe():
     return ""
 
 
-def find_webview2_runtime():
-    """返回已安装的 Edge WebView2 运行时版本目录，找不到返回 ''"""
-    for root in (os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\EdgeWebView\Application"),
-                 os.path.expandvars(r"%ProgramFiles%\Microsoft\EdgeWebView\Application")):
-        if not os.path.isdir(root):
-            continue
-        for ver in sorted(os.listdir(root), reverse=True):
-            if os.path.exists(os.path.join(root, ver, "msedgewebview2.exe")):
-                return os.path.join(root, ver)
-    return ""
-
-
 # ---------------- 2. 版本号与目标 ----------------
 def read_git_version():
     """返回 (当前描述, 纯 semver, 推荐递增值)"""
@@ -268,7 +252,7 @@ def normalize_version(text):
 def ask_cli_flags():
     """解析命令行：显式产物目标、版本号、-y/--skip-ui/--exe"""
     flags = {"installer": False, "backup": False, "publish": False, "yes": False,
-             "skip_ui": False, "explicit_any": False, "version": ""}
+             "skip_ui": False, "keep_dist": False, "explicit_any": False, "version": ""}
     for arg in sys.argv[1:]:
         low = arg.lower().strip()
         if low in ("--installer", "--win", "--windows", "--setup"):
@@ -283,6 +267,8 @@ def ask_cli_flags():
             flags["yes"] = True
         elif low == "--skip-ui":
             flags["skip_ui"] = True
+        elif low == "--keep-dist":
+            flags["keep_dist"] = True
         elif normalize_version(arg):
             flags["version"] = normalize_version(arg)
     return flags
@@ -301,7 +287,7 @@ def target_names(selected):
 
 
 def confirm_targets(described, default_ver, flags):
-    print("[1/9] 确认发布版本与产物目标")
+    print("[1/6] 确认发布版本与产物目标")
     cli_version = flags.get("version")
     if flags.get("yes"):
         if flags["explicit_any"]:
@@ -331,7 +317,7 @@ def _tk_dialog(described, default_ver, cli_version, flags):
     result = {}
     try:
         root = tk.Tk()
-        root.title("Stash 定制版 · 发布确认")
+        root.title("Stash · 发布确认")
         root.attributes("-topmost", True)
         root.geometry("480x270")
         root.resizable(False, False)
@@ -405,57 +391,9 @@ def _console_prompt(described, default_ver, cli_version, flags):
         }
 
 
-# ---------------- 3. 虚拟环境与 Python 依赖 ----------------
-def ensure_python_environment():
-    print("\n[3/9] 正在准备桌面壳的 Python 虚拟环境...")
-
-    if sys.prefix != sys.base_prefix:
-        venv_py = sys.executable
-        print(f"  当前已运行在虚拟环境中: {os.path.dirname(venv_py)}")
-    elif os.path.exists(VENV_PYTHON):
-        venv_py = VENV_PYTHON
-        print(f"  复用已有虚拟环境: {VENV_DIR}")
-    else:
-        print(f"  正在创建虚拟环境: {VENV_DIR} ...")
-        if run([sys.executable, "-m", "venv", VENV_DIR]).returncode != 0:
-            print("错误：虚拟环境创建失败，请检查 Python 安装。")
-            return ""
-        venv_py = VENV_PYTHON
-
-    if run([venv_py, "-m", "pip", "--version"], capture=True).returncode != 0:
-        print("  虚拟环境缺少 pip，正在修复 (ensurepip)...")
-        run([venv_py, "-m", "ensurepip", "--upgrade"])
-
-    installed = set()
-    res = run([venv_py, "-m", "pip", "list", "--format=json"], capture=True)
-    if res.returncode == 0:
-        try:
-            installed = {p["name"].lower().replace("_", "-") for p in json.loads(res.stdout)}
-        except Exception:
-            installed = set()
-
-    missing = [p for p in PY_DEPS if p.lower().replace("_", "-") not in installed]
-    if missing:
-        print(f"  缺失依赖: {', '.join(missing)}（优先清华镜像源）")
-        ok = False
-        for index in PIP_MIRRORS:
-            args = [venv_py, "-m", "pip", "install", "-i", index] + missing if index != PIP_MIRRORS[-1] \
-                else [venv_py, "-m", "pip", "install"] + missing
-            if run(args).returncode == 0:
-                ok = True
-                break
-            print(f"  源 {index} 安装失败，尝试下一个...")
-        if not ok:
-            print("错误：桌面壳依赖安装失败，请检查网络后重试。")
-            return ""
-    else:
-        print("  pywebview / pyinstaller / pillow 均已安装。")
-    return venv_py
-
-
-# ---------------- 4. 前端构建 ----------------
+# ---------------- 3. 前端构建 ----------------
 def build_ui(env_info):
-    print("\n[4/9] 正在构建前端 (ui/v2.5 → build)...")
+    print("\n[3/6] 正在构建前端 (ui/v2.5 → build)...")
     pnpm = env_info.get("pnpm_cmd") or ["pnpm"]
 
     try:
@@ -493,85 +431,83 @@ def build_ui(env_info):
     return True
 
 
-# ---------------- 5. 图标 ----------------
-def build_icon(venv_py):
-    print("\n[5/9] 正在生成应用图标 (.ico)...")
-    if not os.path.exists(ICON_SOURCE_PNG):
-        print(f"  未找到源图标 {os.path.relpath(ICON_SOURCE_PNG, CURRENT_DIR)}，改用系统默认图标。")
-        return ""
-    os.makedirs(DIST_DIR, exist_ok=True)
-    code = (
-        "from PIL import Image, features\n"
-        f"import sys\n"
-        f"src, dst = sys.argv[1], sys.argv[2]\n"
-        "ok = features.check('ico')\n"
-        f"im = Image.open(src).convert('RGBA')\n"
-        "im.save(dst, format='ICO', sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])\n"
-        "print('ico sizes ok:', ok)\n"
-    )
-    res = run([venv_py, "-c", code, ICON_SOURCE_PNG, ICO_PATH], capture=True)
-    if res.returncode != 0 or not os.path.exists(ICO_PATH):
-        print(f"  图标生成失败（安装包仍可用默认图标）: {(res.stderr or '').strip()[:200]}")
-        return ""
-    print(f"  {os.path.relpath(ICO_PATH, CURRENT_DIR)}（{fmt_size(os.path.getsize(ICO_PATH))}）")
-    return ICO_PATH
+# ---------------- 4. 安装暂存组装 ----------------
+def normalize_pe_subsystem(exe_path):
+    """把引擎的 PE 子系统从 console(3) 改写成 GUI(2)，等价于 go build -ldflags "-H=windowsgui"。
+
+    为什么必须改：上游 / CI 产出的 stash-win.exe 是 console 子系统。这类程序被「没有控制台的
+    父进程」拉起时（安装器完成页的 [Run] 复选框、资源管理器双击、开始菜单快捷方式），Windows
+    会去找「默认终端应用」（Win11 上一般是 Windows Terminal）接管那个新建的控制台；交接一旦
+    失败，用户看到的就是一条
+        [error 2147942632 (0x800700e8) when launching "stash.exe" -c ...]
+    错误窗口，而程序其实根本没跑起来——这就是「装完启动不了」的真实成因。引擎自己在
+    desktop.Start() 里还会 ShowWindow(SW_HIDE) 把刚建好的控制台藏掉，这个控制台纯属白建。
+
+    改成 GUI 子系统后进程不再申请控制台，这一整类启动失败消失，行为与 Sunshine 一致
+    （托盘常驻 + 默认浏览器打开界面）。唯一代价是 stdout 无处可写，因此安装器会预置 logfile，
+    把日志落到 %LOCALAPPDATA%\\Stash\\stash.log。
+
+    返回 (旧值, 新值)；已经是 GUI 时返回 None。
+    """
+    with open(exe_path, "r+b") as f:
+        head = f.read(0x400)
+        if len(head) < 0x100 or head[:2] != b"MZ":
+            raise ValueError(f"{exe_path} 不是有效的 PE 文件（缺少 MZ 头）")
+        pe = int.from_bytes(head[0x3C:0x40], "little")
+        if head[pe:pe + 4] != b"PE\0\0":
+            raise ValueError(f"{exe_path} 不是有效的 PE 文件（缺少 PE 签名）")
+        opt = pe + 4 + 20
+        magic = int.from_bytes(head[opt:opt + 2], "little")
+        if magic not in (0x10B, 0x20B):
+            raise ValueError(f"未知的可选头 magic: 0x{magic:04x}")
+        # 32 位与 64 位可选头里，Subsystem 都在可选头 +0x44
+        sub_off = opt + 0x44
+        old = int.from_bytes(head[sub_off:sub_off + 2], "little")
+        if old != 3:
+            return None
+        f.seek(sub_off)
+        f.write((2).to_bytes(2, "little"))
+
+    with open(exe_path, "rb") as f:
+        f.seek(sub_off)
+        new = int.from_bytes(f.read(2), "little")
+    if new != 2:
+        raise RuntimeError(f"子系统改写失败：期望 2，实际 {new}")
+    return old, new
 
 
-# ---------------- 6. 桌面壳（PyInstaller） ----------------
-def build_desktop_shell(venv_py, ico):
-    print("\n[6/9] 正在构建桌面壳 (PyInstaller onedir)...")
-    shutil.rmtree(PYI_OUT_DIR, ignore_errors=True)
-
-    cmd = [
-        venv_py, "-m", "PyInstaller",
-        "--noconfirm", "--clean",
-        "--onedir", "--windowed",
-        "--name", APP_NAME,
-        "--distpath", DIST_DIR,
-        "--workpath", os.path.join(DIST_DIR, "pyi-work"),
-        "--specpath", os.path.join(DIST_DIR, "pyi-work"),
-        DESKTOP_SCRIPT,
-    ]
-    if ico:
-        # --add-data "源;目标目录"，运行时从 _MEIPASS 里按同名取用
-        cmd += ["--icon", ico, "--add-data", f"{ico}{os.pathsep}."]
-    res = run(cmd, cwd=CURRENT_DIR)
-    exe = os.path.join(PYI_OUT_DIR, f"{APP_NAME}.exe")
-    if res.returncode != 0 or not os.path.exists(exe):
-        print(f"错误：桌面壳构建失败 (返回码 {res.returncode})")
-        return ""
-    count, size = dir_stats(PYI_OUT_DIR)
-    print(f"  {os.path.relpath(exe, CURRENT_DIR)} + _internal（{count} 个文件，{fmt_size(size)}）")
-    return exe
-
-
-# ---------------- 7. 安装暂存组装 ----------------
-def assemble_stage(shell_exe, exe_source):
-    print("\n[7/9] 正在组装安装包内容...")
+def assemble_stage(exe_source):
+    print("\n[4/6] 正在组装安装包内容...")
     shutil.rmtree(STAGE_DIR, ignore_errors=True)
-    shell_dir = os.path.dirname(shell_exe)
+    os.makedirs(STAGE_DIR, exist_ok=True)
 
-    for name in (os.path.basename(shell_exe), "_internal"):
-        src = os.path.join(shell_dir, name)
-        dst = os.path.join(STAGE_DIR, name)
-        (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, dst)
-
-    os.makedirs(os.path.join(STAGE_DIR, "server"), exist_ok=True)
-    shutil.copy2(exe_source, os.path.join(STAGE_DIR, "server", "stash.exe"))
-
+    target_exe = os.path.join(STAGE_DIR, "stash.exe")
+    shutil.copy2(exe_source, target_exe)
     shutil.copytree(UI_BUILD_DIR, os.path.join(STAGE_DIR, "ui", "build"))
+    shutil.copy2(os.path.join(CURRENT_DIR, "LICENSE"), os.path.join(STAGE_DIR, "LICENSE"))
+
+    # 前端产物是 ui_location 的落点，引擎拿它当 statigz 的根目录：目录不存在会直接 panic
+    # 秒退。这里先卡一道，免得装出来的包必然启动失败。
+    if not os.path.exists(os.path.join(STAGE_DIR, "ui", "build", "index.html")):
+        print("错误：ui/build 里没有 index.html，装出来会启动即崩。")
+        return False
+
+    res = normalize_pe_subsystem(target_exe)
 
     count, size = dir_stats(STAGE_DIR)
     print(f"  暂存目录 dist/package：{count} 个文件，{fmt_size(size)}")
-    print("    StashCustom.exe + _internal\\  桌面壳（WebView2 窗口）")
-    print("    server\\stash.exe              Go 后端（复用 bin 下已构建产物）")
-    print("    ui\\build\\                    本次构建的定制前端")
+    print("    stash.exe      Go 引擎（托盘 + 自动开浏览器）")
+    if res:
+        print(f"                    PE 子系统 {res[0]} → {res[1]}（console → GUI：不再申请控制台窗口）")
+    else:
+        print("                    PE 子系统已是 GUI（2），无需改写")
+    print("    ui\\build\\      定制前端（安装后由 ui_location 指向，已校验 index.html）")
     return True
 
 
-# ---------------- 8. Inno Setup 编译 ----------------
+# ---------------- 5. Inno Setup 编译 ----------------
 def update_iss_version(ver):
-    """回填 desktop/StashCustom.iss 的 MyAppVersion（保持 UTF-8 BOM）"""
+    """回填 desktop/Stash.iss 的 MyAppVersion（保持 UTF-8 BOM）"""
     with open(ISS_FILE, "r", encoding="utf-8-sig") as f:
         content = f.read()
     if not re.search(r'#define\s+MyAppVersion\s+"[^"]+"', content):
@@ -585,7 +521,7 @@ def update_iss_version(ver):
 
 
 def compile_installer(iscc, ver):
-    print("\n[8/9] 正在编译 Windows 安装包 (Inno Setup)...")
+    print("\n[5/6] 正在编译 Windows 安装包 (Inno Setup)...")
     update_iss_version(ver)
     res = run([iscc, f"/O{DIST_DIR}", ISS_FILE], cwd=CURRENT_DIR, capture=True)
     built = os.path.join(DIST_DIR, f"{APP_NAME}-Setup-{ver}.exe")
@@ -595,15 +531,22 @@ def compile_installer(iscc, ver):
             print(f"    {line}")
         return ""
 
+    size = fmt_size(os.path.getsize(built))
     final = os.path.join(DESKTOP_DIR, f"{APP_NAME}-Setup-{ver}.exe")
-    if os.path.exists(final):
-        os.remove(final)
-    shutil.move(built, final)
-    print(f"  [√] 安装包: {final}（{fmt_size(os.path.getsize(final))}）")
+    try:
+        if os.path.exists(final):
+            os.remove(final)
+        shutil.move(built, final)
+        print(f"  [√] 安装包: {final}（{size}）")
+    except OSError as e:
+        # 桌面不可写（受管控的环境）不代表构建失败，产物留在 dist\ 里同样可用
+        final = built
+        print(f"  [√] 安装包: {final}（{size}）")
+        print(f"      复制到桌面失败（{e.strerror or e}），产物保留在 dist\\")
     return final
 
 
-# ---------------- 9a. 源码归档 ----------------
+# ---------------- 6a. 源码归档 ----------------
 ARCHIVE_IGNORE_DIRS = {
     ".git", ".venv", "venv", "node_modules", "build", "dist", "__pycache__",
     ".idea", ".vscode", ".gradle", ".local", ".go-cache", "bin",
@@ -613,7 +556,7 @@ DATA_RUNTIME_DIRS = {"generated", "cache", "blobs", "scraper", "backups", "tmp"}
 
 
 def backup_source_zip(ver):
-    print("\n[9/9-a] 正在归档项目源码至 NAS...")
+    print("\n[6/6-a] 正在归档项目源码至 NAS...")
     zip_name = f"{PROJECT_NAME}.zip"
     temp_zip = os.path.join(DESKTOP_DIR, zip_name)
     if os.path.exists(temp_zip):
@@ -660,9 +603,9 @@ def _archive_skip(root, name):
     return False
 
 
-# ---------------- 9b. 触发 CI 镜像 ----------------
+# ---------------- 6b. 触发 CI 镜像 ----------------
 def publish_image(ver, auto_yes):
-    print("\n[9/9-b] 发布镜像（GitHub Actions docker-image.yml）")
+    print("\n[6/6-b] 发布镜像（GitHub Actions docker-image.yml）")
 
     if git("status", "--porcelain"):
         print("错误：工作区有未提交改动，本脚本不会代为提交。")
@@ -692,7 +635,7 @@ def publish_image(ver, auto_yes):
         return False
     print(f"  [√] 已推送 {BRANCH} 分支")
 
-    if not tag_exists and run(["git", "tag", "-a", tag_name, "-m", f"Stash 定制版 {ver}"],
+    if not tag_exists and run(["git", "tag", "-a", tag_name, "-m", f"Stash {ver}"],
                               cwd=CURRENT_DIR).returncode != 0:
         print("错误：创建标签失败。")
         return False
@@ -722,11 +665,23 @@ def _rmtree_onerror(func, path, _exc):
         pass
 
 
-def cleanup_build_dirs():
-    """安装包里已带着所有产物，dist/ 与 PyInstaller 中间目录可以丢弃"""
+def cleanup_build_dirs(keep=""):
+    """装完即弃：清理暂存内容；若安装包还在 dist\\ 里（桌面不可写时产物留在原处），
+    则只删暂存目录，保留 Setup exe。"""
     print("\n正在清理临时构建目录...")
+    targets = [STAGE_DIR]
+    keep_in_dist = ""
+    if keep and os.path.exists(keep):
+        try:
+            keep_in_dist = os.path.commonpath([keep, DIST_DIR]) == DIST_DIR
+        except ValueError:
+            keep_in_dist = False
+    if not keep_in_dist:
+        targets.append(DIST_DIR)
+    targets.append(os.path.join(CURRENT_DIR, "build"))
+
     cleaned = []
-    for d in (DIST_DIR, os.path.join(CURRENT_DIR, "build")):
+    for d in targets:
         if os.path.exists(d):
             try:
                 shutil.rmtree(d, onerror=_rmtree_onerror)
@@ -734,13 +689,13 @@ def cleanup_build_dirs():
             except Exception as e:
                 print(f"  清理 {os.path.relpath(d, CURRENT_DIR)} 提示: {e}")
     if cleaned:
-        print(f"  已清理: {', '.join(cleaned)}（桌面安装包与 NAS 归档保留）")
+        print(f"  已清理: {', '.join(cleaned)}（安装包与 NAS 归档保留）")
 
 
 # ---------------- 主入口 ----------------
 def main():
     print("=" * 62)
-    print("     Stash 定制版 · 桌面应用构建与发布系统")
+    print("        Stash · Windows 构建与发布（托盘 + 浏览器）")
     print("=" * 62)
 
     flags = ask_cli_flags()
@@ -753,36 +708,28 @@ def main():
 
     env_info = check_environment(need_ui=not skip_ui, need_installer=targets["installer"])
 
-    venv_py = ""
-    if targets["installer"]:
-        venv_py = ensure_python_environment()
-        if not venv_py:
-            print("Python 环境准备失败，无法构建桌面壳。")
-            sys.exit(1)
-
     if skip_ui:
         if not os.path.exists(os.path.join(UI_BUILD_DIR, "index.html")):
-            print("\n[4/9] 错误：--skip-ui 但 ui/v2.5/build 不存在。")
+            print("\n[3/6] 错误：--skip-ui 但 ui/v2.5/build 不存在。")
             sys.exit(1)
         count, size = dir_stats(UI_BUILD_DIR)
-        print(f"\n[4/9] 跳过前端构建，复用 ui/v2.5/build（{count} 个文件，{fmt_size(size)}）")
+        print(f"\n[3/6] 跳过前端构建，复用 ui/v2.5/build（{count} 个文件，{fmt_size(size)}）")
     elif not build_ui(env_info):
         print("前端构建失败，流程终止。")
         sys.exit(1)
 
-    setup_exe = shell_exe = ""
+    setup_exe = ""
     if targets["installer"]:
-        ico = build_icon(venv_py)
-        shell_exe = build_desktop_shell(venv_py, ico)
-        if not shell_exe:
-            sys.exit(1)
-        if not assemble_stage(shell_exe, env_info["exe"]):
+        if not assemble_stage(env_info["exe"]):
             sys.exit(1)
         setup_exe = compile_installer(env_info["iscc"], ver)
         if not setup_exe:
             sys.exit(1)
 
-    cleanup_build_dirs()
+    if flags["keep_dist"]:
+        print("\n按 --keep-dist 保留 dist\\ 暂存内容（正式构建无需此参数）")
+    else:
+        cleanup_build_dirs(setup_exe)
 
     archived = ""
     if targets["backup"]:
@@ -792,15 +739,16 @@ def main():
     if targets["publish"]:
         published = publish_image(ver, flags["yes"])
     else:
-        print("\n[9/9-b] 未选择镜像发布，跳过（可加 --publish 推送分支与标签触发 CI）")
+        print("\n[6/6-b] 未选择镜像发布，跳过（可加 --publish 推送分支与标签触发 CI）")
 
     print("\n" + "=" * 62)
     print("                      构建成果汇总")
     print("=" * 62)
     if setup_exe:
         print(f"  [√] Windows 安装包 : {setup_exe}")
-        print(f"      双击安装后从开始菜单/桌面图标启动，独立窗口内使用，无需浏览器。")
-        print(r"      媒体库与配置在 %LOCALAPPDATA%\StashCustom\data（卸载不会删除）")
+        print(f"      装完从开始菜单/桌面图标启动：系统托盘常驻 + 默认浏览器打开界面。")
+        print(r"      默认安装位置 %LOCALAPPDATA%\Programs\Stash（按用户安装，不弹 UAC）")
+        print(r"      数据与配置在 %LOCALAPPDATA%\Stash（卸载不会删除）")
     if archived:
         print(f"  [√] NAS 源码归档   : {archived}")
     if published:

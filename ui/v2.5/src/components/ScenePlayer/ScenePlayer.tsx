@@ -39,6 +39,10 @@ import * as GQL from "src/core/generated-graphql";
 import { ScenePlayerScrubber } from "./ScenePlayerScrubber";
 import { useConfigurationContext } from "src/hooks/Config";
 import {
+  getMainVideoFile,
+  getEffectiveVideoHeight,
+} from "src/utils/resolution";
+import {
   ConnectionState,
   InteractiveContext,
 } from "src/hooks/Interactive/context";
@@ -287,7 +291,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     );
 
     const file = useMemo(
-      () => (scene.files.length > 0 ? scene.files[0] : undefined),
+      () => getMainVideoFile(scene.files),
       [scene]
     );
 
@@ -376,7 +380,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         nativeControlsForTouch: false,
         playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
         inactivityTimeout: ScreenUtils.isMobile() ? 3500 : 2500,
-        preload: "none",
+        preload: (interfaceConfig?.autostartVideo ?? true) ? "auto" : "metadata",
         playsinline: true,
         techOrder: ["chromecast", "html5"],
         userActions: {
@@ -655,11 +659,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const sourceSelector = player.sourceSelector();
 
       // Native resolution of the video file (e.g. 720, 1080, 2160)
-      const videoHeight =
-        Math.min(file?.width || 0, file?.height || 0) ||
-        file?.height ||
-        file?.width ||
-        0;
+      const videoHeight = getEffectiveVideoHeight(file?.width, file?.height);
 
       // 1. Separate direct stream and transcode streams
       const directStreams: typeof scene.sceneStreams = [];

@@ -70,6 +70,7 @@ RUN make flags-release flags-pie stash
 
 # Final Runnable Image
 # 依赖集合与官方发布镜像（docker/ci/x86_64/Dockerfile）保持一致，见文件头部差异 2
+# 额外补充：在 x86_64 架构下预装 intel-media-driver 与 libva-intel-driver，开箱支持 Intel QSV / VAAPI 核显硬件转码
 FROM alpine:latest
 RUN apk add --no-cache \
       ca-certificates \
@@ -83,6 +84,9 @@ RUN apk add --no-cache \
       vips \
       vips-tools \
       vips-heif \
+    && if [ "$(uname -m)" = "x86_64" ]; then \
+         apk add --no-cache intel-media-driver libva-intel-driver onevpl-intel-gpu; \
+       fi \
     && pip install --break-system-packages mechanicalsoup cloudscraper stashapp-tools
 
 COPY --from=backend /stash/stash /usr/bin/

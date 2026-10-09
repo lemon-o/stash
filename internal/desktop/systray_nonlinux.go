@@ -5,11 +5,8 @@ package desktop
 import (
 	"fmt"
 	"runtime"
-	"strings"
 
 	"github.com/kermieisinthehouse/systray"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/logger"
@@ -21,13 +18,14 @@ func startSystray(exit chan int, faviconProvider FaviconProvider) {
 	// and instead will be available in the tray. Will only show the first time a pre-desktop integration
 	// system is started from a non-terminal method, e.g. double-clicking an icon.
 	c := config.GetInstance()
+	labels := systrayLabelsFor(c.GetLanguage())
 	if c.GetShowOneTimeMovedNotification() {
 		// Use platform-appropriate terminology
-		location := "tray"
+		location := labels.locationTray
 		if runtime.GOOS == "darwin" {
-			location = "menu bar"
+			location = labels.locationMenuBar
 		}
-		SendNotification("Stash has moved!", "Stash now runs in your "+location+", instead of a terminal window.")
+		SendNotification(labels.movedTitle, fmt.Sprintf(labels.movedText, location))
 		c.SetBool(config.ShowOneTimeMovedNotification, false)
 		if err := c.Write(); err != nil {
 			logger.Errorf("Error while writing configuration file: %v", err)
@@ -60,17 +58,17 @@ func systrayInitialize(exit chan<- int, faviconProvider FaviconProvider) {
 	favicon := faviconProvider.GetFavicon()
 	systray.SetTemplateIcon(favicon, favicon)
 	c := config.GetInstance()
-	systray.SetTooltip(fmt.Sprintf("🟢 Stash is Running on port %d.", c.GetPort()))
+	labels := systrayLabelsFor(c.GetLanguage())
+	systray.SetTooltip(fmt.Sprintf(labels.tooltip, c.GetPort()))
 
-	openStashButton := systray.AddMenuItem("Open Stash", "Open a browser window to Stash")
+	openStashButton := systray.AddMenuItem(labels.open, labels.openTooltip)
 	var menuItems []string
 	systray.AddSeparator()
 	if !c.IsNewSystem() {
 		menuItems = c.GetMenuItems()
 		for _, item := range menuItems {
-			c := cases.Title(language.Und)
-			titleCaseItem := c.String(strings.ToLower(item))
-			curr := systray.AddMenuItem(titleCaseItem, "Open to "+titleCaseItem)
+			label := labels.entity(item)
+			curr := systray.AddMenuItem(label, fmt.Sprintf(labels.openEntity, label))
 			go func(item string) {
 				for {
 					<-curr.ClickedCh
@@ -89,7 +87,7 @@ func systrayInitialize(exit chan<- int, faviconProvider FaviconProvider) {
 		// systray.AddSeparator()
 	}
 
-	quitStashButton := systray.AddMenuItem("Quit Stash Server", "Quits the Stash server")
+	quitStashButton := systray.AddMenuItem(labels.quit, labels.quitTooltip)
 
 	go func() {
 		for {

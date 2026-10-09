@@ -60,6 +60,7 @@ import { FormattedDate } from "src/components/Shared/Date";
 import { StudioLogo } from "src/components/Shared/StudioLogo";
 import { JobFragment, useMonitorJob } from "src/utils/job";
 import { useScrollToTopOnMount } from "src/hooks/scrollToTop";
+import { getMainVideoFile } from "src/utils/resolution";
 
 const SubmitStashBoxDraft = lazyComponent(
   () => import("src/components/Dialogs/SubmitDraft")
@@ -733,7 +734,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   const title = objectTitle(scene);
 
   const file = useMemo(
-    () => (scene.files.length > 0 ? scene.files[0] : undefined),
+    () => getMainVideoFile(scene.files),
     [scene]
   );
 

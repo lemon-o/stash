@@ -1,4 +1,4 @@
-# 自动构建并发布 Stash 定制版 Docker 镜像
+# 自动构建并发布 Stash Docker 镜像
 #
 # 触发条件：
 #   - 推送到 custom-ui 分支   -> latest / custom-ui / edge / sha-xxxxxxx

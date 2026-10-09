@@ -67,9 +67,11 @@ dist
 /data
 /bin
 ####
-# Local build tooling (desktop shell packaging)
+# Local build tooling（打包脚本的暂存与本地工作笔记）
 ####
 
 /.venv
 /build
-/desktop/__pycache__
+__pycache__
+/.scratch
+/.workbuddy

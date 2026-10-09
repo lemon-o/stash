@@ -165,7 +165,7 @@ const secondsToTimestamp = (secondsInput: number, includeMS?: boolean) => {
   const fracSeconds = secondsInput % 1;
   const ms = Math.round(fracSeconds * 1000);
 
-  let seconds = Math.trunc(secondsInput);
+  let seconds = includeMS ? Math.trunc(secondsInput) : Math.round(secondsInput);
 
   const s = seconds % 60;
   seconds = (seconds - s) / 60;
@@ -361,49 +361,58 @@ const bitRate = (bitrate: number) => {
 };
 
 const resolution = (width: number, height: number) => {
-  const number = width > height ? height : width;
-  if (number >= 6144) {
-    return "HUGE";
+  if (!width || !height || width <= 0 || height <= 0) {
+    const fallback = height || width || 0;
+    return fallback > 0 ? `${fallback}p` : "";
   }
-  if (number >= 3840) {
+  const minDim = Math.min(width, height);
+  const maxDim = Math.max(width, height);
+
+  if (maxDim >= 7680 || minDim >= 3840) {
     return "8K";
   }
-  if (number >= 3584) {
-    return "7K";
-  }
-  if (number >= 3000) {
+  if (maxDim >= 6144 || minDim >= 3000) {
     return "6K";
   }
-  if (number >= 2560) {
+  if (maxDim >= 5120 || minDim >= 2560) {
     return "5K";
   }
-  if (number >= 1920) {
+  // 4K: 3840x2160, 3840x1600 (widescreen), 3840x1920 (VR), 2160x3840 (vertical)
+  if (maxDim >= 3600 || minDim >= 1900) {
     return "4K";
   }
-  if (number >= 1440) {
+  // 1440p / 2K: 2560x1440, 2560x1080 (ultrawide)
+  if (maxDim >= 2400 || minDim >= 1400) {
     return "1440p";
   }
-  if (number >= 1080) {
+  // 1080p: 1920x1080, 1920x800..1072 (cinemascope), 1080x1920 (vertical)
+  if (maxDim >= 1800 || minDim >= 1000) {
     return "1080p";
   }
-  if (number >= 720) {
+  // 720p: 1280x720, 1280x544, 720x1280 (vertical)
+  if (maxDim >= 1200 || minDim >= 700) {
     return "720p";
   }
-  if (number >= 540) {
+  // 540p
+  if (maxDim >= 940 || minDim >= 540) {
     return "540p";
   }
-  if (number >= 480) {
+  // 480p
+  if (maxDim >= 800 || minDim >= 460) {
     return "480p";
   }
-  if (number >= 360) {
+  // 360p
+  if (maxDim >= 600 || minDim >= 340) {
     return "360p";
   }
-  if (number >= 240) {
+  // 240p
+  if (maxDim >= 400 || minDim >= 220) {
     return "240p";
   }
-  if (number >= 144) {
+  if (minDim >= 144) {
     return "144p";
   }
+  return `${minDim}p`;
 };
 
 const sanitiseURL = (url?: string, siteURL?: URL) => {

@@ -1,4 +1,4 @@
-# 定制版 Stash 镜像：自动构建与客户端部署
+# Stash 镜像：自动构建与客户端部署
 
 [![Docker Image](https://github.com/lemon-o/stash/actions/workflows/docker-image.yml/badge.svg?branch=custom-ui)](https://github.com/lemon-o/stash/actions/workflows/docker-image.yml)
 
@@ -50,6 +50,42 @@ curl -fsSLO https://raw.githubusercontent.com/lemon-o/stash/custom-ui/deploy/doc
 docker compose up -d
 ```
 
+也可直接新建 `docker-compose.yml`：
+
+```yaml
+services:
+  stash:
+    image: ghcr.io/lemon-o/stash:latest
+    container_name: stash
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+
+    # GPU 硬件转码加速（Intel N100 / QSV / AMD / 群晖等；不使用可注释此项）
+    devices:
+      - /dev/dri:/dev/dri
+
+    environment:
+      - TZ=Asia/Shanghai
+      - STASH_STASH=/data/
+      - STASH_GENERATED=/generated/
+      - STASH_METADATA=/metadata/
+      - STASH_CACHE=/cache/
+      - STASH_PORT=9999
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./config:/root/.stash        # 配置文件与数据库（最重要，务必备份）
+      - /path/to/your/media:/data:ro # 你的媒体目录（替换为宿主机实际路径）
+      - ./metadata:/metadata         # 元数据目录
+      - ./cache:/cache               # 缓存目录
+      - ./blobs:/blobs               # 二进制大对象目录
+      - ./generated:/generated       # 生成的预览、缩略图
+```
+
+> [!TIP]
+> **硬件转码生效说明**：透传 `devices: [/dev/dri:/dev/dri]` 后，容器会自动识别核显（如 Intel N100 / QSV / VA-API）。容器启动后，在 Stash 网页端 **「设置 → 系统 → FFmpeg 硬件编码」** 中勾选开启即可。
+
 浏览器打开 `http://<服务器IP>:9999`。
 
 ### compose 文件里的可选项
@@ -59,7 +95,7 @@ docker compose up -d
 | 可选项 | 作用 | 需要注意 |
 | :--- | :--- | :--- |
 | 1. DLNA | 让 Stash 出现在局域网的 DLNA 设备列表中 | 要改用 `network_mode: host`，同时**必须注释掉 `ports` 段**（两者不能共存） |
-| 2. 硬件解码 | 用核显/独显转码，降低 CPU 占用 | 宿主机需有 `/dev/dri`，镜像内 ffmpeg 需支持；`group_add` 的 GID 要按宿主机 `getent group render` / `getent group video` 填，不能照抄 |
+| 2. 硬件解码 | 用核显/独显转码，降低 CPU 占用 | 宿主机需有 `/dev/dri`，镜像内 ffmpeg 需支持；若遇到非 root 运行权限问题，按宿主机 `getent group render` / `getent group video` 补充 `group_add` |
 | 3. 健康检查 | `docker ps` 中显示 healthy / unhealthy | 只标记状态，**不会自动重启**容器 |
 | 4. 资源上限 | 限制 CPU / 内存，避免扫描、转码时吃满宿主机 | — |
 | 5. 免重建换前端 | 挂载本地 `pnpm run build` 的产物，配合 `STASH_UI` 直接换界面，不用重建镜像 | 要分别往已有的 `volumes` 和 `environment` 列表里各加一行，别新写同名键 |
@@ -76,6 +112,7 @@ docker run -d \
   --name stash \
   --restart unless-stopped \
   -p 9999:9999 \
+  --device /dev/dri:/dev/dri \
   -e STASH_STASH=/data/ \
   -e STASH_GENERATED=/generated/ \
   -e STASH_METADATA=/metadata/ \
@@ -106,9 +143,9 @@ docker compose pull && docker compose up -d
 
 | 标签 | 触发方式 | 说明 |
 | :--- | :--- | :--- |
-| `latest` | 推送到 `custom-ui`、推送 `v*` 标签 | 最新的定制版，客户端一般用这个 |
+| `latest` | 推送到 `custom-ui`、推送 `v*` 标签 | 最新构建，客户端一般用这个 |
 | `custom-ui` | 推送到 `custom-ui` | 与 `latest` 同一次构建，语义更明确 |
-| `edge` | 推送到 `custom-ui` | 同上，表示「开发中」的定制版 |
+| `edge` | 推送到 `custom-ui` | 同上，表示「开发中」的构建 |
 | `sha-1c38437` | 每次构建 | 固定到某个提交，适合固定版本部署 |
 | `1.2.3` / `1.2` | 推送 `v1.2.3` 标签 | 正式版本号 |
 

@@ -1,5 +1,5 @@
 # =============================================================================
-#  Stash 定制版（极简纯暗黑 UI）· Docker Compose 部署文件（详解版）
+#  Stash（极简纯暗黑 UI）· Docker Compose 部署文件（详解版）
 # =============================================================================
 #
 #  镜像   ghcr.io/lemon-o/stash        公开，免登录拉取
@@ -144,14 +144,14 @@ services:
     # network_mode: host
 
     # --- 选项 2：硬件解码（Intel / AMD 核显或独显）----------------------------
-    # 需要宿主机存在 /dev/dri，且镜像内 ffmpeg 带 vaapi 支持。
-    # 先确认镜像里的能力：
-    #   docker compose exec stash ffmpeg -hwaccels
-    # 再查宿主机上 render / video 组的 GID，填到下面（各发行版不同，不能照抄）：
-    #   getent group render
-    #   getent group video
+    # 需要宿主机存在 /dev/dri，且镜像内 ffmpeg 带 vaapi / qsv 支持。
+    # 典型场景（如 Intel N100 / 群晖 NAS / 常见 x86 核显小主机），直接取消下一段注释即可：
     # devices:
     #   - /dev/dri:/dev/dri
+    #
+    # 若宿主机非 root 运行或遇到权限问题，再查宿主机上 render / video 组的 GID 并填入：
+    #   getent group render
+    #   getent group video
     # group_add:
     #   - "989"        # ← 换成 getent group render 得到的 GID
     #   - "44"         # ← 换成 getent group video 得到的 GID

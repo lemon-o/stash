@@ -8,6 +8,11 @@ import { Icon } from "src/components/Shared/Icon";
 import { faSyncAlt } from "@fortawesome/free-solid-svg-icons";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { PatchComponent } from "src/patch";
+import {
+  getMainVideoFile,
+  getVideoResolutionLabel,
+  formatVideoDuration,
+} from "src/utils/resolution";
 
 interface ISceneRecommendationsPanelProps {
   scene: GQL.SceneDataFragment;
@@ -41,24 +46,11 @@ const SceneRecommendationCard: React.FC<{
   const intl = useIntl();
   const [isHovered, setIsHovered] = useState(false);
 
-  const file = s.files.length > 0 ? s.files[0] : undefined;
+  const file = getMainVideoFile(s.files);
   const title = objectTitle(s);
   const performers = s.performers.map((p) => p.name).join(", ");
-  const duration = file?.duration
-    ? TextUtils.secondsToTimestamp(file.duration)
-    : undefined;
-
-  const resolution = file?.height
-    ? file.height >= 2160
-      ? "4K"
-      : file.height >= 1440
-      ? "1440p"
-      : file.height >= 1080
-      ? "1080p"
-      : file.height >= 720
-      ? "720p"
-      : `${file.height}p`
-    : undefined;
+  const duration = formatVideoDuration(file?.duration);
+  const resolution = getVideoResolutionLabel(file?.width, file?.height);
 
   const previewVideo = s.paths.preview;
 
