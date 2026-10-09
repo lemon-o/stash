@@ -439,14 +439,14 @@ hr {
   }
 
   @include media-breakpoint-down(lg) {
-    height: calc(50px + env(safe-area-inset-top, 0px)) !important;
     min-height: calc(50px + env(safe-area-inset-top, 0px)) !important;
-    max-height: calc(50px + env(safe-area-inset-top, 0px)) !important;
+    height: auto !important;
     padding: env(safe-area-inset-top, 0px) 1rem 0 1rem !important;
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
   }
 
   .navbar-brand {
+    order: 1 !important;
     display: flex !important;
     align-items: center !important;
     height: 50px !important;
@@ -555,6 +555,7 @@ hr {
     }
 
     @include media-breakpoint-down(lg) {
+      order: 10 !important;
       width: 100% !important;
       flex-basis: 100% !important;
       height: auto !important;
@@ -632,6 +633,7 @@ hr {
   }
 
   .navbar-buttons {
+    order: 2 !important;
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
