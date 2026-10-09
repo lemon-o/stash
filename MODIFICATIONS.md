@@ -1518,9 +1518,16 @@ npx pnpm run start
      - 导航栏在 `<= 576px` 隐藏 5 个实用工具图标，防止小屏挤压换行。
   4. **移动端默认缩放等级由 70% 调整为 100%**：
      - 在 `ListFilterModel` 中引入 `ScreenUtils.isMobile()`，移动端默认 `zoomIndex = 3`（100% 原始比例），桌面端保持 `zoomIndex = 2`（70% 紧凑大图）。
-  5. **移动端筛选器顶部被遮挡（图3）**：
+  5. **移动端筛选器抽屉顶部被遮挡**：
      - 原 `.sidebar` 在移动端写死了 `top: 0`，导致弹出的筛选抽屉顶部标题与重置按钮被 50px 的固定顶部导航栏完全遮盖；
      - **方案**：将移动端 `.sidebar` 顶部重设为 `top: calc(#{$navbar-height} + env(safe-area-inset-top, 0px)) !important;`，高度动态计算扣除导航栏与底部安全区，彻底消除遮挡。
+  6. **移动端列表工具栏与顶部导航栏垂直堆叠遮挡彻底根除**：
+     - **根因剖析**：原移动端 `.top-nav` 具有 `0.25rem` 上下内边距，实际外高为 `58px + safe-area`，而 `body` 仅设了 `50px + safe-area` 边距；同时 `.main` 在移动端（`xs`）缺少内边距（为 0），而 `.filtered-list-toolbar` 又自带 `-0.5rem`（-8px）负外边距，导致列表工具栏顶部向上刺入导航栏内 16px 以上，造成导航栏 Logo / 新增按钮直接压在工具栏排序与分页组件之上；
+     - **方案**：
+       1. 锁定移动端 `.top-nav` 高度为精准的 `calc(50px + env(safe-area-inset-top, 0px))`，垂直内容居中，消除多余内边距；
+       2. 移除 `.main` 在 `xs` 下的零内边距限制，恒定保持 `0.5rem`；
+       3. 在移动端将 `.filtered-list-toolbar` 的负边距重设为 `margin-top: 0.25rem !important;`，并同步给 `_theme.scss`；
+       4. 收起移动端 `.sidebar-pane .filtered-list-toolbar` 右侧无效浪费的 `40px` 边距（`margin-right: 0 !important; margin-left: 36px !important;`），使工具栏与顶栏之间拥有舒适自然的 12px 留白，彻底消除堆叠。
 
 ---
 

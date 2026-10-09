@@ -62,9 +62,7 @@ body {
 }
 
 .main {
-  @include media-breakpoint-up(sm) {
-    padding-top: 0.5rem;
-  }
+  padding-top: 0.5rem;
 }
 
 #group-page,

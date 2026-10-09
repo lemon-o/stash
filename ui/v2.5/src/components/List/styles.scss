@@ -976,6 +976,11 @@ ul.selectable-list {
   padding-bottom: 0.5rem;
   padding-top: 0.5rem;
 
+  @media (max-width: 768px) {
+    margin-top: 0.25rem !important;
+    padding-top: 0.25rem !important;
+  }
+
   // 1. Height deadlock: 32px for all direct child elements
   > .btn-group,
   > .input-group,
@@ -1377,6 +1382,13 @@ ul.selectable-list {
 .sidebar-pane .filtered-list-toolbar {
   margin-left: 40px;
   margin-right: 40px;
+
+  @media (max-width: 768px) {
+    margin-left: 36px !important;
+    margin-right: 0 !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
 }
 
 // on very large screens, offset the margins to center the toolbar

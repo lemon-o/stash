@@ -439,10 +439,11 @@ hr {
   }
 
   @include media-breakpoint-down(lg) {
-    min-height: 50px;
-    height: auto;
-    padding: calc(env(safe-area-inset-top, 0px) + 0.25rem) 1rem 0.25rem 1rem !important;
-    flex-wrap: wrap !important;
+    height: calc(50px + env(safe-area-inset-top, 0px)) !important;
+    min-height: calc(50px + env(safe-area-inset-top, 0px)) !important;
+    max-height: calc(50px + env(safe-area-inset-top, 0px)) !important;
+    padding: env(safe-area-inset-top, 0px) 1rem 0 1rem !important;
+    flex-wrap: nowrap !important;
   }
 
   .navbar-brand {
@@ -943,8 +944,9 @@ hr {
 }
 
 // 2. Mobile Filter & Search Toolbar
-@media (max-width: 576px) {
+@media (max-width: 768px) {
   .filtered-list-toolbar {
+    margin-top: 0.25rem !important;
     padding-left: 0.5rem;
     padding-right: 0.5rem;
     gap: 6px;
