@@ -1400,16 +1400,16 @@ ul.selectable-list {
   width: fit-content;
   z-index: 10;
 
-  @include media-breakpoint-down(xs) {
-    top: 0;
+  @media (max-width: 576px) {
+    top: calc(#{$navbar-height} + env(safe-area-inset-top, 0px)) !important;
   }
 }
 
 .detail-body .filtered-list-toolbar.has-selection {
   top: calc($sticky-detail-header-height + $navbar-height);
 
-  @include media-breakpoint-down(xs) {
-    top: 0;
+  @media (max-width: 576px) {
+    top: calc(#{$navbar-height} + env(safe-area-inset-top, 0px)) !important;
   }
 }
 

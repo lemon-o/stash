@@ -4,7 +4,6 @@ import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import { SceneQueue } from "src/models/sceneQueue";
 import { SceneWallPanel } from "../Scenes/SceneWallPanel";
-import { SceneRecommendationRail } from "./SceneRecommendationRail";
 import ScreenUtils from "src/utils/screen";
 import { RecommendationRow } from "./RecommendationRow";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
@@ -337,18 +336,11 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
         header={headerNode}
         link={linkNode}
       >
-        {isMobile ? (
-          <SceneRecommendationRail
-            scenes={recommendedScenes.slice(0, 16)}
-            sceneQueue={queue}
-          />
-        ) : (
-          <SceneWallPanel
-            scenes={recommendedScenes}
-            sceneQueue={queue}
-            zoomIndex={2}
-          />
-        )}
+        <SceneWallPanel
+          scenes={recommendedScenes}
+          sceneQueue={queue}
+          zoomIndex={isMobile ? 3 : 2}
+        />
       </RecommendationRow>
     );
   });

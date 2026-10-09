@@ -20,6 +20,7 @@ $sceneTabWidth: 450px;
 
   &.portrait .video-wrapper {
     height: 177.78vw;
+    max-height: calc(100dvh - 120px);
   }
 }
 
@@ -865,87 +866,249 @@ $sceneTabWidth: 450px;
       }
     }
   }
-  @media (max-width: 576px) {
-    .vjs-control-bar {
-      .vjs-autostart-button,
-      .vjs-volume-panel {
-        display: none !important;
-      }
-    }
-
-    .vjs-progress-control {
-      height: 24px !important;
-      top: -12px !important;
-
-      .vjs-progress-holder {
-        height: 6px !important;
-      }
-    }
-  }
-
-  // make controls a little more compact on smaller screens
   @media (max-width: 768px) {
     .vjs-control-bar {
+      height: 42px !important;
+      padding: 0 4px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      flex-wrap: nowrap !important;
+      overflow: visible !important;
+
       .vjs-control {
-        width: 2.5em;
+        width: 28px !important;
+      }
+
+      // Hide useless or non-applicable buttons on mobile
+      .vjs-descriptions-button,
+      .vjs-autostart-button,
+      .vjs-audio-button {
+        display: none !important;
+      }
+
+      // Hide seek buttons on small screens to ensure primary controls always fit
+      @media (max-width: 480px) {
+        .vjs-seek-button {
+          display: none !important;
+        }
+      }
+
+      .vjs-button {
+        width: 28px !important;
+        height: 28px !important;
+        min-width: 28px !important;
+        max-width: 28px !important;
+        margin: 0 1px !important;
+        padding: 0 !important;
+
+        > .vjs-icon-placeholder::before,
+        &.vjs-skip-button::before {
+          font-size: 15px !important;
+          line-height: 28px !important;
+          height: 28px !important;
+          width: 28px !important;
+        }
+      }
+
+      // Left items order
+      .vjs-skip-button.vjs-icon-previous-item {
+        order: 1 !important;
+      }
+
+      .vjs-play-control {
+        order: 2 !important;
+      }
+
+      .vjs-skip-button.vjs-icon-next-item {
+        order: 3 !important;
+      }
+
+      .vjs-seek-button.skip-back {
+        order: 4 !important;
+      }
+
+      .vjs-seek-button.skip-forward {
+        order: 5 !important;
+      }
+
+      // Compact time display
+      .vjs-time-control,
+      .vjs-time-divider {
+        font-size: 11px !important;
+        height: 28px !important;
+        line-height: 28px !important;
+        padding: 0 1px !important;
+        letter-spacing: 0 !important;
+
+        .vjs-current-time-display,
+        .vjs-duration-display,
+        div,
+        span {
+          font-size: 11px !important;
+          line-height: 28px !important;
+        }
+      }
+
+      .vjs-time-divider {
+        min-width: 4px !important;
+        padding: 0 !important;
+        order: 7 !important;
+      }
+
+      .vjs-current-time {
+        order: 6 !important;
+        margin-left: 0 !important;
+      }
+
+      // Duration pushes right controls to the end
+      .vjs-duration {
+        order: 8 !important;
+        margin-right: auto !important;
+      }
+
+      // Right items order
+      .vjs-playback-rate {
+        order: 10 !important;
+        width: 28px !important;
+        min-width: 28px !important;
+        max-width: 28px !important;
+        height: 28px !important;
+        margin: 0 1px !important;
+
+        > .vjs-menu-button {
+          width: 28px !important;
+          height: 28px !important;
+        }
+
+        .vjs-playback-rate-value {
+          width: 26px !important;
+          height: 18px !important;
+          line-height: 16px !important;
+          font-size: 10px !important;
+          border-radius: 9px !important;
+        }
+      }
+
+      .vjs-subs-caps-button {
+        order: 11 !important;
+      }
+
+      // Resolution / Source Selector - explicitly visible on mobile
+      .vjs-source-selector {
+        order: 12 !important;
+        display: inline-flex !important;
+        width: 28px !important;
+        height: 28px !important;
+        margin: 0 1px !important;
+
+        .vjs-button {
+          width: 28px !important;
+          height: 28px !important;
+
+          > .vjs-icon-placeholder::before {
+            font-size: 15px !important;
+            line-height: 28px !important;
+            height: 28px !important;
+            width: 28px !important;
+          }
+        }
+
+        .vjs-menu {
+          z-index: 9999 !important;
+          position: absolute !important;
+          bottom: 36px !important;
+          right: 0 !important;
+          left: auto !important;
+          width: auto !important;
+          min-width: 70px !important;
+
+          .vjs-menu-content {
+            max-height: 12em !important;
+            bottom: 0 !important;
+          }
+
+          li {
+            font-size: 11px !important;
+          }
+        }
+      }
+
+      // Volume panel: tap-to-mute button on mobile
+      .vjs-volume-panel {
+        order: 13 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 28px !important;
+        height: 28px !important;
+        margin: 0 1px !important;
+
+        .vjs-mute-control {
+          width: 28px !important;
+          height: 28px !important;
+          margin: 0 !important;
+          padding: 0 !important;
+
+          .vjs-icon-placeholder::before {
+            font-size: 15px !important;
+            line-height: 28px !important;
+            height: 28px !important;
+            width: 28px !important;
+          }
+        }
+
+        // Hide volume slider popup on touch screen to avoid accidental interactions
+        .vjs-volume-control {
+          display: none !important;
+        }
+      }
+
+      // Fullscreen toggle on far right
+      .vjs-fullscreen-control {
+        order: 14 !important;
+        display: inline-flex !important;
+        width: 30px !important;
+        height: 30px !important;
+        margin: 0 0 0 2px !important;
+
+        .vjs-icon-placeholder::before {
+          font-size: 18px !important;
+          line-height: 30px !important;
+          height: 30px !important;
+          width: 30px !important;
+        }
       }
 
       .vjs-progress-control {
-        height: 2em;
-        width: 100%;
-      }
+        height: 20px !important;
+        top: -10px !important;
+        width: 100% !important;
+        padding: 0 6px !important;
 
-      .vjs-playback-rate {
-        width: 3em;
-      }
-
-      .vjs-button > .vjs-icon-placeholder::before,
-      .vjs-skip-button::before {
-        font-size: 1.5em;
-        line-height: 2;
+        .vjs-progress-holder {
+          height: 5px !important;
+        }
       }
 
       .vjs-airplay-button .vjs-icon-placeholder,
       .vjs-chromecast-button .vjs-icon-placeholder {
-        height: 1.4em;
-        width: 1.4em;
-      }
-
-      .vjs-source-selector .vjs-menu {
-        z-index: 9999;
+        height: 1.3em;
+        width: 1.3em;
       }
     }
 
     .vjs-menu-button-popup .vjs-menu {
-      width: 8em;
+      width: 7.5em;
 
       .vjs-menu-content {
-        max-height: 10em;
+        max-height: 12em;
       }
-    }
-
-    .vjs-playback-rate .vjs-playback-rate-value {
-      font-size: 1em;
-      line-height: 2.97;
-    }
-
-    .vjs-source-selector {
-      .vjs-menu li {
-        font-size: 10px;
-      }
-    }
-
-    .vjs-time-control {
-      font-size: 12px;
     }
 
     .vjs-big-button-group .vjs-button {
       font-size: 2em;
       width: 50px;
-    }
-
-    .vjs-current-time {
-      margin-left: 1em;
     }
   }
 }

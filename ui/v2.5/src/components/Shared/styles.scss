@@ -948,9 +948,13 @@ button.btn.favorite-button {
       }
     }
   }
-  @include media-breakpoint-down(xs) {
+  @media (max-width: 576px) {
     .sidebar {
-      margin-top: 0;
+      top: calc(#{$navbar-height} + env(safe-area-inset-top, 0px)) !important;
+      margin-top: 0 !important;
+      height: calc(100vh - #{$navbar-height} - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+      max-height: calc(100vh - #{$navbar-height} - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+      padding-top: 0.75rem !important;
     }
   }
 }
@@ -973,8 +977,8 @@ button.btn.favorite-button {
     top: calc($navbar-height + 0.5rem);
     z-index: 10;
 
-    @include media-breakpoint-down(sm) {
-      top: 0.5rem;
+    @media (max-width: 768px) {
+      top: calc(#{$navbar-height} + env(safe-area-inset-top, 0px) + 0.5rem) !important;
     }
   }
 }
@@ -1083,16 +1087,17 @@ $sticky-header-height: calc(50px + 3.3rem);
       transition: none;
     }
   }
-  @include media-breakpoint-down(xs) {
+  @media (max-width: 576px) {
     .sidebar-pane {
-      top: 0;
+      top: calc(#{$navbar-height} + env(safe-area-inset-top, 0px)) !important;
     }
 
     .sidebar {
-      // flex: 100% 0 0;
-      height: calc(100vh - $navbar-height);
-      max-height: calc(100vh - $navbar-height);
-      top: 0;
+      height: calc(100vh - #{$navbar-height} - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+      max-height: calc(100vh - #{$navbar-height} - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+      top: calc(#{$navbar-height} + env(safe-area-inset-top, 0px)) !important;
+      margin-top: 0 !important;
+      padding-top: 0.75rem !important;
     }
   }
   @include media-breakpoint-up(md) {

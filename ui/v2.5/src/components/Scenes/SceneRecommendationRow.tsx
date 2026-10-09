@@ -6,7 +6,6 @@ import { SceneQueue } from "src/models/sceneQueue";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { PatchComponent } from "src/patch";
 import { SceneWallPanel } from "./SceneWallPanel";
-import { SceneRecommendationRail } from "../FrontPage/SceneRecommendationRail";
 import ScreenUtils from "src/utils/screen";
 import { RecommendationRow } from "../FrontPage/RecommendationRow";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
@@ -47,16 +46,11 @@ export const SceneRecommendationRow: React.FC<IProps> = PatchComponent(
       >
         {result.loading ? (
           <LoadingIndicator />
-        ) : isMobile ? (
-          <SceneRecommendationRail
-            scenes={scenes.slice(0, 16)}
-            sceneQueue={queue}
-          />
         ) : (
           <SceneWallPanel
             scenes={scenes}
             sceneQueue={queue}
-            zoomIndex={2}
+            zoomIndex={isMobile ? 3 : 2}
           />
         )}
       </RecommendationRow>

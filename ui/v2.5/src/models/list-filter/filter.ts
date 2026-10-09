@@ -10,6 +10,7 @@ import { getFilterOptions } from "./factory";
 import { CriterionType, DisplayMode, SavedUIOptions } from "./types";
 import { ListFilterOptions } from "./filter-options";
 import { CustomFieldsCriterion } from "./criteria/custom-fields";
+import ScreenUtils from "src/utils/screen";
 
 interface IDecodedParams {
   perPage?: number;
@@ -60,10 +61,10 @@ export class ListFilterModel {
   public sortDirection: SortDirectionEnum = DEFAULT_PARAMS.sortDirection;
   public sortBy?: string;
   public displayMode: DisplayMode = DEFAULT_PARAMS.displayMode;
-  public zoomIndex: number = 2;
+  public zoomIndex: number = ScreenUtils.isMobile() ? 3 : 2;
   public criteria: Array<Criterion> = [];
   public randomSeed = -1;
-  private defaultZoomIndex: number = 2;
+  private defaultZoomIndex: number = ScreenUtils.isMobile() ? 3 : 2;
 
   public constructor(
     mode: FilterMode,
@@ -95,10 +96,14 @@ export class ListFilterModel {
     this.displayMode = displayModeOptions.includes(DEFAULT_PARAMS.displayMode)
       ? DEFAULT_PARAMS.displayMode
       : displayModeOptions[0];
-    if (options?.defaultZoomIndex !== undefined) {
-      this.defaultZoomIndex = options.defaultZoomIndex;
-      this.zoomIndex = options.defaultZoomIndex;
-    }
+    const initialZoom =
+      options?.defaultZoomIndex !== undefined
+        ? options.defaultZoomIndex
+        : ScreenUtils.isMobile()
+        ? 3
+        : 2;
+    this.defaultZoomIndex = initialZoom;
+    this.zoomIndex = initialZoom;
   }
 
   public clone() {

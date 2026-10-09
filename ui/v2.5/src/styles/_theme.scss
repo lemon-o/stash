@@ -792,6 +792,14 @@ hr {
         font-size: 0.9rem;
       }
     }
+
+    @media (max-width: 576px) {
+      .nav-utility,
+      a.nav-utility,
+      button.nav-utility {
+        display: none !important;
+      }
+    }
   }
 
   .navbar-toggler,
