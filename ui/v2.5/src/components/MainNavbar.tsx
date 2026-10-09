@@ -355,7 +355,13 @@ export const MainNavbar: React.FC = () => {
       onToggle={setExpanded}
       ref={navbarRef}
     >
-      <Navbar.Collapse className="bg-dark order-sm-1">
+      <Navbar.Brand as="div" onClick={handleDismiss} className="d-flex align-items-center h-100">
+        <Link to="/" className="d-flex align-items-center h-100">
+          <Button className="minimal brand-link d-flex align-items-center h-100">Stash</Button>
+        </Link>
+      </Navbar.Brand>
+
+      <Navbar.Collapse className="bg-dark">
         <MainNavbarMenuItems>
           {menuItems.map(({ href, icon, message }) => (
             <Nav.Link
@@ -433,12 +439,6 @@ export const MainNavbar: React.FC = () => {
         </div>
       </Navbar.Collapse>
 
-      <Navbar.Brand as="div" onClick={handleDismiss} className="d-flex align-items-center h-100">
-        <Link to="/" className="d-flex align-items-center h-100">
-          <Button className="minimal brand-link d-flex align-items-center h-100">Stash</Button>
-        </Link>
-      </Navbar.Brand>
-
       <Nav className="navbar-buttons flex-row ml-auto order-xl-2 d-flex align-items-center h-100">
         {!!newPath && (
           <div className="mr-2 d-flex align-items-center">
@@ -452,7 +452,7 @@ export const MainNavbar: React.FC = () => {
         <MainNavbarUtilityItems>
           {renderUtilityButtons()}
         </MainNavbarUtilityItems>
-        <Navbar.Toggle className="nav-menu-toggle ml-sm-2">
+        <Navbar.Toggle className="nav-menu-toggle d-xl-none ml-sm-2">
           <Icon icon={expanded ? faTimes : faBars} />
         </Navbar.Toggle>
       </Nav>

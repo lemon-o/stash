@@ -21,26 +21,47 @@ class AutostartButton extends videojs.getComponent("Button") {
     return `vjs-autostart-button ${super.buildCSSClass()}`;
   }
 
+  createEl(tag: string = "button", props?: any, attributes?: any): HTMLButtonElement {
+    return super.createEl(
+      tag || "button",
+      {
+        className: this.buildCSSClass(),
+        type: "button",
+        ...props,
+      },
+      attributes
+    ) as HTMLButtonElement;
+  }
+
+  public toggle() {
+    this.autostartEnabled = !this.autostartEnabled;
+    this.updateIcon();
+    this.trigger("autostartchanged", { enabled: this.autostartEnabled });
+  }
+
   private updateIcon() {
     this.removeClass("vjs-icon-play-circle");
     this.removeClass("vjs-icon-cancel");
 
     if (this.autostartEnabled) {
       this.addClass("vjs-icon-play-circle");
-      this.controlText(this.localize("Auto-start enabled (click to disable)"));
+      const text = this.localize("Auto-start enabled (click to disable)");
+      this.controlText(text);
+      this.el()?.setAttribute("title", text);
     } else {
       this.addClass("vjs-icon-cancel");
-      this.controlText(this.localize("Auto-start disabled (click to enable)"));
+      const text = this.localize("Auto-start disabled (click to enable)");
+      this.controlText(text);
+      this.el()?.setAttribute("title", text);
     }
   }
 
   handleClick(event: Event) {
     // Prevent the click from bubbling up and affecting the video player
-    event.stopPropagation();
-
-    this.autostartEnabled = !this.autostartEnabled;
-    this.updateIcon();
-    this.trigger("autostartchanged", { enabled: this.autostartEnabled });
+    if (event) {
+      event.stopPropagation();
+    }
+    this.toggle();
   }
 
   public setEnabled(enabled: boolean) {
@@ -71,14 +92,29 @@ class AutostartButtonPlugin extends videojs.getPlugin("plugin") {
   }
 
   private ready() {
-    // Add button to control bar, before the fullscreen button
-    const { controlBar } = this.player;
-    const fullscreenToggle = controlBar.getChild("fullscreenToggle");
-    if (fullscreenToggle) {
-      controlBar.addChild(this.button);
-      controlBar.el().insertBefore(this.button.el(), fullscreenToggle.el());
-    } else {
-      controlBar.addChild(this.button);
+    try {
+      const { controlBar } = this.player;
+      const cbEl = controlBar?.el();
+      if (!cbEl) return;
+
+      if (!controlBar.getChild("AutostartButton")) {
+        controlBar.addChild(this.button);
+      }
+
+      const subsCaps = controlBar.getChild("subsCapsButton");
+      const settingsBtn = controlBar.getChild("YouTubeSettingsButton");
+      const fullscreenToggle = controlBar.getChild("fullscreenToggle");
+
+      // Desired YouTube order: [autostart] -> [subsCaps (if in DOM)] -> [settings] -> [fullscreen]
+      if (subsCaps && subsCaps.el() && subsCaps.el().parentNode === cbEl) {
+        cbEl.insertBefore(this.button.el(), subsCaps.el());
+      } else if (settingsBtn && settingsBtn.el() && settingsBtn.el().parentNode === cbEl) {
+        cbEl.insertBefore(this.button.el(), settingsBtn.el());
+      } else if (fullscreenToggle && fullscreenToggle.el() && fullscreenToggle.el().parentNode === cbEl) {
+        cbEl.insertBefore(this.button.el(), fullscreenToggle.el());
+      }
+    } catch (err) {
+      console.warn("Failed to position AutostartButton:", err);
     }
 
     // Listen for changes

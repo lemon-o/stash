@@ -446,7 +446,7 @@ hr {
   }
 
   .navbar-brand {
-    order: 1 !important;
+    order: 0 !important;
     display: flex !important;
     align-items: center !important;
     height: 50px !important;
@@ -487,6 +487,7 @@ hr {
     align-items: center;
 
     @include media-breakpoint-up(xl) {
+      order: 1 !important;
       display: flex !important;
       align-items: center !important;
       height: 50px !important;
@@ -820,6 +821,10 @@ hr {
     justify-content: center !important;
     outline: none !important;
     margin: 0 0 0 0.5rem !important;
+
+    @include media-breakpoint-up(xl) {
+      display: none !important;
+    }
 
     svg,
     .fa-icon {

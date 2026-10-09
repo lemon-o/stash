@@ -10,13 +10,16 @@ import videojs, { VideoJsPlayer, VideoJsPlayerOptions } from "video.js";
 import useScript from "src/hooks/useScript";
 import "videojs-contrib-dash";
 import "videojs-mobile-ui";
-import "videojs-seek-buttons";
+import "./touch-gestures";
 import { UAParser } from "ua-parser-js";
+import { useIntl } from "react-intl";
 import "./live";
 import "./PlaylistButtons";
 import "./source-selector";
 import "./persist-volume";
 import "./autostart-button";
+import "./vjs-i18n";
+import { syncControlBarTitles } from "./vjs-i18n";
 import MarkersPlugin, { type IMarker } from "./markers";
 void MarkersPlugin;
 import "./vtt-thumbnails";
@@ -252,6 +255,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     const [sceneSaveActivity] = useSceneSaveActivity();
     const [sceneIncrementPlayCount] = useSceneIncrementPlayCount();
     const [updateInterfaceConfig] = useConfigureInterface();
+    const intl = useIntl();
 
     const [time, setTime] = useState(0);
     const [ready, setReady] = useState(false);
@@ -340,12 +344,16 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const options: VideoJsPlayerOptions = {
         id: VIDEO_PLAYER_ID,
         controls: true,
+        language: intl.locale || "zh-CN",
         controlBar: {
           pictureInPictureToggle: false,
           volumePanel: {
             inline: false,
           },
           chaptersButton: false,
+          descriptionsButton: false,
+          audioTrackButton: false,
+          playbackRateMenuButton: false,
         },
         html5: {
           dash: {
@@ -388,10 +396,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           sourceSelector: {},
           persistVolume: {},
           bigButtons: {},
-          seekButtons: {
-            forward: 10,
-            back: 10,
-          },
+          touchGestures: {},
           skipButtons: {},
           trackActivity: {},
           vrMenu: {},
@@ -421,6 +426,19 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       const vjs = videojs(videoEl, options);
 
+      vjs.ready(() => {
+        syncControlBarTitles(vjs);
+      });
+      vjs.on(
+        ["play", "pause", "volumechange", "fullscreenchange"],
+        () => {
+          syncControlBarTitles(vjs);
+        }
+      );
+      setTimeout(() => {
+        syncControlBarTitles(vjs);
+      }, 500);
+
       /* biome-ignore lint/suspicious/noExplicitAny: intentional */
       const settings = (vjs as any).textTrackSettings;
       settings.setValues({
@@ -449,8 +467,15 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     }, [
       uiConfig?.showAbLoopControls,
       uiConfig?.enableChromecast,
-      interfaceConfig?.autostartVideo,
+      intl.locale,
     ]);
+
+    useEffect(() => {
+      const player = getPlayer();
+      if (!player) return;
+      player.language(intl.locale || "zh-CN");
+      syncControlBarTitles(player);
+    }, [intl.locale, getPlayer]);
 
     useEffect(() => {
       const player = getPlayer();
@@ -621,31 +646,158 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         return (
           src.pathname.endsWith("/stream") ||
           src.pathname.endsWith("/stream.mpd") ||
-          src.pathname.endsWith("/stream.m3u8")
+          src.pathname.endsWith("/stream.m3u8") ||
+          src.pathname.endsWith("/stream.mkv")
         );
       }
 
       const { duration } = file;
       const sourceSelector = player.sourceSelector();
-      sourceSelector.setSources(
-        scene.sceneStreams
-          .filter((stream) => {
-            const src = new URL(stream.url);
-            const isFileTranscode = !isDirect(src);
 
-            return !(isFileTranscode && isSafari);
-          })
-          .map((stream) => {
-            const src = new URL(stream.url);
+      // Native resolution of the video file (e.g. 720, 1080, 2160)
+      const videoHeight =
+        Math.min(file?.width || 0, file?.height || 0) ||
+        file?.height ||
+        file?.width ||
+        0;
 
-            return {
-              src: stream.url,
-              type: stream.mime_type ?? undefined,
-              label: stream.label ?? undefined,
-              offset: !isDirect(src),
+      // 1. Separate direct stream and transcode streams
+      const directStreams: typeof scene.sceneStreams = [];
+      const transcodeStreams: typeof scene.sceneStreams = [];
+
+      for (const stream of scene.sceneStreams) {
+        const src = new URL(stream.url);
+        if (isDirect(src)) {
+          directStreams.push(stream);
+        } else {
+          // "不需要两种画质一样的转码格式，哪种转码快用哪种"
+          // Filter out WebM; keep MP4 (H.264 is universally faster and hardware accelerated)
+          const isWebm =
+            src.pathname.endsWith("/stream.webm") ||
+            stream.mime_type === "video/webm";
+          if (!isWebm) {
+            transcodeStreams.push(stream);
+          }
+        }
+      }
+
+      // 2. Direct stream ("原画")
+      const primaryDirect =
+        directStreams.find((s) =>
+          new URL(s.url).pathname.endsWith("/stream")
+        ) || directStreams[0];
+
+      const processedDirectStreams = primaryDirect
+        ? [
+            {
+              src: primaryDirect.url,
+              type: primaryDirect.mime_type ?? undefined,
+              label: intl.formatMessage({
+                id: "direct_stream",
+                defaultMessage: "原画",
+              }),
+              offset: false,
               duration,
-            };
-          })
+            },
+          ]
+        : [];
+
+      // 3. YouTube-style transcode tiers ("其他挡位参考如图YouTube的画质挡位，基于原画往下转码")
+      const standardHeightMap: Record<string, number> = {
+        FOUR_K: 2160,
+        FULL_HD: 1080,
+        STANDARD_HD: 720,
+        STANDARD: 480,
+        LOW: 240,
+      };
+
+      function getYouTubeResolutionLabel(height: number): string {
+        if (height >= 2160) return "2160p ⁴ᴷ";
+        if (height >= 1440) return "1440p ᴴᴰ";
+        if (height >= 1080) return "1080p ᴴᴰ";
+        if (height >= 720) return "720p";
+        if (height >= 480) return "480p";
+        if (height >= 360) return "360p";
+        if (height >= 240) return "240p";
+        if (height >= 144) return "144p";
+        return `${height}p`;
+      }
+
+      interface TranscodeCandidate {
+        stream: (typeof scene.sceneStreams)[0];
+        height: number;
+        label: string;
+      }
+
+      const candidates: TranscodeCandidate[] = [];
+
+      for (const stream of transcodeStreams) {
+        const src = new URL(stream.url);
+        const isFileTranscode = !isDirect(src);
+        if (isFileTranscode && isSafari) continue;
+
+        const resParam = src.searchParams.get("resolution") || "";
+        let targetHeight = 0;
+
+        if (resParam === "ORIGINAL") {
+          targetHeight = videoHeight;
+        } else if (standardHeightMap[resParam]) {
+          targetHeight = standardHeightMap[resParam];
+        } else {
+          const match = stream.label?.match(/\((\d+)p\)/);
+          if (match) {
+            targetHeight = parseInt(match[1], 10);
+          }
+        }
+
+        // "基于原画往下转码": only transcode downwards from video's native resolution
+        if (videoHeight > 0 && targetHeight > videoHeight) {
+          continue;
+        }
+
+        if (targetHeight > 0) {
+          candidates.push({
+            stream,
+            height: targetHeight,
+            label: getYouTubeResolutionLabel(targetHeight),
+          });
+        }
+      }
+
+      // Sort descending by height (e.g. 2160 -> 1440 -> 1080 -> 720 -> 480 -> 240)
+      candidates.sort((a, b) => b.height - a.height);
+
+      // Deduplicate: "不需要两种画质一样的转码格式" (keep only 1 fastest MP4 stream per height)
+      const seenHeights = new Set<number>();
+      const processedTranscodeStreams: typeof processedDirectStreams = [];
+
+      for (const candidate of candidates) {
+        if (seenHeights.has(candidate.height)) {
+          continue;
+        }
+        seenHeights.add(candidate.height);
+
+        const src = new URL(candidate.stream.url);
+        processedTranscodeStreams.push({
+          src: candidate.stream.url,
+          type: candidate.stream.mime_type ?? undefined,
+          label: candidate.label,
+          offset: !isDirect(src),
+          duration,
+        });
+      }
+
+      const finalSources = [
+        ...processedDirectStreams,
+        ...processedTranscodeStreams,
+      ];
+
+      sourceSelector.setSources(
+        finalSources,
+        intl.formatMessage({
+          id: "auto",
+          defaultMessage: "自动",
+        })
       );
 
       function getDefaultLanguageCode() {

@@ -41,7 +41,7 @@ class VRMenuItem extends videojs.getComponent("MenuItem") {
     const options: videojs.MenuItemOptions = {};
     options.selectable = true;
     options.multiSelectable = false;
-    options.label = type;
+    options.label = type === VRType.Off ? parent.localize("Off") : type;
 
     super(parent.player(), options);
 
@@ -68,6 +68,9 @@ class VRMenuButton extends videojs.getComponent("MenuButton") {
 
   constructor(player: VideoJsPlayer) {
     super(player);
+    const vrText = this.localize("VR Mode") || "VR 模式";
+    this.controlText(vrText);
+    this.el()?.setAttribute("title", vrText);
     this.setTypes();
   }
 
@@ -95,10 +98,13 @@ class VRMenuButton extends videojs.getComponent("MenuButton") {
   }
 
   createEl() {
-    return videojs.dom.createEl("div", {
+    const el = videojs.dom.createEl("div", {
       className:
         "vjs-vr-selector vjs-menu-button vjs-menu-button-popup vjs-control vjs-button",
     });
+    const vrText = this.localize("VR Mode") || "VR 模式";
+    el.setAttribute("title", vrText);
+    return el;
   }
 
   createItems() {

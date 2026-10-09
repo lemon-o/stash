@@ -1,6 +1,5 @@
 @import "video.js/dist/video-js.css";
 @import "videojs-mobile-ui/dist/videojs-mobile-ui.css";
-@import "videojs-seek-buttons/dist/videojs-seek-buttons.css";
 @import "@silvermine/videojs-chromecast/dist/silvermine-videojs-chromecast.css";
 @import "@silvermine/videojs-airplay/dist/silvermine-videojs-airplay.css";
 
@@ -101,54 +100,88 @@ $sceneTabWidth: 450px;
     width: 1.6em;
   }
 
-  .vjs-autostart-button {
-    cursor: pointer;
-
-    &.vjs-icon-play-circle::before {
-      align-items: center;
-      background-color: rgba(255, 255, 255, 0.9);
-      border-radius: 50%;
-      color: rgba(80, 80, 80, 0.9);
-      content: "\f101";
-      font-size: 1em;
-      line-height: 1;
-      margin-left: 1rem;
-      padding: 0.3em;
-      position: relative;
-      z-index: 2;
-    }
-
-    &.vjs-icon-cancel::before {
-      align-items: center;
-      background-color: rgba(80, 80, 80, 0.9);
-      border-radius: 50%;
-      color: #fff;
-      content: "\f103";
-      font-size: 1em;
-      line-height: 1;
-      margin-right: 1rem;
-      padding: 0.3em;
-      position: relative;
-      z-index: 2;
-    }
-
-    &.vjs-icon-play-circle::after,
-    &.vjs-icon-cancel::after {
-      background-color: rgb(255 255 255 / 70%);
-      border-radius: 8px;
-      content: "";
-      height: 2.5rem;
-      left: 50%;
-      opacity: 0.7;
-      position: absolute;
-      top: 50%;
-      transform: translate(-50%, -50%) rotate(90deg);
-      width: 1rem;
-      z-index: 1;
-    }
+  // YouTube-style compact autoplay toggle switch
+  .vjs-button.vjs-autostart-button {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    margin: 0 2px !important;
+    padding: 0 !important;
+    border-radius: 18px !important;
+    background-color: transparent !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+    cursor: pointer !important;
 
     &:hover {
-      text-shadow: 0 0 1em rgba(255, 255, 255, 0.75);
+      background-color: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    // The capsule track
+    &::after {
+      content: "" !important;
+      position: absolute !important;
+      left: 4px !important;
+      top: 12px !important;
+      width: 28px !important;
+      height: 12px !important;
+      border-radius: 6px !important;
+      transform: none !important;
+      opacity: 1 !important;
+      transition: background-color 0.2s ease !important;
+      z-index: 1 !important;
+    }
+
+    // The sliding circular knob
+    &::before {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      position: absolute !important;
+      top: 10px !important;
+      width: 16px !important;
+      height: 16px !important;
+      border-radius: 50% !important;
+      font-size: 8px !important;
+      line-height: 1 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, color 0.2s ease !important;
+      z-index: 2 !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    // Enabled state (On): knob slides right
+    &.vjs-icon-play-circle {
+      &::after {
+        background-color: rgba(255, 255, 255, 0.45) !important;
+      }
+      &::before {
+        left: 4px !important;
+        transform: translateX(12px) !important;
+        background-color: #ffffff !important;
+        color: #212121 !important;
+        content: "\f101" !important;
+        font-family: VideoJS !important;
+      }
+    }
+
+    // Disabled state (Off): knob slides left
+    &.vjs-icon-cancel {
+      &::after {
+        background-color: rgba(255, 255, 255, 0.2) !important;
+      }
+      &::before {
+        left: 4px !important;
+        transform: translateX(0px) !important;
+        background-color: #aaaaaa !important;
+        color: #1a1a1a !important;
+        content: "\f103" !important;
+        font-family: VideoJS !important;
+      }
     }
   }
 
@@ -210,16 +243,6 @@ $sceneTabWidth: 450px;
     }
   }
 
-  // Exempt autostart toggle button from circular button style
-  .vjs-button.vjs-autostart-button {
-    width: 3.5rem !important;
-    border-radius: 18px !important;
-    background-color: transparent !important;
-
-    &:hover {
-      background-color: transparent !important;
-    }
-  }
 
   .vjs-time-control,
   .vjs-time-divider {
@@ -437,6 +460,10 @@ $sceneTabWidth: 450px;
 
       &:hover {
         width: 6px !important;
+
+        .vjs-volume-level::before {
+          left: -3px !important;
+        }
       }
     }
 
@@ -447,21 +474,26 @@ $sceneTabWidth: 450px;
       position: absolute !important;
       bottom: 0 !important;
       left: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
 
       &::before {
         content: "" !important;
         display: block !important;
         position: absolute !important;
-        top: -5px !important;
-        left: 50% !important;
-        transform: translateX(-50%) !important;
+        top: -6px !important;
+        left: -4px !important;
+        right: auto !important;
+        margin: 0 !important;
+        transform: none !important;
         width: 12px !important;
         height: 12px !important;
         border-radius: 50% !important;
         background-color: #ffffff !important;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6) !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
         font-size: 0 !important;
         line-height: 0 !important;
+        box-sizing: border-box !important;
       }
     }
 
@@ -516,6 +548,19 @@ $sceneTabWidth: 450px;
     padding: 0 !important;
     flex-shrink: 0 !important;
     cursor: pointer !important;
+
+    // Invisible top bridge expanding hover zone upwards towards the popup menu
+    &::before {
+      content: "";
+      position: absolute;
+      bottom: 100%;
+      left: -12px;
+      right: -12px;
+      height: 24px;
+      background: transparent;
+      pointer-events: auto;
+      z-index: 10;
+    }
 
     // The inner clickable Video.js button overlay
     > .vjs-menu-button {
@@ -580,10 +625,40 @@ $sceneTabWidth: 450px;
       width: auto !important;
       min-width: 64px !important;
       z-index: 30 !important;
+      display: block !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+      transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      transition-delay: 0.3s !important; // 300ms grace period so mouse movement upwards never drops hover
+
+      // Invisible bridge extending downwards from menu to button
+      &::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: -16px;
+        right: -16px;
+        height: 16px;
+        background: transparent;
+        pointer-events: auto;
+      }
 
       .vjs-menu-content {
         bottom: 0 !important;
       }
+    }
+
+    &:hover .vjs-menu,
+    &.vjs-hover .vjs-menu,
+    &:focus-within .vjs-menu,
+    .vjs-menu:hover,
+    &.vjs-lock-showing .vjs-menu,
+    .vjs-menu.vjs-lock-showing {
+      opacity: 1 !important;
+      visibility: visible !important;
+      pointer-events: auto !important;
+      transition-delay: 0s !important; // Display immediately upon hover
     }
   }
 
@@ -701,6 +776,46 @@ $sceneTabWidth: 450px;
     }
   }
 
+  // Video.js popup menu buttons (AD Descriptions, Subtitles/Captions, Audio tracks, Chapters, etc.)
+  .vjs-menu-button-popup:not(.vjs-source-selector) {
+    position: relative !important;
+
+    // Invisible top bridge expanding hover zone upwards from the button to the popup menu
+    &::before {
+      content: "";
+      position: absolute;
+      bottom: 100%;
+      left: -12px;
+      right: -12px;
+      height: 24px;
+      background: transparent;
+      pointer-events: auto;
+      z-index: 10;
+    }
+
+    .vjs-menu {
+      display: block !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+      z-index: 30 !important;
+      transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      transition-delay: 0.3s !important; // 300ms grace period so mouse movement upward never drops hover
+    }
+
+    &:hover .vjs-menu,
+    &.vjs-hover .vjs-menu,
+    &:focus-within .vjs-menu,
+    .vjs-menu:hover,
+    &.vjs-lock-showing .vjs-menu,
+    .vjs-menu.vjs-lock-showing {
+      opacity: 1 !important;
+      visibility: visible !important;
+      pointer-events: auto !important;
+      transition-delay: 0s !important; // Display immediately upon hover
+    }
+  }
+
   .vjs-menu {
     .vjs-menu-content {
       background-color: rgba(18, 18, 18, 0.92) !important;
@@ -712,6 +827,18 @@ $sceneTabWidth: 450px;
       padding: 4px !important;
       bottom: 2em !important;
       max-height: 18em !important;
+
+      // Invisible bottom bridge extending downwards from the popup menu content towards the button
+      &::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: -16px;
+        right: -16px;
+        height: 24px;
+        background: transparent;
+        pointer-events: auto;
+      }
     }
 
     .vjs-menu-item {
@@ -750,12 +877,363 @@ $sceneTabWidth: 450px;
       font-family: VideoJS;
     }
 
+    .vjs-menu-item {
+      text-transform: none !important;
+    }
+
     .vjs-menu-item.vjs-source-menu-item-error:not(.vjs-selected) {
       color: $text-muted;
     }
 
     .vjs-menu-item.vjs-source-menu-item-error {
       font-style: italic;
+    }
+  }
+
+  // YouTube Settings Button in Control Bar
+  .vjs-button.vjs-yt-settings-button {
+    position: relative !important;
+    width: 36px !important;
+    height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    margin: 0 2px !important;
+    padding: 0 !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease !important;
+
+    &:hover {
+      color: #ffffff !important;
+      background-color: rgba(255, 255, 255, 0.15) !important;
+
+      .vjs-yt-settings-icon {
+        transform: rotate(45deg);
+      }
+    }
+
+    &:active {
+      transform: scale(0.92) !important;
+    }
+
+    .vjs-yt-settings-icon {
+      width: 23px !important;
+      height: 23px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+      svg {
+        width: 23px !important;
+        height: 23px !important;
+        fill: currentColor !important;
+        display: block !important;
+      }
+    }
+
+    .vjs-yt-hd-badge {
+      position: absolute !important;
+      top: 3px !important;
+      right: 1px !important;
+      background-color: #cc0000 !important;
+      color: #ffffff !important;
+      font-size: 8px !important;
+      font-weight: 800 !important;
+      line-height: 1 !important;
+      padding: 1.5px 3px !important;
+      border-radius: 2px !important;
+      letter-spacing: 0.2px !important;
+      pointer-events: none !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    }
+  }
+
+  // Floating YouTube Settings Panel attached to Player container
+  .vjs-yt-settings-panel {
+    position: absolute !important;
+    bottom: 56px !important;
+    right: 20px !important;
+    background: rgba(28, 28, 28, 0.96) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65) !important;
+    min-width: 260px !important;
+    max-width: 320px !important;
+    padding: 6px 0 !important;
+    color: #ffffff !important;
+    z-index: 1000 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif !important;
+    font-size: 13px !important;
+    user-select: none !important;
+    transform-origin: bottom right !important;
+    transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+    &.vjs-yt-panel-hidden {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+      transform: translateY(8px) scale(0.96) !important;
+    }
+
+    &.vjs-yt-panel-visible {
+      opacity: 1 !important;
+      visibility: visible !important;
+      pointer-events: auto !important;
+      transform: translateY(0) scale(1) !important;
+    }
+
+    // Main Menu Rows
+    .vjs-yt-menu-row {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 9px 14px !important;
+      cursor: pointer !important;
+      transition: background-color 0.12s ease !important;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+      }
+
+      .vjs-yt-menu-left {
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+
+        .vjs-yt-menu-icon {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          width: 20px !important;
+          color: rgba(255, 255, 255, 0.85) !important;
+        }
+
+        .vjs-yt-menu-title {
+          font-weight: 500 !important;
+          color: #f1f1f1 !important;
+          font-size: 13.5px !important;
+        }
+      }
+
+      .vjs-yt-menu-right {
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        color: rgba(255, 255, 255, 0.6) !important;
+
+        .vjs-yt-menu-value {
+          font-size: 12.5px !important;
+          max-width: 120px !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .vjs-yt-menu-arrow {
+          font-size: 14px !important;
+          line-height: 1 !important;
+          display: flex !important;
+          align-items: center !important;
+        }
+      }
+    }
+
+    // Submenu Header
+    .vjs-yt-submenu-header {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+      padding: 8px 14px 10px !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+      cursor: pointer !important;
+      margin-bottom: 4px !important;
+      transition: background-color 0.12s ease !important;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.06) !important;
+      }
+
+      .vjs-yt-back-arrow {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 16px !important;
+        color: rgba(255, 255, 255, 0.85) !important;
+      }
+
+      .vjs-yt-submenu-title {
+        font-weight: 600 !important;
+        font-size: 13.5px !important;
+        color: #ffffff !important;
+      }
+    }
+
+    // Submenu Items
+    .vjs-yt-submenu-list {
+      max-height: 280px !important;
+      overflow-y: auto !important;
+
+      &::-webkit-scrollbar {
+        width: 4px !important;
+      }
+      &::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.25) !important;
+        border-radius: 4px !important;
+      }
+
+      .vjs-yt-submenu-item {
+        display: flex !important;
+        align-items: center !important;
+        padding: 8px 14px !important;
+        cursor: pointer !important;
+        transition: background-color 0.12s ease !important;
+
+        &:hover {
+          background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        &.vjs-yt-selected {
+          .vjs-yt-item-label {
+            font-weight: 600 !important;
+            color: #ffffff !important;
+          }
+          .vjs-yt-check {
+            opacity: 1 !important;
+          }
+        }
+
+        &.vjs-yt-item-error {
+          color: rgba(255, 255, 255, 0.4) !important;
+          font-style: italic !important;
+        }
+
+        .vjs-yt-check {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          width: 22px !important;
+          opacity: 0 !important;
+          color: #ffffff !important;
+          flex-shrink: 0 !important;
+        }
+
+        .vjs-yt-item-label {
+          font-size: 13px !important;
+          color: rgba(255, 255, 255, 0.88) !important;
+          flex-grow: 1 !important;
+          white-space: nowrap !important;
+        }
+      }
+    }
+  }
+
+  // Bilibili-style touch gesture HUDs
+  .vjs-gesture-speed-hud {
+    position: absolute !important;
+    top: 14% !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    background: rgba(0, 0, 0, 0.78) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 20px !important;
+    padding: 6px 16px !important;
+    color: #ffffff !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    pointer-events: none !important;
+    z-index: 950 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+    transition: opacity 0.15s ease, transform 0.15s ease !important;
+
+    .vjs-gesture-speed-icon {
+      color: #00aeec !important;
+      font-size: 11px !important;
+      letter-spacing: -1px !important;
+    }
+
+    &.vjs-gesture-hidden {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      transform: translateX(-50%) scale(0.92) !important;
+    }
+
+    &.vjs-gesture-visible {
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: translateX(-50%) scale(1) !important;
+    }
+  }
+
+  .vjs-gesture-scrub-hud {
+    position: absolute !important;
+    top: 48% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    background: rgba(22, 22, 22, 0.88) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 12px !important;
+    padding: 12px 20px !important;
+    min-width: 170px !important;
+    text-align: center !important;
+    color: #ffffff !important;
+    pointer-events: none !important;
+    z-index: 950 !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+    transition: opacity 0.15s ease, transform 0.15s ease !important;
+
+    .vjs-gesture-scrub-delta {
+      font-size: 19px !important;
+      font-weight: 700 !important;
+      color: #00aeec !important;
+      margin-bottom: 2px !important;
+      letter-spacing: 0.5px !important;
+    }
+
+    .vjs-gesture-scrub-time {
+      font-size: 12.5px !important;
+      color: rgba(255, 255, 255, 0.85) !important;
+      margin-bottom: 8px !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    }
+
+    .vjs-gesture-scrub-track {
+      width: 100% !important;
+      height: 4px !important;
+      background: rgba(255, 255, 255, 0.25) !important;
+      border-radius: 2px !important;
+      overflow: hidden !important;
+
+      .vjs-gesture-scrub-fill {
+        height: 100% !important;
+        background: #00aeec !important;
+        border-radius: 2px !important;
+        transition: width 0.05s linear !important;
+      }
+    }
+
+    &.vjs-gesture-hidden {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      transform: translate(-50%, -50%) scale(0.92) !important;
+    }
+
+    &.vjs-gesture-visible {
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: translate(-50%, -50%) scale(1) !important;
     }
   }
 
@@ -820,17 +1298,6 @@ $sceneTabWidth: 450px;
     background: #fff;
   }
 
-  .vjs-seek-button.skip-back span.vjs-icon-placeholder::before {
-    -ms-transform: none;
-    -webkit-transform: none;
-    transform: none;
-  }
-
-  .vjs-seek-button.skip-forward span.vjs-icon-placeholder::before {
-    -ms-transform: scale(-1, 1);
-    -webkit-transform: scale(-1, 1);
-    transform: scale(-1, 1);
-  }
 
   @media (pointer: coarse) {
     &.vjs-touch-enabled {
@@ -859,11 +1326,6 @@ $sceneTabWidth: 450px;
       .vjs-vtt-thumbnail-display {
         bottom: 2.8em;
       }
-
-      // hide the regular seek buttons on touch screens
-      .vjs-control-bar .vjs-seek-button {
-        display: none;
-      }
     }
   }
   @media (max-width: 768px) {
@@ -882,16 +1344,8 @@ $sceneTabWidth: 450px;
 
       // Hide useless or non-applicable buttons on mobile
       .vjs-descriptions-button,
-      .vjs-autostart-button,
       .vjs-audio-button {
         display: none !important;
-      }
-
-      // Hide seek buttons on small screens to ensure primary controls always fit
-      @media (max-width: 480px) {
-        .vjs-seek-button {
-          display: none !important;
-        }
       }
 
       .vjs-button {
@@ -924,14 +1378,6 @@ $sceneTabWidth: 450px;
         order: 3 !important;
       }
 
-      .vjs-seek-button.skip-back {
-        order: 4 !important;
-      }
-
-      .vjs-seek-button.skip-forward {
-        order: 5 !important;
-      }
-
       // Compact time display
       .vjs-time-control,
       .vjs-time-divider {
@@ -953,40 +1399,54 @@ $sceneTabWidth: 450px;
       .vjs-time-divider {
         min-width: 4px !important;
         padding: 0 !important;
-        order: 7 !important;
+        order: 5 !important;
       }
 
       .vjs-current-time {
-        order: 6 !important;
+        order: 4 !important;
         margin-left: 0 !important;
       }
 
       // Duration pushes right controls to the end
       .vjs-duration {
-        order: 8 !important;
+        order: 6 !important;
         margin-right: auto !important;
       }
 
-      // Right items order
-      .vjs-playback-rate {
+      // Autostart Button on mobile
+      .vjs-button.vjs-autostart-button {
         order: 10 !important;
-        width: 28px !important;
-        min-width: 28px !important;
-        max-width: 28px !important;
+        display: inline-flex !important;
+        width: 32px !important;
         height: 28px !important;
+        min-width: 32px !important;
+        max-width: 32px !important;
         margin: 0 1px !important;
 
-        > .vjs-menu-button {
-          width: 28px !important;
-          height: 28px !important;
+        &::after {
+          left: 3px !important;
+          top: 8px !important;
+          width: 26px !important;
+          height: 12px !important;
+          border-radius: 6px !important;
         }
 
-        .vjs-playback-rate-value {
-          width: 26px !important;
-          height: 18px !important;
-          line-height: 16px !important;
-          font-size: 10px !important;
-          border-radius: 9px !important;
+        &::before {
+          top: 6px !important;
+          width: 14px !important;
+          height: 14px !important;
+          border-radius: 50% !important;
+          font-size: 7px !important;
+        }
+
+        &.vjs-icon-play-circle::before {
+          left: 3px !important;
+          transform: translateX(12px) !important;
+        }
+
+        &.vjs-icon-cancel::before {
+          left: 3px !important;
+          transform: translateX(0px) !important;
         }
       }
 
@@ -994,43 +1454,31 @@ $sceneTabWidth: 450px;
         order: 11 !important;
       }
 
-      // Resolution / Source Selector - explicitly visible on mobile
-      .vjs-source-selector {
+      // Settings Button on mobile
+      .vjs-button.vjs-yt-settings-button {
         order: 12 !important;
         display: inline-flex !important;
         width: 28px !important;
         height: 28px !important;
+        min-width: 28px !important;
+        max-width: 28px !important;
         margin: 0 1px !important;
 
-        .vjs-button {
-          width: 28px !important;
-          height: 28px !important;
+        .vjs-yt-settings-icon {
+          width: 18px !important;
+          height: 18px !important;
 
-          > .vjs-icon-placeholder::before {
-            font-size: 15px !important;
-            line-height: 28px !important;
-            height: 28px !important;
-            width: 28px !important;
+          svg {
+            width: 18px !important;
+            height: 18px !important;
           }
         }
 
-        .vjs-menu {
-          z-index: 9999 !important;
-          position: absolute !important;
-          bottom: 36px !important;
-          right: 0 !important;
-          left: auto !important;
-          width: auto !important;
-          min-width: 70px !important;
-
-          .vjs-menu-content {
-            max-height: 12em !important;
-            bottom: 0 !important;
-          }
-
-          li {
-            font-size: 11px !important;
-          }
+        .vjs-yt-hd-badge {
+          top: 1px !important;
+          right: 0px !important;
+          font-size: 7px !important;
+          padding: 1px 2px !important;
         }
       }
 

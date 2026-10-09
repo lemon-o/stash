@@ -1529,8 +1529,342 @@ npx pnpm run start
        3. 在移动端将 `.filtered-list-toolbar` 的负边距重设为 `margin-top: 0.25rem !important;`，并同步给 `_theme.scss`；
        4. 收起移动端 `.sidebar-pane .filtered-list-toolbar` 右侧无效浪费的 `40px` 边距（`margin-right: 0 !important; margin-left: 36px !important;`），使工具栏与顶栏之间拥有舒适自然的 12px 留白，彻底消除堆叠。
 
+### 任务五十：播放器倍速菜单悬停防闪退（Invisible Hover Bridge & Grace Delay）与垂直音量滑块圆点绝对居中像素级校准
+- **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/styles.scss`（为倍速按钮与菜单配置双向无缝透明悬浮桥、添加 300ms 离开延迟；重构垂直音量条滑块绝对像素居中与软阴影优化）
+- **变更背景与问题剖析**：
+  1. **倍速菜单（1x 菜单）鼠标尚未移入便快速闪退（图1）**：
+     - 原 `.vjs-playback-rate .vjs-menu` 使用 `bottom: calc(100% + 8px)`，与下方 36px 宽的倍速按钮之间存在 `8px` 物理空白间隙；
+     - 当鼠标从 1x 按钮向上移动试图选择 2x、1.5x 等倍速时，光标刚刚离开按钮顶部边界进入该 8px 空隙，Video.js 原生底层立即触发 `mouseleave` 事件并同步执行 `removeClass('vjs-hover')`，导致弹窗在 0 毫秒内瞬间消失；
+  2. **垂直音量滑块圆点偏左错位（图2）**：
+     - 原音量条滑块使用 `left: 50%; transform: translateX(-50%)`，在 Windows 系统常见的高 DPI 缩放比例（125%、150%）下，CSS 布局引擎计算的 `left: 2px`（4px 音量条的一半）与 GPU 合成渲染管线计算的 `translateX(-50%)`（12px 圆点的一半）发生浮点像素不对称四舍五入；
+     - 像素级实测显示圆点左侧悬空伸出 5.5px，右侧仅伸出 4.5px，圆点物理重心偏向左侧 1 像素，产生明显不对齐；下方过深且下偏的 `0 1px 4px rgba(0,0,0,0.6)` 阴影在纯白柱上造成黑斑切痕，进一步加剧了左偏的视觉割裂。
+- **机制与实现方案**：
+  1. **倍速弹窗双向透明过渡桥与 300ms 缓冲防闪退机制（Hover Bridge & Grace Delay）**：
+     - 在 `.vjs-playback-rate` 上方（`::before`）与 `.vjs-menu` 下方（`::after`）分别注入高度为 `16px` 的透明热区延伸桥，彻底抹平 8px 间隙，光标向上平移时恒定保留在有效 Hover 命中区域内；
+     - 为 `.vjs-menu` 设定 `transition-delay: 0.3s` 消失缓冲期，悬浮时 `transition-delay: 0s` 毫秒级即时呼出，移出时提供 300ms 容错缓冲，并在 CSS 层面强化 `:hover`、`.vjs-hover`、`:focus-within` 组合常驻，彻底杜绝闪退；
+  2. **垂直音量滑块绝对整数像素居中与无损去 Transform 重构**：
+     - 彻底切断 `transform: translateX(-50%)` 导致的 GPU 浮点采样偏差，基于 4px 垂直音量条（中心 x=2px）与 12px 旋钮（半径 6px），显式设定绝对整数像素定位：`left: -4px !important; margin: 0 !important; transform: none !important;`；
+     - 实测各 Windows 缩放比例下，圆点左悬空 `4px`、右悬空 `4px`，重心偏差严格清零（`Diff = 0.0px`），与下方柱子绝对几何同心对齐；
+     - 悬停轨道宽度扩展至 6px 时，同步自适应切换至 `left: -3px !important`（左右各均分悬空 3px）；
+     - 将阴影优化为柔和的 `0 1px 3px rgba(0, 0, 0, 0.35)`，消除纯白柱顶部的粗糙割裂黑痕。
+
+### 任务五十一：视频播放器清晰度与串流菜单重构（置顶「自动」选项、直接串流更名为「原画」、YouTube 风格画质挡位、过滤冗余 WebM 并严格向下转码）
+- **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/source-selector.ts`（重构 Video.js 源选择插件与菜单：新增 `AutoMenuItem` 置顶排第一位、默认自动播放、管理自动故障回退与手动选择流、英文与历史串流标签本地化保底为「原画」）
+  - `ui/v2.5/src/components/ScenePlayer/ScenePlayer.tsx`（挂载 `useIntl` 动态本地化语言支持；直连流更名为「原画」；解析视频原始分辨率并按 YouTube 规范排布转码挡位；剔除冗余慢速 WebM 格式，仅保留硬件解码快、速度更优的 MP4；严格遵循“基于原画向下转码”，过滤高于原画的无效转码项；按高度降序排列并按分辨率去重）
+  - `ui/v2.5/src/components/ScenePlayer/styles.scss`（在 `.vjs-source-selector` 内为 `.vjs-menu-item` 显式设置 `text-transform: none !important;`，防止 Video.js 默认小写转换破坏上标 `⁴ᴷ` 和 `ᴴᴰ` 字符）
+  - `ui/v2.5/src/locales/zh-CN.json`（新增 `"auto": "自动"`，将 `"direct_stream"` 更新为 `"原画"`）
+  - `ui/v2.5/src/locales/zh-TW.json`（新增 `"auto": "自動"`，将 `"direct_stream"` 更新为 `"原畫"`）
+  - `ui/v2.5/src/locales/en-GB.json`（新增 `"auto": "Auto"`，将 `"direct_stream"` 更新为 `"Original"`）
+- **变更背景与问题剖析**：
+  1. **缺少「自动」档位**：原生 Stash 仅将后端返回的源列表以单向列表方式呈现（第 1 位固定为原视频直连流 Direct stream），未向用户提供直观显式的「自动」选项。当用户手动切换过其他清晰度后，无法再次选回「自动」故障降级模式；
+  2. **原生标签生硬不直观**：直连无损流原名为英文 `"Direct stream"` 或中文 `"直接串流"`，对于普通用户而言不如流媒体行业通用的「原画」清晰明了；转码流展示为原始的 `(1080p)`、`MP4 (720p)`、`WebM (720p)`，不仅格式混乱，而且不贴合现代流媒体体验；
+  3. **冗余格式臃肿且转码性能差**：原生 Stash 后端对每个分辨率同时下发 MP4 与 WebM（VP9）两种转码流。WebM 极度消耗 CPU 且缺乏成熟硬件加速解码，转码慢且播放卡顿，造成菜单中存在大量同画质的重复选项；
+  4. **向上转码造成负优化浪费**：若原视频本身仅为 720p 或 480p，后端依旧会提供 1080p、4K 等转码选项，拉高分辨率不仅不会提升画质，反而会消耗大量服务器转码算力并浪费带宽。
+- **机制与实现方案**：
+  1. **新增并置顶「自动」菜单项（AutoMenuItem）**：
+     - 在 `SourceMenuButton` 内部构造独立的 `AutoMenuItem`，置于 `createItems()` 首位（Index 0），物理排在所有具体格式之前；
+     - 默认激活态为「自动」（`isAuto = true`，`this.autoItem.selected(true)`），呈现高亮与白底方框激活态；
+     - 处于「自动」模式时，底层优先尝试无损原画直接串流；若因浏览器解码能力不足触发硬解错误，则静默平滑向下顺延至后续兼容转码流（MP4），菜单高亮始终锁定在「自动」，同时对应失败源附加斜体置灰（`.vjs-source-menu-item-error`）提示；
+     - 当用户手动切换至其他具体源后，随时可再次点击「自动」重回自适应优选模式。
+  2. **直接串流正式更名为「原画」**：
+     - 在各语言国际化字典中将 `direct_stream` 全面映射为「原画」（简中：`原画`，繁中：`原畫`，英文：`Original`）；
+     - 在 `source-selector.ts` 中配备 `localizeStreamLabel` 级联容错拦截，将任何残留的 `Direct stream` 或 `直接串流` 自动保底转换为当前语言的「原画」。
+  3. **YouTube 风格画质挡位与 Unicode 上标保护**：
+     - 转码流格式化为流媒体通用的 YouTube 挡位：
+       - `2160p ⁴ᴷ`
+       - `1440p ᴴᴰ`
+       - `1080p ᴴᴰ`
+       - `720p`
+       - `480p`
+       - `360p`
+       - `240p`
+       - `144p`
+     - Video.js 默认样式含有 `text-transform: lowercase;`，会在渲染时将 `⁴ᴷ` 和 `ᴴᴰ` 等上标强制转换为普通小写字符；在 `styles.scss` 的 `.vjs-source-selector` 作用域内加入 `.vjs-menu-item { text-transform: none !important; }`，确保 YouTube 角标像素级完美呈现。
+  4. **极速转码筛选与去重机制（舍弃 WebM，独尊 MP4）**：
+     - 针对用户“不需要两种画质一样的转码格式，哪种转码快用哪种”的要求，前端在流过滤阶段直接剔除所有 WebM 转码流（`!isWebm`），仅保留硬件加速普遍完备、转码启动更快且兼容性最佳的 MP4/H.264 流；
+     - 引入 `seenHeights` 集合，按分辨率高度降序（2160 -> 1440 -> 1080 -> 720 -> 480 -> 240）去重，确保每个分辨率档位唯一且绝无重复项。
+  5. **基于原画向下转码（Strict Downward Transcoding）**：
+     - 读取当前视频的物理分辨率 `videoHeight = Math.min(file.width, file.height) || file.height`；
+     - 严格过滤所有大于原画高度的转码选项（`targetHeight <= videoHeight`）；
+     - 例如：对于 720p 视频，仅提供 `自动`、`原画`、`720p`、`480p`、`240p`，自动剔除无意义的 `1080p ᴴᴰ` 与 `2160p ⁴ᴷ`。
+
+### 任务五十二：视频播放器控制栏全量组件悬浮提示（Tooltip）与悬浮菜单（Menu）汉化体系建设
+- **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/vjs-i18n.ts`（全新模块：构建 Video.js 全量中英文国际化字典，注册 `zh-CN`、`zh-TW`、`zh-Hans`、`zh-Hant`、`zh`、`en`、`en-GB`；导出 `syncControlBarTitles` 自动巡检与同步所有组件的 `title` 悬浮属性）
+  - `ui/v2.5/src/components/ScenePlayer/ScenePlayer.tsx`（导入 `vjs-i18n` 模块；在 Video.js 播放器创建选项中注入 `language: intl.locale || "zh-CN"`；在播放器 ready 与微任务阶段执行标题同步；添加 `intl.locale` 响应式监听实时同步播放器语言与悬浮文案）
+  - `ui/v2.5/src/components/ScenePlayer/PlaylistButtons.ts`（更新 `SkipButton`，显式设置 `title` 属性并调用 `this.localize("Skip to next video")` / `this.localize("Skip to previous video")`）
+  - `ui/v2.5/src/components/ScenePlayer/autostart-button.ts`（更新 `AutostartButton`，在更新图标状态时同步设置 `title` 属性为汉化后的“自动连播已开启 (点击关闭)”/“自动连播已关闭 (点击开启)”）
+  - `ui/v2.5/src/components/ScenePlayer/source-selector.ts`（为 `SourceMenuButton` 齿轮按钮增加 `this.controlText(this.localize("Quality") || "画质")` 与 `title` 属性，彻底告别齿轮按钮无 Hover 提示）
+  - `ui/v2.5/src/components/ScenePlayer/vrmode.ts`（为 `VRMenuButton` 增加 `this.controlText(this.localize("VR Mode") || "VR 模式")` 与 `title` 属性；汉化“Off”选项为“关闭”）
+  - `ui/v2.5/src/locales/zh-CN.json` / `zh-TW.json` / `en-GB.json`（补全各语言播放控制条相关词条）
+- **问题剖析与变更背景**：
+  1. **Video.js 原生语言未加载**：原生 Stash 播放器未向 Video.js 注入任何中文语言包，Video.js 默认恒定使用内建的英文字典（`en`），导致鼠标悬停在控制栏所有按钮上时呈现全英文提示（如 `Play`、`Pause`、`Mute`、`Playback Rate`、`Fullscreen` 等）；
+  2. **扩展插件悬浮提示为硬编码英文或缺失**：
+     - 上下短片按钮展示为 `"Skip to previous video"`、`"Skip to next video"`；
+     - 快进/快退 10 秒按钮展示为 `"Seek back 10 seconds"`、`"Seek forward 10 seconds"`；
+     - 自动连播开关按钮展示为 `"Auto-start enabled (click to disable)"`；
+     - 画质设置齿轮（⚙）没有设置 `controlText` 与 `title`，鼠标悬浮时完全没有任何提示；
+     - 投屏（AirPlay / Chromecast）按钮展示为 `"Start AirPlay"` 与 `"Open Chromecast menu"`；
+     - 音频描述按钮（AD）悬停展示为 `"Descriptions"`，悬浮菜单项展示为 `"descriptions off"`、`"descriptions settings"`；
+     - 字幕按钮（🗛）悬浮菜单项展示为 `"subtitles off"`、`"subtitles settings"`、`"captions off"`、`"captions settings"`；
+     - 音轨按钮（🎧）悬停展示为 `"Audio Track"`，悬浮菜单项展示为 `"main"`、`"Unknown"`。
+- **机制与实现方案**：
+  1. **构建专用 Video.js 本地化字典引擎（`vjs-i18n.ts`）**：
+     - 全面覆盖 15 类播放器组件，注册简中与繁中词典并自动挂载至 `videojs.options.languages`：
+       - `Play` / `Pause` / `Replay` -> **播放 / 暂停 / 重新播放**
+       - `Mute` / `Unmute` / `Volume Level` -> **静音 / 取消静音 / 音量**
+       - `Current Time` / `Duration` / `Remaining Time` -> **当前时间 / 时长 / 剩余时间**
+       - `Progress Bar` -> **进度条**
+       - `Fullscreen` / `Non-Fullscreen` / `Exit Fullscreen` -> **全屏 / 退出全屏**
+       - `Playback Rate` -> **倍速**
+       - `Skip to next video` / `Skip to previous video` -> **下一个视频 / 上一个视频**
+       - `Seek forward {{seconds}} seconds` / `Seek back {{seconds}} seconds` -> **快进 {{seconds}} 秒 / 快退 {{seconds}} 秒**
+       - `Auto-start enabled (click to disable)` -> **自动连播已开启 (点击关闭)**
+       - `Auto-start disabled (click to enable)` -> **自动连播已关闭 (点击开启)**
+       - `Quality` / `Quality selector` / `Source Menu` / `Settings` -> **画质 / 清晰度 / 画质选择 / 画质设置**
+       - `Start AirPlay` / `AirPlay` -> **隔空播放 (AirPlay) / 隔空播放**
+       - `Open Chromecast menu` / `Cast` / `Disconnect Cast` -> **投屏 (Chromecast) / 投屏 / 断开投屏**
+       - `Descriptions` / `descriptions off` / `descriptions settings` -> **音频描述 / 关闭音频描述 / 音频描述设置**
+       - `Subtitles` / `subtitles off` / `subtitles settings` -> **字幕 / 关闭字幕 / 字幕设置**
+       - `Captions` / `captions off` / `captions settings` -> **内嵌字幕 / 关闭内嵌字幕 / 内嵌字幕设置**
+       - `Audio Track` / `main` / `Unknown` -> **音轨 / 主音轨 / 未知音轨**
+       - `Chapters` / `VR Mode` / `Off` -> **章节 / VR 模式 / 关闭**
+  2. **双重保证：属性级 `title` 写入与 API 级 `controlText` 绑定**：
+     - Video.js 按钮的悬浮提示依赖 HTML 原生 `title` 属性；
+     - 在各组件内部及 `syncControlBarTitles` 巡检逻辑中，不仅调用 `this.controlText(localized)` 设置无障碍文本，而且显式通过 `el().setAttribute("title", localized)` 将本地化文本直接写入 DOM，杜绝任何浏览器内核或样式覆盖引起的提示失效。
+  3. **动态语言切换自适应**：
+     - 在 `ScenePlayer.tsx` 中挂载语言变化监听 `useEffect`，当用户在系统设置中切换语言时，自动触发 `player.language(...)` 并实时刷新控制栏所有组件的 `title` 提示。
+
+### 任务五十三：YouTube 风格播放器控制栏与全功能设置面板（Settings Menu）重构
+- **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/source-selector.ts`（全新实现 YouTube 风格多级设置菜单组件 `YouTubeSettingsMenu`，集成齿轮按钮、红底 HD/4K 徽标、主菜单项【画质、播放速度、字幕、音轨】与二级子菜单展开/返回导航、无缝集成视频清晰度源切换与自动故障回退降级）
+  - `ui/v2.5/src/components/ScenePlayer/ScenePlayer.tsx`（从控制栏彻底移除孤立冗余的 `descriptionsButton`、`audioTrackButton` 与 `playbackRateMenuButton`；将齿轮设置按钮与全屏按钮对齐为右侧核心组件）
+  - `ui/v2.5/src/components/ScenePlayer/autostart-button.ts`（调整自动连播按钮在控制栏中的排布顺序，使其紧靠在字幕按钮之前，形成 `[自动连播] [字幕] [设置⚙] [全屏]` 的标准 YouTube 底栏排列）
+  - `ui/v2.5/src/components/ScenePlayer/styles.scss`（实现 YouTube 风格半透明毛玻璃设置面板 `.vjs-yt-settings-panel`，采用 `rgba(28, 28, 28, 0.96)` 背景、圆角 12px、平滑位移动画、红底白字 HD/4K 徽标、支持桌面与移动端自适应定位）
+- **变更背景与问题剖析**：
+  1. **底栏按钮凌乱且不符合主流流媒体习惯**：原生 Stash 播放器控制栏右侧平铺了过多独立零散按钮：`AD`（音频描述）、`🎧`（音轨）、`1x`（倍速）、`⚙`（原画质）、`🗛`（字幕）；布局杂乱且小屏幕下极易挤压甚至溢出视口；
+  2. **YouTube 交互规范对齐**：YouTube 播放器控制栏右侧极度克制精简，仅平铺保留关键一键开关（自动连播、字幕快速开关、设置、全屏），而将倍速、音轨、画质及多语言字幕等高级调节统统收纳进“齿轮（⚙）”弹层面板中；
+  3. **多级导航与状态摘要需求**：用户点击齿轮时，可一目了然看到当前各项设置的简要状态（如 `画质: 1080p ᴴᴰ ›`、`播放速度: 正常 ›`），点击任意项即可进入子菜单选择具体档位，并能随时点击顶部 `< 返回` 导航键返回主菜单，右上角依据当前视频画质实时点亮红底 `HD` 或 `4K` 徽标。
+- **机制与实现方案**：
+  1. **底栏按钮精简与 YouTube 顺序对齐**：
+     - 在 `ScenePlayer.tsx` 的 Video.js 配置中关闭 `descriptionsButton: false`、`audioTrackButton: false`、`playbackRateMenuButton: false`；
+     - 在 `autostart-button.ts` 中将自动连播按钮插在 `subsCapsButton` 之前；
+     - 最终底栏右侧严格对齐为：`[自动连播开关]` → `[字幕 🗛]` → `[设置 ⚙ᴴᴰ]` → `[全屏 ⛶]`（及投屏按钮，若可用）；
+  2. **全新构建 `YouTubeSettingsMenu` 多级设置面板**：
+     - **齿轮按钮（Settings Button）**：嵌入原生 YouTube 风格齿轮 SVG，并根据当前源清晰度动态叠加红底白字高亮徽标（如 `HD`、`4K`）；
+     - **主菜单视图（Main Menu View）**：
+       - 画质项（Quality）：显示当前画质标签（如 `自动 (1080p)`、`原画`、`1080p ᴴᴰ`）及右箭头 `›`；
+       - 播放速度项（Playback Rate）：显示当前倍速（如 `正常`、`1.5x`）及右箭头 `›`；
+       - 字幕项（Subtitles）：若检测到外挂/内嵌字幕轨道，显示当前选择的字幕语言及右箭头 `›`；
+       - 音轨项（Audio Tracks）：若检测到多音轨视频，显示当前音轨及右箭头 `›`；
+     - **二级子菜单（Submenu Views）**：
+       - 顶部配备 `< 返回` 导航头，点击平滑返回主菜单；
+       - **画质子菜单**：包含置顶的「自动」、原画、各向下转码挡位（2160p ⁴ᴷ、1080p ᴴᴰ、720p 等），当前选中的档位带高亮对勾 `✓`；保留完整的直接串流优先与失败降级回退机制；
+       - **倍速子菜单**：涵盖 0.25x、0.5x、0.75x、正常(1x)、1.25x、1.5x、1.75x、2x 全量常用倍速，选定后即时生效且带 `✓`；
+       - **字幕与音轨子菜单**：提供关闭与各可用语言轨道的一键切换；
+  3. **交互手感与视觉打磨（YouTube 级质感）**：
+     - 点击齿轮按钮打开/关闭面板；内置全局 `click` 监听器（点击播放器或页面其他区域）与 ESC 键即刻自动收回面板；
+     - 样式采用 `rgba(28, 28, 28, 0.96)` 深黑亚克力背景 + `backdrop-filter: blur(12px)` + 12px 圆角 + 细腻阴影；
+     - 菜单项 hover 时拥有柔和高亮底色，文字排版与间距像素级贴合 YouTube 官方标准。
+
+### 任务五十四：播放器全量悬浮菜单（音频描述 AD、字幕/内嵌字幕 CC、音轨 🎧、章节）防闪退透明过渡桥与延迟缓冲机制（Invisible Hover Bridge & Grace Delay）
+- **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/styles.scss`（为 `.vjs-menu-button-popup:not(.vjs-source-selector)` 全局配置顶部透明热区延伸桥 `&::before`、菜单内容底部延伸桥 `&::after`、统一 300ms 离手容错缓冲）
+- **变更背景与问题剖析**：
+  1. **音频描述（AD）、字幕/CC 与音轨（🎧）等悬浮菜单鼠标移入即闪退**：
+     - 在原生 Video.js 结构中，所有弹出菜单均继承自 `.vjs-menu-button-popup`；
+     - 菜单容器 `.vjs-menu` 默认绝对定位于底栏（高度为 `0em`），而真正的菜单内容盒 `.vjs-menu-content` 浮动在 `bottom: 2em !important` 处；
+     - 在 36px 高的底栏按钮与上方悬浮菜单项之间，客观存在约 `13px ~ 20px` 的物理空白间隙；
+     - 当鼠标从底栏按钮向上移向菜单项时，光标刚刚离开按钮顶部边界，Video.js JS 底层由于未命中任何 DOM 元素，立即触发 `mouseleave` 事件并同步执行 `this.removeClass('vjs-hover')`；
+     - 原生 CSS 通过 `display: block` 与 `display: none` 控制显示，在类名被移除的 0 毫秒内瞬间隐藏，导致用户鼠标根本来不及进入菜单，菜单就已闪退消失。
+- **机制与实现方案**：
+  1. **全局双向透明热区延伸桥（Hover Bridge）**：
+     - **按钮向上延伸桥**：在 `.vjs-menu-button-popup:not(.vjs-source-selector)::before` 注入 `height: 24px` 的绝对定位透明桥（`bottom: 100%`），覆盖光标离开按钮向上移动的空白间隙，确保光标持续停留在按钮组件热区内，完全阻断 Video.js `mouseleave` 触发；
+     - **菜单向下延伸桥**：在 `.vjs-menu-content::after` 注入 `height: 24px` 的绝对定位透明桥（`top: 100%`），从悬浮菜单底部向下延伸，与下方按钮的延伸桥在空隙中央形成交叠无缝闭环；
+  2. **毫秒级即时呼出与 300ms 离手平滑缓冲（Grace Delay）**：
+     - 将 `.vjs-menu` 默认由 `display: none` 升级为 `display: block !important` 并搭配 `opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;`；
+     - 悬停呼出时（`:hover`、`.vjs-hover`、`:focus-within`、`.vjs-lock-showing`）：`transition-delay: 0s !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;`，0 毫秒即时呼出无任何迟滞；
+     - 鼠标离开时：设定 `transition-delay: 0.3s !important`（300ms 容错缓冲），即使用户鼠标快速划过空隙或有微小斜向抖动，菜单也不会产生任何闪烁或提前闭合；
+  3. **画质选择器（Source Selector）兼容保持**：
+     - 通过 `:not(.vjs-source-selector)` 精确排除 Stash 定制的画质选择按钮，保持其仅在点击激活（`vjs-lock-showing`）时展开的默认规范行为。
+
+---
+
+### 任务五十五：视频播放页左侧新增“推荐”页签并置于首位（智能关联推荐、同演员/同工作室胶囊筛选与换一批）
+- **目标文件**：
+  - `ui/v2.5/src/components/Scenes/SceneDetails/SceneRecommendationsPanel.tsx`（新增：智能推荐面板组件）
+  - `ui/v2.5/src/components/Scenes/SceneDetails/Scene.tsx`（将“推荐”页签置于第一位，设为默认活跃页签，接入快捷键 `r`）
+  - `ui/v2.5/src/components/Scenes/styles.scss`（全域极简纯暗黑推荐列表与微胶囊样式）
+  - `ui/v2.5/src/locales/zh-CN.json`、`zh-TW.json`、`en-GB.json`（国际化多语言词条补全）
+- **需求背景**：
+  - 用户在视频播放页浏览时，原先左侧首个页签为“简介”，无法即时探索相关或延伸视频；
+  - 用户提出需求：将左边页签栏首位新增“推荐”页签，放第一位并显示推荐的视频。
+- **机制与实现方案**：
+  1. **首位页签与默认激活**：
+     - 在 `Scene.tsx` 中，将 `<Nav.Link eventKey="scene-recommendations-panel">` 插入至 `<Nav.Item>` 最前列（“简介”页签之前）；
+     - `activeTabKey` 默认初始化为 `"scene-recommendations-panel"`，确保进入视频播放详情页即第一时间呈现推荐视频；
+     - 绑定 Mousetrap `r` 快捷键，可一键直达“推荐”页签。
+  2. **多维智能推荐算法与分级召回**：
+     - **同演员推荐**：当前视频包含演员时，查询包含同演员的短片并标注具体的演员姓名；
+     - **同工作室推荐**：当前视频包含工作室时，查询该工作室旗下短片并标注工作室徽标；
+     - **同标签推荐**：基于视频热门标签进行内容相似度聚合推荐；
+     - **全库精选与随机兜底**：使用每日伪随机种子与“换一批” salt 进行全库推荐，即使未刮削或新录入视频也永不留白；
+     - 严格过滤当前正在播放的短片自身，并在综合模式下按演员 > 工作室 > 标签 > 精选进行去重合并。
+  3. **交互与筛选体验（YouTube 侧边推荐级质感）**：
+     - **顶部分类胶囊**：动态根据当前视频信息呈现「全部」、「同演员 (数量)」、「同工作室 (数量)」、「同标签 (数量)」一键筛选切换；
+     - **换一批按钮**：配备带有旋转动画的 `faSyncAlt` 换一批按钮，点击后平滑重新生成随机种子刷新列表；
+     - **卡片式流媒体排版**：16:9 标准圆角预览海报，右下角浮动视频时长，左上角标记分辨率，悬浮（Hover）时如果具备预览视频则实时无声微流播放，平滑缩放，点击即可一键跳转播放。
+
+---
+
+### 任务五十六：播放器设置按钮原生组件级点击修复、自动连播与设置图标视觉协调、删除快进快退并上线B站风格长按倍速与滑动进度条交互
+- **目标文件**：
+  - `ui/v2.5/src/components/ScenePlayer/source-selector.ts`（重构为继承自 Video.js 原生 `Button` 的 `YouTubeSettingsButton`，彻底接入原生事件管线；浮层面板独立挂载于播放器根容器；齿轮图标提升至 22px，与控制栏完全协调）
+  - `ui/v2.5/src/components/ScenePlayer/autostart-button.ts` & `styles.scss`（将自动连播开关从原 56px 宽 x 40px 高的粗重胶囊重塑为 42px 宽 x 14px 高的 YouTube 极精致微胶囊，内嵌 18px 平滑滑动圆纽，全栏按钮协调统一）
+  - `ui/v2.5/src/components/ScenePlayer/ScenePlayer.tsx` & `big-buttons.ts`（彻底移除画面中央与控制栏的 10 秒快进快退按钮，电脑端由键盘左右方向键精准控制）
+  - `ui/v2.5/src/components/ScenePlayer/touch-gestures.ts`（新增：B站风格手势引擎，长按 320ms 触发 2.0X 倍速播放与顶部胶囊 HUD，松手恢复；水平拖动实时控制进度条与中央时间 HUD，松手精准跳转）
+  - `ui/v2.5/src/components/ScenePlayer/vjs-i18n.ts`（同步更新设置按钮国际化属性提示）
+- **变更背景与问题剖析**：
+  1. **设置按钮无法点击**：原组件作为普通 `Component` 并在内部嵌套 `<button>`，未能接入 Video.js `Button` 的原生 `handleClick` 事件调度与 tap 触控事件，同时浮层面板被限制在控制栏 flex 容器内，导致点击事件被外部捕获吞噬；
+  2. **按钮视觉大小失调**：自动连播开关使用了过时的旧样式，长达 56px 且圆点高达 24px，严重臃肿；而设置齿轮图标仅 14-16px，没有任何圆形按钮基底，显得十分弱小；
+  3. **快进快退冗余**：电脑端键盘左右键（Left/Right Arrow）快进快退直观高效，而画面中央与控制栏堆砌的 10 秒圆形箭头按钮严重遮挡视线；
+  4. **移动端触控体验落后**：手机端用户习惯于类似 B站/抖音 的手势交互（长按直接倍速播放，左右拖动直接拉进度条），此前缺少手势支持。
+- **机制与实现方案**：
+  1. **原生 `Button` 重构与独立浮层挂载**：
+     - `YouTubeSettingsButton` 继承自 `videojs.getComponent("Button")`，通过 `handleClick(event)` 原生捕获桌面鼠标与手机触控；
+     - 浮层面板直接挂载于播放器根 DOM 容器（`this.player().el().appendChild(...)`），以 `bottom: 56px; right: 20px; z-index: 1000` 绝对定位，彻底摆脱控制栏容器裁剪与溢出风险；
+     - 齿轮 SVG 提升至标准 22px，外层配赋 36px x 36px 圆形微光悬停底色，与字幕、全屏按钮像素级对齐。
+  2. **自动连播微胶囊重构**：
+     - 采用 YouTube 规范微胶囊：轨道宽 32px 高 14px，滑动圆纽直径 18px，开启状态向右平移 14px，关闭状态居左，全组件高度紧凑收缩至 36px，观感极佳。
+  3. **快进快退按钮全量移除**：
+     - 从 `ScenePlayer.tsx` 配置中彻底剔除 `seekButtons` 插件；
+     - 从 `big-buttons.ts` 中移除左右两个 `seekButton`，中央仅保留纯净的播放/暂停大按钮；
+     - 电脑端保持键盘左右方向键精准步进（单按 10s、Shift 5s、Ctrl/Alt 60s）。
+  4. **B站风格长按 2X 倍速与滑动拉进度条交互引擎（`touch-gestures.ts`）**：
+     - **长按 320ms 触发 2.0X 倍速**：顶部弹出深色磨砂半透明胶囊「▶▶ 2.0X 倍速播放中」（支持触觉震动反馈），松手毫秒级恢复原始倍速；
+     - **水平滑动控制进度条**：触摸并在屏幕上左右拖拽时，自动进入 Seeking 状态，中央实时弹出大尺寸时间进度卡片（显示快进/快退秒数、目标时间/总时长与迷你进度条），手指松开即刻精准跳转目标点；
+     - 严格过滤控制栏与弹窗操作区域，单击画面依然平滑唤出/收起控制栏，完全不产生误触。
+
+### 任务五十七：顶部导航栏 Stash 首页/Logo 按钮绝对居左排布重构
+- **目标文件**：
+  - `ui/v2.5/src/components/MainNavbar.tsx`（将 `<Navbar.Brand>` 调整至 `<Navbar.Collapse>` 之前作为第一个子组件，移除内部旧的 `order-sm-1` 类）
+  - `ui/v2.5/src/styles/_theme.scss`（将 `.navbar-brand` 顺序设定为 `order: 0 !important`，桌面端 `.navbar-collapse` 设为 `order: 1 !important`，`.navbar-buttons` 设为 `order: 2 !important; margin: 0 0 0 auto !important;`）
+- **需求背景与问题剖析**：
+  - 用户反馈：“如图红框出来的stash首页按钮放到最左边”；
+  - 原组件结构中，`<Navbar.Brand>` 在 JSX 中被放置在 `<Navbar.Collapse>`（短片、图片、集合等主要导航菜单）之后；
+  - 在桌面端，由于两者在 Flex 容器中未设置强序或同序，导致按照 DOM 顺序排列时，“Stash”首页按钮被推至各导航项右侧、与设置/赞助等工具按钮相邻的突兀位置；
+  - 违背主流网站（GitHub、YouTube、Twitter/X 等）将品牌 Logo / 首页入口置于顶栏最左侧的标准交互视觉习惯。
+- **机制与实现方案**：
+  1. **DOM 结构与 Flex Order 双重保证**：
+     - 在 `MainNavbar.tsx` 中直接将 `<Navbar.Brand>` 提升至顶栏最前方，遵循最优雅标准的语义化 DOM 结构；
+     - 在 `_theme.scss` 中配置全局 Flex 弹性盒排序规则：
+       - `.navbar-brand`：`order: 0 !important; margin-right: 1.5rem !important;`（始终霸占最左侧并保留 24px 呼吸间距）；
+       - 桌面端 `.navbar-collapse`：`order: 1 !important;`（紧随 Stash 之后排布“短片 图片 集合 标记 图库 演员 工作室 标签”）；
+       - 右侧工具区 `.navbar-buttons`：`order: 2 !important; margin: 0 0 0 auto !important;`（保持右对齐放置“新增/赞助/统计/设置/帮助”）。
+  2. **移动端自适应完美承接**：
+     - 在小屏/手机端，`.navbar-brand` 保持 `order: 0` 居左，汉堡菜单折叠开关保持 `order: 2` 居右，折叠面板 `.navbar-collapse` 保持 `order: 10` 在下方展开，完美适配全尺寸屏幕。
+
+---
+
+### 任务五十八：移动端滚动吸顶冻结 Tab 页签栏与推荐控制栏（下部视频自由往上穿过滚动）
+- **目标文件**：
+  - `ui/v2.5/src/components/Scenes/SceneDetails/Scene.tsx`（添加 `navWrapperRef` 与 `ResizeObserver` 动态自适应监听 Tab 栏高度，以 CSS 变量 `--scene-tabs-nav-height` 挂载注入；外层赋予 `scene-tabs-nav-wrapper` 标识）
+  - `ui/v2.5/src/components/Scenes/styles.scss`（在 `@media (max-width: 1199px)` 下配置双层 sticky 联动吸顶冻结、负外边距全宽覆盖与遮盖防穿透）
+- **需求背景与交互剖析**：
+  - 用户在移动端（`< 1200px`）向下滚动页面至图 1 位置（播放器与标题往上滚出视口、Tab 页签栏到达顶部）时，要求**冻结图 2 部分**（第 1 行 Tab 栏 `[推荐 简介 序列 标记 集合 ...]` 与第 2 行推荐控制栏 `[全部] ... [🔄 换一批]`）；
+  - 冻结后，下方的推荐视频卡片列表继续自由往上滚动穿过，形成紧凑的流媒体 App 浏览体验；
+  - 桌面端（`>= 1200px`）保持左侧固定分栏独立滚动，两套视图逻辑互不干扰。
+- **机制与实现方案**：
+  1. **层叠上下文与动态吸顶高度计算（CSS Variables + ResizeObserver）**：
+     - 顶部 Stash 导航栏为 `Navbar fixed="top"`，固定高度 50px（加上 iOS 安全区 `env(safe-area-inset-top, 0px)`，z-index: 1030）；
+     - 第一层冻结（Tab 页签栏）：吸顶定位在 `top: calc(50px + env(safe-area-inset-top, 0px))`，z-index 设为 1020；通过 `ResizeObserver` 实时采集其真实渲染高度（通常约 42px），通过 CSS 变量 `--scene-tabs-nav-height` 挂载到父容器；
+     - 第二层冻结（推荐分类/换一批栏）：吸顶定位在 `top: calc(50px + env(safe-area-inset-top, 0px) + var(--scene-tabs-nav-height, 42px))`，z-index 设为 1015；紧随在第一层下方无缝闭合拼接；
+     - 第三层内容（推荐视频列表）：普通流式向上滚动，滚动时直接穿入冻结栏下方隐藏，视觉层次清晰。
+  2. **视觉无缝纯黑遮罩与横向手势优化**：
+     - 使用 `margin-left: -15px; margin-right: -15px; padding-left: 15px; padding-right: 15px;` 消除容器默认边距，让全黑 `#0c0c0c` 底色横向完全铺满屏幕边缘，彻底防止视频内容从两侧漏光；
+     - 两个冻结栏内的横向选项均配置 `overflow-x: auto`、`-webkit-overflow-scrolling: touch` 与滚动条隐藏，触摸左右滑动手感如原生 App。
+
+---
+
+### 任务五十九：统计页面重构为现代化彩色饼图与交互式数据看板
+- **目标文件**：
+  - `ui/v2.5/src/components/Stats.tsx`（重构为包含 KPI 卡片栏、4组核心彩色饼图/环形图、观影时长互动卡片及视图切换器的现代看板）
+  - `ui/v2.5/src/components/ColorfulPieChart.tsx`（新增独立 SVG 矢量动态彩色饼图/环形图组件，支持平滑悬停外扩弹出、霓虹辉光、中央动态数据透视、交互图例与单机跳转导航）
+  - `ui/v2.5/src/components/Stats.scss`（新增看板专属样式，遵循严格 stylelint 属性字母排序、暗色微质感拟态、响应式自适应网格与微交互动效）
+  - `ui/v2.5/src/locales/zh-CN.json` & `ui/v2.5/src/locales/en-GB.json`（补全双语国际化文案）
+- **需求背景与问题剖析**：
+  - 用户反馈：“统计界面太简陋了，改为彩色饼图显示”；
+  - 原始 `/stats` 统计页面仅以三行纯黑底裸露文字与数字呈现全部统计数据，缺乏卡片容器、无图表可视化、色彩单调枯燥，观感非常简陋；
+  - 媒体库核心数据（短片大小与图片大小的磁盘占用比重、视频/图片/图库/集合的媒体数量分布、分类元数据构成、短片观看播放完成度等）极其适合采用直观、美观的彩色饼图（Donut/Pie Chart）可视化呈现。
+- **机制与实现方案**：
+  1. **独立现代 SVG 动态彩色环形/饼图引擎（`ColorfulPieChart.tsx`）**：
+     - **纯矢量 SVG 数学圆弧路径**：基于三角函数与 W3C SVG Arc Path 算法计算，避免引入第三方大型图表库依赖；单条目/100% 状态与多条目扇区无缝渲染，0条目优雅展示虚线空状态环；
+     - **双色渐变与现代高对比调色盘**：为每个分类注入现代化高饱和度霓虹渐变（电光紫、碧翠绿、青蓝、暖琥珀、珊瑚粉、深空灰等），并在暗色背景下形成分明的切片视觉分界；
+     - **鼠标悬停动态 Pop-out 外扩与辉光效果**：沿扇区中心角向量方向外移（Translate 6px），配合高斯模糊辉光与非悬停项平滑暗化（Opacity 0.45），实现苹果/Figma 级别的灵动触感；
+     - **中心镂空动态交互数据透视（Dynamic Center Overlay）**：默认常态居中显示图表总计指标（如总存储 4.2 GiB、媒体总数 109 等）；鼠标滑过切片或图例时，中央毫秒级联动更新为当前切片名称、占比百分比大字及具体格式化数值；
+     - **全交互联动图例（Interactive Legend）**：彩色光点指示符、多语言标签、格式化数值、百分比胶囊徽章；支持划过联动扇区高亮，点击切片或图例一键路由跳转至对应列表页（`/scenes`, `/images`, `/galleries`, `/performers`, `/studios`, `/tags`, `/groups`）。
+  2. **四大核心彩色饼图全景矩阵**：
+     - **图表 1：存储容量占用分布**（短片磁盘大小 vs 图片磁盘大小，展现总存储空间及各自占用百分比）；
+     - **图表 2：媒体资源结构构成**（短片数量 vs 图片数量 vs 图库数量 vs 集合数量）；
+     - **图表 3：组织与分类元数据**（演员数量 vs 工作室数量 vs 标签数量 vs 集合数量）；
+     - **图表 4：短片播放与观看进度**（已播放短片 vs 未播放短片，中央突出展示观看完成率百分比）。
+  3. **顶部 KPI 指标总览栏与观影时长活跃卡片**：
+     - 顶部设计 5 张毛玻璃质感数据卡片（短片库、图片与图库、元数据、播放进度、点赞/高潮），提供快捷导航；
+     - 底部配置观影活跃与时长全景卡片（短片总时长、累计观影时长、总播放次数、点赞高潮数，以及带荧光渐变的观看覆盖进度条）。
+  4. **彻底移除旧版纯文字视图与双视图切换器**：
+     - 根据用户反馈，完全移除双模式切换胶囊与原先简陋的三行纯文字数字旧视图；
+     - 界面彻底升级为纯粹、专注且美观的彩色饼图与指标看板，消除了全部多余冗余代码与状态控制。
+
+### 任务五十九：电脑桌面版彻底隐藏冗余移动端汉堡折叠按钮（Hamburger Toggle）
+- **目标文件**：
+  - `ui/v2.5/src/components/MainNavbar.tsx`（为 `<Navbar.Toggle>` 添加 `d-xl-none` 类，仅在移动端小屏渲染）
+  - `ui/v2.5/src/styles/_theme.scss`（为 `.navbar-toggler` / `.nav-menu-toggle` 添加 `@include media-breakpoint-up(xl) { display: none !important; }`）
+- **需求背景与问题剖析**：
+  - 用户反馈：“电脑版的如图这个按钮是不是多余”并提供三横线汉堡菜单按钮截图；
+  - 在电脑端（屏幕宽度 >= 1200px），所有一级导航（短片、图片、集合、标记、图库、演员、工作室、标签）以及实用工具（新增、赞助、统计、设置、帮助）均已完整平铺显示在顶栏上；
+  - 该汉堡按钮是移动端/小屏折叠时用于呼出下拉菜单的切换开关，但在之前的样式定制中被赋予了无条件的 `display: inline-flex !important`，覆盖了 Bootstrap 原生在 `xl` 断点隐藏折叠开关的响应式规则；
+  - 导致在宽屏电脑端该按钮一直常驻显示，点击后无实际必要功能，属于完全多余的冗余元素。
+- **机制与实现方案**：
+  - 在 JSX 与 SCSS 双重层面上精准施加断点控制：
+    - `MainNavbar.tsx` 中为 `<Navbar.Toggle>` 追加 `d-xl-none` 工具类；
+    - `_theme.scss` 中补充 `@include media-breakpoint-up(xl) { display: none !important; }`，切断 `!important` 对桌面端断点的覆盖；
+  - 电脑版顶栏彻底剔除三横线汉堡按钮，还原纯粹清爽的宽屏体验；同时手机/移动端依然完整保留该开关以供呼出导航菜单。
+
+### 任务六十：全域胶囊刷新及操作按钮水平居中对称重构（消除偏右及移动端失真）
+- **目标文件**：
+  - `ui/v2.5/src/components/FrontPage/RecommendedScenesRow.tsx`（首页每日推荐换一批按钮，去除 `<Icon>` 内嵌的 `mr-1` 单边外边距）
+  - `ui/v2.5/src/components/FrontPage/styles.scss`（`.btn-refresh-recommendations`、`.recommendation-row-head a`、`.daily-recommendations-badge`，统一配置 `justify-content: center`、`gap: 5px`、`box-sizing: border-box`、`line-height: 1` 及移动端正圆胶囊）
+  - `ui/v2.5/src/components/Scenes/SceneDetails/SceneRecommendationsPanel.tsx`（场景推荐面板换一批按钮，去除 `<Icon>` 内嵌的 `mr-1` 单边外边距）
+  - `ui/v2.5/src/components/Scenes/styles.scss`（`.scene-rec-refresh-btn` 与 `.rec-category-pill` 统一重构为居中对称布局与纯净 `gap` 间距）
+- **需求背景与问题剖析**：
+  - 用户反馈：“图1是移动端首页每日推荐刷新按钮，图2是电脑端的，两者都没有左右对齐按钮框，图3的按钮也是同样的问题，顺便找一下使用相同样式的按钮是不是也有这个问题，一并修复”；
+  - **核心病因**：
+    1. **缺乏 `justify-content: center` 主轴居中**：所有胶囊按钮原先仅配置了 `display: inline-flex; align-items: center;`，flex 容器默认主轴对齐为 `flex-start`；
+    2. **JSX 标签内嵌 `mr-1` 产生单侧不对称间隙**：图标 `<Icon>` 上写死了 Bootstrap 的 `mr-1`（`margin-right: 0.25rem !important`），导致图标右侧被硬塞了 4px 间隙，而左侧只有单纯的容器内边距，图文整体被向右推挤，呈现左宽右窄的不对称视觉偏斜；
+    3. **双重 Margin 叠加大间隙**：在 `SceneRecommendationsPanel` 中，文字 `.refresh-text` 上还另外声明了 `margin-left: 4px;`，导致图标与文字之间产生了多达 8px+ 的失真间隔；
+    4. **移动端纯图标状态异形拉长**：在首页移动端，换一批按钮隐藏了文字后，由于没有固定正圆宽高和居中约束，残留的 padding 与内联流布局使其变成了一个宽度 46px 的扁长不对称椭圆，图标严重偏右。
+- **机制与实现方案**：
+  1. **彻底肃清 `mr-1` 与 `margin-left`，改用现代对称 Flexbox `gap`**：
+     - 在 TSX 组件中将 `<Icon>` 的 `className` 中的 `mr-1` 物理移除；
+     - 在 SCSS 中将 `.refresh-text` / `.btn-refresh-text` / `.pill-count` 的 margin 清零，统一在父容器声明 `gap: 4px` ~ `5px`，确保间距只存在于元素之间，绝对不会污染容器两侧的 padding；
+  2. **强制主轴与交叉轴双重居中与盒模型死锁**：
+     - 为 `.btn-refresh-recommendations`、`.scene-rec-refresh-btn`、`.recommendation-row-head a`（查看全部）以及 `.rec-category-pill`（推荐分类药丸）统一注入：
+       ```scss
+       align-items: center;
+       justify-content: center;
+       box-sizing: border-box;
+       line-height: 1;
+       ```
+     - 确保所有胶囊边框到内部内容的左右留白像素级完全一致（数学计算及截图像素测算 `diff === 0px`）；
+  3. **移动端图标胶囊蜕变为精致正圆按钮**：
+     - 首页移动端（`max-width: 576px`）下，换一批按钮锁定为 `width: 26px; height: 26px; min-width: 26px; padding: 0; border-radius: 13px;`，配合 `justify-content: center; align-items: center;`，实现 100% 绝对正圆中心对齐，完美贴合现代移动端轻量触控美学。
+
 ---
 
 *文档更新时间：2026-10-09*  
 *维护者：Antigravity & User Pair-Programming*
+
+
 

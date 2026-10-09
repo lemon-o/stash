@@ -66,3 +66,10 @@ dist
 /.local*
 /data
 /bin
+####
+# Local build tooling (desktop shell packaging)
+####
+
+/.venv
+/build
+/desktop/__pycache__

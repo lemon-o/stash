@@ -299,7 +299,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
         >
           <Icon
             icon={faSyncAlt}
-            className={`mr-1 ${isRefreshing ? "fa-spin" : ""}`}
+            className={isRefreshing ? "fa-spin" : ""}
           />
           <span className="btn-refresh-text">
             <FormattedMessage id="shuffle_batch" defaultMessage="换一批" />

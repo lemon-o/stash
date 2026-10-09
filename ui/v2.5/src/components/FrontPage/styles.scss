@@ -108,23 +108,26 @@
 }
 
 .recommendation-row-head a {
-  display: inline-flex;
   align-items: center;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: #888888;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 3px 10px;
   border-radius: 12px;
-  white-space: nowrap;
+  box-sizing: border-box;
+  color: #888888;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 500;
+  justify-content: center;
+  line-height: 1;
+  padding: 3px 10px;
   text-decoration: none;
   transition: all 0.2s ease;
+  white-space: nowrap;
 
   &:hover,
   &:active {
-    color: #ffffff;
     background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
     text-decoration: none;
   }
 }
@@ -134,19 +137,21 @@
 }
 
 .daily-recommendations-badge {
-  display: inline-flex;
   align-items: center;
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: #a0a0a0;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 1px 8px;
   border-radius: 10px;
+  box-sizing: border-box;
+  color: #a0a0a0;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 500;
+  justify-content: center;
   letter-spacing: 0.02em;
+  line-height: 1.4;
+  padding: 1px 8px;
   user-select: none;
   vertical-align: middle;
-  line-height: 1.4;
 
   @media (max-width: 576px) {
     font-size: 0.68rem;
@@ -159,24 +164,37 @@
 }
 
 .btn-refresh-recommendations {
-  display: inline-flex;
   align-items: center;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: #888888;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 3px 10px;
   border-radius: 12px;
-  white-space: nowrap;
+  box-sizing: border-box;
+  color: #888888;
   cursor: pointer;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 500;
+  gap: 5px;
+  justify-content: center;
+  line-height: 1;
   outline: none;
+  padding: 3px 10px;
   transition: all 0.2s ease;
+  white-space: nowrap;
+
+  .fa-icon {
+    font-size: 0.8rem;
+    margin: 0 !important;
+  }
+
+  .btn-refresh-text {
+    line-height: 1;
+  }
 
   &:hover {
-    color: #ffffff;
     background: rgba(255, 255, 255, 0.12);
     border-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
   }
 
   &:active {
@@ -184,16 +202,21 @@
     transform: scale(0.96);
   }
 
-  @media (max-width: 480px) {
-    padding: 3px 8px;
+  @media (max-width: 576px) {
+    border-radius: 13px;
     font-size: 0.78rem;
+    height: 26px;
+    min-width: 26px;
+    padding: 0;
+    width: 26px;
 
     .btn-refresh-text {
       display: none;
     }
 
     .fa-icon {
-      margin-right: 0 !important;
+      font-size: 0.75rem;
+      margin: 0 !important;
     }
   }
 }

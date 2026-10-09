@@ -23,17 +23,7 @@ class BigButtonGroup extends videojs.getComponent("Component") {
   constructor(player: VideoJsPlayer) {
     super(player);
 
-    this.addChild("seekButton", {
-      direction: "back",
-      seconds: 10,
-    });
-
     this.addChild("BigPlayPauseButton");
-
-    this.addChild("seekButton", {
-      direction: "forward",
-      seconds: 10,
-    });
   }
 
   createEl() {

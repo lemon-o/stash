@@ -75,6 +75,9 @@ const ExternalPlayerButton = lazyComponent(
   () => import("./ExternalPlayerButton")
 );
 
+const SceneRecommendationsPanel = lazyComponent(
+  () => import("./SceneRecommendationsPanel")
+);
 const QueueViewer = lazyComponent(() => import("./QueueViewer"));
 const SceneMarkersPanel = lazyComponent(() => import("./SceneMarkersPanel"));
 const SceneFileInfoPanel = lazyComponent(() => import("./SceneFileInfoPanel"));
@@ -216,7 +219,37 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
-  const [activeTabKey, setActiveTabKey] = useState("scene-details-panel");
+  const [activeTabKey, setActiveTabKey] = useState(
+    "scene-recommendations-panel"
+  );
+
+  const navWrapperRef = useRef<HTMLDivElement>(null);
+  const [navHeight, setNavHeight] = useState<number>(43);
+
+  useEffect(() => {
+    const el = navWrapperRef.current;
+    if (!el) return;
+
+    const updateHeight = () => {
+      const h = el.offsetHeight;
+      if (h > 0) {
+        setNavHeight(h);
+      }
+    };
+
+    updateHeight();
+
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => {
+        updateHeight();
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    } else {
+      window.addEventListener("resize", updateHeight);
+      return () => window.removeEventListener("resize", updateHeight);
+    }
+  }, []);
 
   const [isMerging, setIsMerging] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState<boolean>(false);
@@ -270,6 +303,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
 
   // set up hotkeys
   useEffect(() => {
+    Mousetrap.bind("r", () => setActiveTabKey("scene-recommendations-panel"));
     Mousetrap.bind("a", () => setActiveTabKey("scene-details-panel"));
     Mousetrap.bind("q", () => setActiveTabKey("scene-queue-panel"));
     Mousetrap.bind("e", () => setActiveTabKey("scene-edit-panel"));
@@ -292,6 +326,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
     });
 
     return () => {
+      Mousetrap.unbind("r");
       Mousetrap.unbind("a");
       Mousetrap.unbind("q");
       Mousetrap.unbind("e");
@@ -539,9 +574,17 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
       activeKey={activeTabKey}
       onSelect={(k) => k && setActiveTabKey(k)}
     >
-      <div>
+      <div ref={navWrapperRef} className="scene-tabs-nav-wrapper">
         <Nav variant="tabs" className="mr-auto">
           <ScenePageTabs {...props}>
+            <Nav.Item>
+              <Nav.Link eventKey="scene-recommendations-panel">
+                <FormattedMessage
+                  id="recommendations_tab"
+                  defaultMessage="推荐"
+                />
+              </Nav.Link>
+            </Nav.Item>
             <Nav.Item>
               <Nav.Link eventKey="scene-details-panel">
                 <FormattedMessage id="details" />
@@ -610,6 +653,12 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
 
       <Tab.Content>
         <ScenePageTabContent {...props}>
+          <Tab.Pane eventKey="scene-recommendations-panel">
+            <SceneRecommendationsPanel
+              scene={scene}
+              onSceneClicked={onQueueSceneClicked}
+            />
+          </Tab.Pane>
           <Tab.Pane eventKey="scene-details-panel">
             <SceneDetailPanel scene={scene} />
           </Tab.Pane>
@@ -700,6 +749,9 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
         className={`scene-tabs order-xl-first order-last ${
           collapsed ? "collapsed" : ""
         }`}
+        style={{
+          ["--scene-tabs-nav-height" as any]: `${navHeight}px`,
+        }}
       >
         <div>
           <div className="scene-header-container">

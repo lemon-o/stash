@@ -68,11 +68,15 @@ class SkipButton extends videojs.getComponent("button") {
     this.parentPlugin = options.parent;
     this.direction = options.direction;
     if (options.direction === "forward") {
-      this.controlText(this.localize("Skip to next video"));
-      this.addClass(`vjs-icon-next-item`);
+      const text = this.localize("Skip to next video");
+      this.controlText(text);
+      this.el()?.setAttribute("title", text);
+      this.addClass("vjs-icon-next-item");
     } else if (options.direction === "back") {
-      this.controlText(this.localize("Skip to previous video"));
-      this.addClass(`vjs-icon-previous-item`);
+      const text = this.localize("Skip to previous video");
+      this.controlText(text);
+      this.el()?.setAttribute("title", text);
+      this.addClass("vjs-icon-previous-item");
     }
   }
 
