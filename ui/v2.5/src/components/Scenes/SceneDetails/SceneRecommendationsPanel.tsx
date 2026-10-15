@@ -8,6 +8,7 @@ import { Icon } from "src/components/Shared/Icon";
 import { faSyncAlt } from "@fortawesome/free-solid-svg-icons";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { PatchComponent } from "src/patch";
+import { SceneQueue } from "src/models/sceneQueue";
 import {
   getMainVideoFile,
   getVideoResolutionLabel,
@@ -16,7 +17,7 @@ import {
 
 interface ISceneRecommendationsPanelProps {
   scene: GQL.SceneDataFragment;
-  onSceneClicked?: (sceneID: string) => void;
+  onSceneClicked?: (sceneID: string, allRecIds?: string[]) => void;
 }
 
 type FilterCategory = "all" | "performer" | "studio" | "tag";
@@ -40,8 +41,9 @@ function getDailySeed(date: Date = new Date(), salt: number = 0): number {
 
 const SceneRecommendationCard: React.FC<{
   item: IRecommendationItem;
+  cardLink: string;
   onClick: (e: React.MouseEvent, sceneId: string) => void;
-}> = React.memo(({ item, onClick }) => {
+}> = React.memo(({ item, cardLink, onClick }) => {
   const { scene: s, reason, reasonLabel } = item;
   const intl = useIntl();
   const [isHovered, setIsHovered] = useState(false);
@@ -56,7 +58,7 @@ const SceneRecommendationCard: React.FC<{
 
   return (
     <Link
-      to={`/scenes/${s.id}`}
+      to={cardLink}
       className="scene-rec-card"
       onClick={(e) => onClick(e, s.id)}
       onMouseEnter={() => setIsHovered(true)}
@@ -347,16 +349,31 @@ export const SceneRecommendationsPanel: React.FC<ISceneRecommendationsPanelProps
       (hasStudio && studioResult.loading && !studioScenes.length) ||
       (generalResult.loading && !generalScenes.length);
 
+    const recIds = useMemo(
+      () => displayedItems.map((item) => item.scene.id),
+      [displayedItems]
+    );
+
+    const recQueue = useMemo(() => {
+      const allIds = Array.from(new Set([scene.id, ...recIds]));
+      return SceneQueue.fromSceneIDList(allIds);
+    }, [scene.id, recIds]);
+
     const handleCardClick = useCallback(
       (e: React.MouseEvent, targetSceneId: string) => {
         if (onSceneClicked) {
           e.preventDefault();
-          onSceneClicked(targetSceneId);
+          onSceneClicked(targetSceneId, recIds);
         } else {
-          history.push(`/scenes/${targetSceneId}`);
+          history.push(
+            recQueue.makeLink(targetSceneId, {
+              autoPlay: true,
+              continue: true,
+            })
+          );
         }
       },
-      [onSceneClicked, history]
+      [onSceneClicked, history, recIds, recQueue]
     );
 
     return (
@@ -466,6 +483,10 @@ export const SceneRecommendationsPanel: React.FC<ISceneRecommendationsPanelProps
               <SceneRecommendationCard
                 key={item.scene.id}
                 item={item}
+                cardLink={recQueue.makeLink(item.scene.id, {
+                  autoPlay: true,
+                  continue: true,
+                })}
                 onClick={handleCardClick}
               />
             ))

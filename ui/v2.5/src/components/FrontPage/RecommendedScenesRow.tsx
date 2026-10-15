@@ -251,8 +251,11 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
     }, [configuration, dailySeed]);
 
     const queue = useMemo(() => {
-      return SceneQueue.fromListFilterModel(dummyFilter);
-    }, [dummyFilter]);
+      const ids = recommendedScenes.map((s) => s.id);
+      return ids.length > 0
+        ? SceneQueue.fromSceneIDList(ids)
+        : SceneQueue.fromListFilterModel(dummyFilter);
+    }, [recommendedScenes, dummyFilter]);
 
     const dateFormatted = useMemo(() => {
       try {

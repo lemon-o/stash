@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/internal/static"
@@ -58,6 +59,28 @@ func (s *SceneServer) StreamSceneDirect(scene *models.Scene, w http.ResponseWrit
 	_, filename := filepath.Split(fp)
 	contentDisposition := mime.FormatMediaType("inline", map[string]string{"filename": filename})
 	w.Header().Set("Content-Disposition", contentDisposition)
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	ext := strings.ToLower(filepath.Ext(fp))
+	var ctype string
+	switch ext {
+	case ".mp4", ".m4v":
+		ctype = "video/mp4"
+	case ".webm":
+		ctype = "video/webm"
+	case ".mkv":
+		ctype = "video/mp4"
+	case ".mov":
+		ctype = "video/quicktime"
+	case ".avi":
+		ctype = "video/x-msvideo"
+	case ".wmv":
+		ctype = "video/x-ms-wmv"
+	}
+	if ctype != "" {
+		w.Header().Set("Content-Type", ctype)
+	}
+
 	http.ServeFile(w, r, fp)
 }
 

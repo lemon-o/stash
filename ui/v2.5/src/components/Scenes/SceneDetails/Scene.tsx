@@ -151,7 +151,7 @@ interface IProps {
   onQueueNext: () => void;
   onQueuePrevious: () => void;
   onQueueRandom: () => void;
-  onQueueSceneClicked: (sceneID: string) => void;
+  onQueueSceneClicked: (sceneID: string, recSceneIds?: string[]) => void;
   onDelete: () => void;
   continuePlaylist: boolean;
   queueHasMoreScenes: boolean;
@@ -1095,7 +1095,26 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     return Math.floor((index + queueStart - 1) / perPage) + 1;
   }
 
-  function onQueueSceneClicked(sceneID: string) {
+  function onQueueSceneClicked(sceneID: string, recSceneIds?: string[]) {
+    if (recSceneIds && recSceneIds.length > 0) {
+      const baseIds = sceneQueue.sceneIDs
+        ? sceneQueue.sceneIDs.map(String)
+        : scene
+        ? [scene.id]
+        : [];
+      const combinedIds = Array.from(new Set([...baseIds, ...recSceneIds]));
+      if (!combinedIds.includes(sceneID)) {
+        combinedIds.push(sceneID);
+      }
+      const newQueue = SceneQueue.fromSceneIDList(combinedIds);
+      const sceneLink = newQueue.makeLink(sceneID, {
+        autoPlay: autoPlayOnSelected,
+        continue: continuePlaylist,
+      });
+      history.push(sceneLink);
+      return;
+    }
+
     loadScene(sceneID, autoPlayOnSelected, getScenePage(sceneID));
   }
 

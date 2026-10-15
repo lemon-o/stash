@@ -360,6 +360,10 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           playbackRateMenuButton: false,
         },
         html5: {
+          vhs: {
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+          },
           dash: {
             updateSettings: [
               {
@@ -380,7 +384,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         nativeControlsForTouch: false,
         playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
         inactivityTimeout: ScreenUtils.isMobile() ? 3500 : 2500,
-        preload: (interfaceConfig?.autostartVideo ?? true) ? "auto" : "metadata",
+        preload: "metadata",
         playsinline: true,
         techOrder: ["chromecast", "html5"],
         userActions: {
@@ -887,7 +891,13 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         player.vttThumbnails().src(scene.paths.vtt ?? null);
 
         if (startPosition) {
-          player.currentTime(startPosition);
+          if (player.readyState() >= 1) {
+            player.currentTime(startPosition);
+          } else {
+            player.one("loadedmetadata", () => {
+              player.currentTime(startPosition);
+            });
+          }
         }
       });
 

@@ -1948,6 +1948,32 @@ npx pnpm run start
 
 ---
 
+### 任务六十三：推荐列表点击自动加入播放序列 & 高码率/大文件视频播放卡顿秒开优化
+
+* **问题背景与机制分析**：
+  1. **点击推荐列表视频未加入播放序列**：
+     - 在短片详情页（`Scene.tsx`）的“推荐”（`SceneRecommendationsPanel`）面板中，展示了同演员、同工作室、同标签及精选推荐视频。
+     - 用户点击推荐卡片时，原回调仅传递单个 `targetSceneId`，保持旧的 `sceneQueue`（为空或保留了全库默认查询），导致切换到推荐短片后，“序列”页签内并未包含推荐面板中的短片列表，且视频播放结束后的连播（`continuePlaylist`）与快捷键换片无法在推荐流中顺畅循环。
+  2. **播放部分视频加载很久（高码率大文件卡顿缓冲，如 `薇薇安-v1 (2).mp4`，1440x1080 10.4Mbps 1.15GB）**：
+     - **预加载策略反模式（`preload: "auto"`）**：原 `ScenePlayer.tsx` 中由于开启了自动播放（`autostartVideo: true`），播放器选项将 `preload` 设为 `"auto"`。在 Chromium/Edge/Firefox 中，`preload: "auto"` 会指示浏览器媒体多路复用器（demuxer）对视频文件执行贪婪的顺序全量缓冲，导致 1GB+ 高码率视频在开始播放前需下载数以十兆计的数据块以满足 `canplaythrough`。
+     - **Non-FastStart MP4 元数据末尾等待**：在手机录制或第三方剪辑软件导出的 MP4 文件中，`moov` atom（元数据索引）常常位于 1.15GB 文件的末尾。若设置 `preload: "auto"`，浏览器会从 byte 0 顺序向后拉取 `mdat`，导致极长时间的元数据等待；而若设为 `preload: "metadata"`，浏览器首先拉取头部，发现 `moov` 不在首部时会立即向文件尾部发起 HTTP Range 请求读取 `moov`，数毫秒内即完成索引解析。
+     - **`player.ready()` 阶段过早 seek 锁死**：原代码在 `player.ready()` 回调中直接执行 `player.currentTime(startPosition)`。此时底层媒体标签尚处于 `readyState === 0`（`HAVE_NOTHING`），在元数据尚未就绪时强制 seek 会打断初始网络连接并产生 Range 请求重叠竞争，造成播放器无限旋转 loading。
+     - **后端 Direct Stream 响应头缺失**：后端 `StreamSceneDirect` 在 Windows 平台上依赖注册表识别 MIME 类型，若注册表异常则降级为嗅探，可能返回 `application/octet-stream`，阻断硬件加速解码；且未显式写入 `Accept-Ranges: bytes`。
+
+* **精准代码落地与架构重构**：
+  1. **推荐列表点击全量入列（`SceneRecommendationsPanel.tsx` & `Scene.tsx` & `RecommendedScenesRow.tsx`）**：
+     - 在 `SceneRecommendationsPanel` 中，收集当前分类视图下展示的所有推荐视频 ID（`recIds`），并在卡片被点击时将 `(targetSceneId, recIds)` 一并传递；
+     - 卡片链接 `cardLink` 同步升级为包含推荐序列参数的完整 URL（`recQueue.makeLink(...)`），确保无论左键单击还是右键“在新标签页中打开”，新页面均携带完整的推荐序列参数（`?qs=...`）；
+     - 在 `Scene.tsx` 的 `onQueueSceneClicked` 中：提取当前短片与推荐列表 ID 数组去重合并，构造 `SceneQueue.fromSceneIDList(combinedIds)`，通过 `history.push` 携带队列参数切换路由。用户进入后，右侧“序列”页签立即点亮并展示推荐内容，播放器上/下一首与自动连播完美循环推荐列表；
+     - 同步升级首页每日推荐组件 `RecommendedScenesRow.tsx`：点击首页推荐短片同样以 `SceneQueue.fromSceneIDList` 构建队列，实现端到端体验一致性。
+  2. **高码率视频秒开与流式缓冲调优（`ScenePlayer.tsx` & `running_streams.go`）**：
+     - **预加载策略统一锁定 `preload: "metadata"`**：在 `ScenePlayer.tsx` 中移除针对自动播放的 `"auto"` 反模式，强制锁定为 `"metadata"`。浏览器仅在首帧按需请求元数据包，避免贪婪顺序下载 1GB+ 媒体，点开即播；
+     - **安全延后 Seek 机制**：将 `player.currentTime(startPosition)` 改为检查 `player.readyState() >= 1`，若尚未就绪则挂载在 `loadedmetadata` 事件触发后精准跳转，杜绝 `readyState === 0` 阶段引起的网络管道阻塞；
+     - **Video.js HTML5 VHS 流式缓冲限制**：配置 `maxBufferLength: 30` 与 `maxMaxBufferLength: 60`，防止大文件过度占用内存与本地带宽；
+     - **后端直流响应头强固化（`running_streams.go`）**：在 `StreamSceneDirect` 中显式设置 `w.Header().Set("Accept-Ranges", "bytes")`，并根据扩展名统一显式注入标准视频 MIME 类型（`.mp4`/`.m4v` 对应 `video/mp4`，`.webm` 对应 `video/webm`，`.mov` 对应 `video/quicktime` 等），杜绝 Windows 注册表嗅探失真。
+
+---
+
 *文档更新时间：2026-10-15*  
 *维护者：Antigravity & User Pair-Programming*
 
