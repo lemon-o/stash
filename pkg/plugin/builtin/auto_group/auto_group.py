@@ -3,6 +3,7 @@ import sys
 import json
 import re
 import base64
+import hashlib
 import sqlite3
 import tempfile
 import time
@@ -103,21 +104,33 @@ class StashClient:
         if self.api_key:
             self.headers["ApiKey"] = self.api_key
 
-    def graphql(self, query, variables=None):
+    def graphql(self, query, variables=None, retries=3):
         payload = {"query": query}
         if variables is not None:
             payload["variables"] = variables
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(self.graphql_url, data=data, headers=self.headers)
-        try:
-            with urllib.request.urlopen(req) as resp:
-                res = json.loads(resp.read().decode("utf-8"))
-                if res.get("errors"):
-                    raise Exception(f"GraphQL error: {res['errors']}")
-                return res.get("data", {})
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8")
-            raise Exception(f"HTTP {e.code}: {err_body}")
+        last_error = None
+        for attempt in range(retries):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    res = json.loads(resp.read().decode("utf-8"))
+                    if res.get("errors"):
+                        raise Exception(f"GraphQL error: {res['errors']}")
+                    return res.get("data", {})
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8")
+                last_error = Exception(f"HTTP {e.code}: {err_body}")
+                if attempt < retries - 1 and e.code in {500, 502, 503, 504}:
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                raise last_error
+            except Exception as e:
+                last_error = e
+                if attempt < retries - 1:
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                raise last_error
 
     def get_all_groups(self):
         query = """
@@ -133,19 +146,42 @@ class StashClient:
             }
         }
         """
-        data = self.graphql(query)
-        groups = data.get("findGroups", {}).get("groups", [])
-        group_map = {}
-        for g in groups:
-            key = g["name"].strip().lower()
-            # If duplicates exist in list, prioritize the one with highest scene_count or with front_image
-            if key not in group_map:
-                group_map[key] = g
-            else:
-                existing = group_map[key]
-                if (g.get("scene_count") or 0) > (existing.get("scene_count") or 0) or (g.get("front_image_path") and not existing.get("front_image_path")):
+        try:
+            data = self.graphql(query)
+            groups = data.get("findGroups", {}).get("groups", [])
+            group_map = {}
+            for g in groups:
+                key = g["name"].strip().lower()
+                # If duplicates exist in list, prioritize the one with highest scene_count or with front_image
+                if key not in group_map:
                     group_map[key] = g
-        return group_map
+                else:
+                    existing = group_map[key]
+                    if (g.get("scene_count") or 0) > (existing.get("scene_count") or 0) or (g.get("front_image_path") and not existing.get("front_image_path")):
+                        group_map[key] = g
+            return group_map
+        except Exception as e:
+            log.LogDebug(f"GraphQL get_all_groups failed ({e}), falling back to SQLite...")
+            db_path = get_sqlite_path()
+            if os.path.exists(db_path):
+                try:
+                    conn = sqlite3.connect(db_path)
+                    cur = conn.cursor()
+                    rows = cur.execute("SELECT id, name, front_image_blob FROM groups").fetchall()
+                    conn.close()
+                    group_map = {}
+                    for gid, gname, fblob in rows:
+                        if gname:
+                            group_map[gname.strip().lower()] = {
+                                "id": str(gid),
+                                "name": gname,
+                                "front_image_path": fblob,
+                                "scene_count": 0
+                            }
+                    return group_map
+                except Exception:
+                    pass
+            return {}
 
     def create_group(self, name, front_image=None):
         mutation = """
@@ -160,8 +196,25 @@ class StashClient:
         inp = {"name": name}
         if front_image:
             inp["front_image"] = front_image
-        data = self.graphql(mutation, {"input": inp})
-        return data.get("groupCreate")
+        try:
+            data = self.graphql(mutation, {"input": inp})
+            return data.get("groupCreate")
+        except Exception as e:
+            if front_image:
+                log.LogWarning(f"带封面创建集合【{name}】失败: {e}，正在尝试不带封面创建...")
+                try:
+                    data = self.graphql(mutation, {"input": {"name": name}})
+                    created = data.get("groupCreate")
+                    if created and created.get("id"):
+                        try:
+                            self.update_group_cover(created["id"], front_image)
+                        except Exception as e2:
+                            log.LogWarning(f"后续补充设置集合封面失败: {e2}")
+                    return created
+                except Exception as e3:
+                    log.LogError(f"即使不带封面创建集合【{name}】亦失败: {e3}")
+                    raise e3
+            raise e
 
     def update_group_cover(self, group_id, front_image):
         mutation = """
@@ -351,15 +404,16 @@ def determine_collection_info(file_path, library_roots):
     matched_root = None
     sorted_roots = sorted(library_roots, key=lambda r: len(r), reverse=True)
     for r in sorted_roots:
-        norm_r = os.path.normcase(os.path.normpath(r))
+        norm_r = os.path.normcase(os.path.normpath(r).rstrip("\\/")) + os.sep
         n_file = os.path.normcase(norm_file)
-        if n_file.startswith(norm_r + os.sep):
+        if n_file.startswith(norm_r):
             matched_root = r
             break
         if real_file:
             r_file = os.path.normcase(real_file)
-            r_root = os.path.normcase(resolve_real_path(r) or r)
-            if r_file.startswith(r_root + os.sep):
+            r_root_val = resolve_real_path(r) or r
+            r_root = os.path.normcase(os.path.normpath(r_root_val).rstrip("\\/")) + os.sep
+            if r_file.startswith(r_root):
                 matched_root = r
                 break
 
@@ -908,6 +962,338 @@ def process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=Fals
         client.update_scene_groups(scene_id, new_groups_input)
 
 
+def resolve_folder_cover(cur, fold_id, fold_path, col_dir, col_name):
+    """
+    为子文件夹自动寻找最佳封面图：
+    1. 磁盘物理封面（poster/cover/folder/front/文件夹名/首张图片）
+    2. 文件夹内的短片封面（SQLite 数据库中的 scene cover_blob）
+    3. 文件夹内的图片（本地磁盘文件或 Stash 生成的缩略图 data/generated/thumbnails）
+    4. 文件夹内的短片 ffmpeg 抽取清晰帧或生成的截图
+    """
+    # 1. 检查物理磁盘中的图片文件
+    for d in (col_dir, fold_path):
+        if d:
+            cover = find_cover_image_on_disk(d, col_name)
+            if cover:
+                return cover
+
+    # 2. 检查该文件夹（或其递归子文件夹）下是否已有短片并提取其封面
+    try:
+        scene_rows = cur.execute("""
+            WITH RECURSIVE folder_tree(id, path) AS (
+                SELECT id, path FROM folders WHERE id = ?
+                UNION ALL
+                SELECT f.id, f.path FROM folders f JOIN folder_tree ft ON f.parent_folder_id = ft.id
+            )
+            SELECT DISTINCT s.id, ft.path, fl.basename
+            FROM folder_tree ft
+            JOIN files fl ON fl.parent_folder_id = ft.id
+            JOIN scenes_files sf ON sf.file_id = fl.id
+            JOIN scenes s ON s.id = sf.scene_id
+            LIMIT 5
+        """, (fold_id,)).fetchall()
+        for s_row in scene_rows:
+            sid, fpath, fname = s_row
+            cover = get_scene_cover_from_sqlite(sid)
+            if cover:
+                return cover
+            vpath = os.path.join(fpath, fname) if fpath and fname else None
+            if vpath and os.path.exists(vpath):
+                cover = extract_frame_ffmpeg(vpath)
+                if cover:
+                    return cover
+    except Exception as e:
+        log.LogDebug(f"提取短片封面失败: {e}")
+
+    # 3. 检查该文件夹（或其递归子文件夹）下是否包含图片
+    try:
+        img_rows = cur.execute("""
+            WITH RECURSIVE folder_tree(id, path) AS (
+                SELECT id, path FROM folders WHERE id = ?
+                UNION ALL
+                SELECT f.id, f.path FROM folders f JOIN folder_tree ft ON f.parent_folder_id = ft.id
+            )
+            SELECT DISTINCT fl.id, fl.basename, ft.path
+            FROM folder_tree ft
+            JOIN files fl ON fl.parent_folder_id = ft.id
+            JOIN images_files ifl ON ifl.file_id = fl.id
+            ORDER BY fl.basename ASC
+        """, (fold_id,)).fetchall()
+
+        if img_rows:
+            best_fid = None
+            best_bname = None
+            best_fpath = None
+            cover_patterns = [
+                re.compile(r"^(poster|cover|folder|front)\.(jpe?g|png|webp)$", re.IGNORECASE),
+                re.compile(rf"^{re.escape(col_name)}\.(jpe?g|png|webp)$", re.IGNORECASE),
+                re.compile(r"^0*1\.(jpe?g|png|webp)$", re.IGNORECASE),
+                re.compile(r".*(poster|cover|folder|front).*\.(jpe?g|png|webp)$", re.IGNORECASE),
+            ]
+            for pat in cover_patterns:
+                for fid, bname, fpath in img_rows:
+                    if pat.match(bname or ""):
+                        best_fid = fid
+                        best_bname = bname
+                        best_fpath = fpath
+                        break
+                if best_fid:
+                    break
+            if not best_fid:
+                best_fid = img_rows[0][0]
+                best_bname = img_rows[0][1]
+                best_fpath = img_rows[0][2]
+
+            # 3a. 尝试从本地磁盘读取该图片
+            for d in (best_fpath, col_dir, fold_path):
+                if d and best_bname:
+                    cand = os.path.join(resolve_real_path(d) or d, best_bname)
+                    if os.path.exists(cand):
+                        uri = file_to_data_uri(cand)
+                        if uri:
+                            return uri
+
+            # 3b. 尝试从已生成的缩略图 (generated/thumbnails) 读取
+            fp_row = cur.execute(
+                "SELECT fingerprint FROM files_fingerprints WHERE file_id = ? AND type = 'md5'",
+                (best_fid,)
+            ).fetchone()
+            if fp_row and fp_row[0]:
+                md5 = fp_row[0]
+                db_dir = os.path.dirname(get_sqlite_path())
+                gen_dir = os.path.join(db_dir, "generated")
+                if not os.path.exists(gen_dir):
+                    gen_dir = os.path.abspath(os.path.join(os.getcwd(), "data", "generated"))
+                thumb_candidates = [
+                    os.path.join(gen_dir, "thumbnails", md5[:2], md5[2:4], f"{md5}_640.jpg"),
+                    os.path.join(gen_dir, "thumbnails", md5[:2], md5[2:4], f"{md5}_1280.jpg"),
+                    os.path.join(gen_dir, "thumbnails", md5[:2], md5[2:4], f"{md5}.jpg"),
+                ]
+                for tc in thumb_candidates:
+                    if os.path.exists(tc):
+                        uri = file_to_data_uri(tc)
+                        if uri:
+                            return uri
+    except Exception as e:
+        log.LogDebug(f"提取图片封面失败: {e}")
+
+    # 4. 检查是否有生成的截图 (generated/screenshots)
+    try:
+        vid_rows = cur.execute("""
+            WITH RECURSIVE folder_tree(id) AS (
+                SELECT ?
+                UNION ALL
+                SELECT f.id FROM folders f JOIN folder_tree ft ON f.parent_folder_id = ft.id
+            )
+            SELECT DISTINCT fl.id
+            FROM folder_tree ft
+            JOIN files fl ON fl.parent_folder_id = ft.id
+            JOIN scenes_files sf ON sf.file_id = fl.id
+            LIMIT 1
+        """, (fold_id,)).fetchall()
+        for vrow in vid_rows:
+            fp_row = cur.execute(
+                "SELECT fingerprint FROM files_fingerprints WHERE file_id = ? AND type = 'oshash'",
+                (vrow[0],)
+            ).fetchone()
+            if fp_row and fp_row[0]:
+                oshash = fp_row[0]
+                db_dir = os.path.dirname(get_sqlite_path())
+                gen_dir = os.path.join(db_dir, "generated")
+                if not os.path.exists(gen_dir):
+                    gen_dir = os.path.abspath(os.path.join(os.getcwd(), "data", "generated"))
+                ss_cand = os.path.join(gen_dir, "screenshots", f"{oshash}.jpg")
+                if os.path.exists(ss_cand):
+                    uri = file_to_data_uri(ss_cand)
+                    if uri:
+                        return uri
+    except Exception as e:
+        log.LogDebug(f"提取视频截图封面失败: {e}")
+
+    return None
+
+
+def sync_folder_collections(client, library_roots=None):
+    """
+    遍历媒体库中所有子文件夹，确保每个子文件夹都在系统中创建了对应的“集合”（Group/Collection）。
+    无论是包含短片、包含图片、还是包含子目录，均根据子文件夹名称自动创建集合，
+    设置封面图，并将该文件夹（及其子文件夹）内的所有短片全部关联到该集合中。
+    """
+    db_path = get_sqlite_path()
+    if not os.path.exists(db_path):
+        return
+
+    if library_roots is None:
+        library_roots = get_library_roots(client)
+
+    log.LogInfo("开始根据媒体库子文件夹自动检查与补全“集合”...")
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+
+        # 查询所有子文件夹 (排除无上级目录的物理根目录)
+        folders = cur.execute("""
+            SELECT id, path, parent_folder_id, basename
+            FROM folders
+            WHERE parent_folder_id IS NOT NULL
+        """).fetchall()
+
+        if not folders:
+            conn.close()
+            return
+
+        groups_map = client.get_all_groups()
+
+        created_groups = 0
+        updated_covers = 0
+        linked_scenes_total = 0
+
+        # 按文件夹逐个检查或创建集合
+        for fold_id, fold_path, parent_id, basename in folders:
+            if is_ignored_path(fold_path):
+                continue
+
+            norm_path = os.path.normcase(os.path.normpath(fold_path)) if fold_path else ""
+            real_path = os.path.normcase(resolve_real_path(fold_path) or "")
+            if norm_path in library_roots or real_path in library_roots:
+                continue
+
+            # 确定该文件夹所属的集合名称及目录
+            dummy_file = os.path.join(fold_path, "media")
+            is_sub, col_name, col_dir = determine_collection_info(dummy_file, library_roots)
+            if not is_sub or not col_name:
+                col_name = (basename or os.path.basename(fold_path) or "").strip()
+                col_dir = fold_path
+
+            if not col_name or is_ignored_path(col_name):
+                continue
+
+            col_key = col_name.strip().lower()
+
+            # 1. 检查集合是否已经存在
+            group = groups_map.get(col_key)
+            if not group:
+                # 检查 SQLite 中是否有该集合
+                grow = cur.execute(
+                    "SELECT id, name, front_image_blob FROM groups WHERE LOWER(TRIM(name)) = ? ORDER BY id ASC LIMIT 1",
+                    (col_key,)
+                ).fetchone()
+                if grow:
+                    group = {
+                        "id": str(grow[0]),
+                        "name": grow[1],
+                        "front_image_path": grow[2]
+                    }
+                    groups_map[col_key] = group
+
+            # 2. 如果不存在，则创建集合并设置封面
+            if not group:
+                with AutoGroupLock():
+                    # 再次确认以防并发重复创建
+                    grow = cur.execute(
+                        "SELECT id, name, front_image_blob FROM groups WHERE LOWER(TRIM(name)) = ? ORDER BY id ASC LIMIT 1",
+                        (col_key,)
+                    ).fetchone()
+                    if grow:
+                        group = {
+                            "id": str(grow[0]),
+                            "name": grow[1],
+                            "front_image_path": grow[2]
+                        }
+                    else:
+                        cover_uri = resolve_folder_cover(cur, fold_id, fold_path, col_dir, col_name)
+                        new_grp = None
+                        try:
+                            new_grp = client.create_group(col_name, front_image=cover_uri)
+                        except Exception as ce:
+                            log.LogWarning(f"通过 API 创建集合【{col_name}】失败: {ce}，尝试直接写入数据库...")
+                            try:
+                                now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+                                cur.execute(
+                                    "INSERT INTO groups (name, created_at, updated_at) VALUES (?, ?, ?)",
+                                    (col_name, now_str, now_str)
+                                )
+                                conn.commit()
+                                gid = cur.lastrowid
+                                new_grp = {"id": str(gid), "name": col_name, "front_image_path": None}
+                                if cover_uri:
+                                    try:
+                                        if "," in cover_uri:
+                                            raw_b64 = cover_uri.split(",", 1)[1]
+                                            img_bytes = base64.b64decode(raw_b64)
+                                            csum = hashlib.md5(img_bytes).hexdigest()
+                                            cur.execute("INSERT OR REPLACE INTO blobs (checksum, blob) VALUES (?, ?)", (csum, img_bytes))
+                                            cur.execute("UPDATE groups SET front_image_blob = ? WHERE id = ?", (csum, gid))
+                                            conn.commit()
+                                            new_grp["front_image_path"] = csum
+                                    except Exception:
+                                        pass
+                            except Exception as dbe:
+                                log.LogError(f"写入集合【{col_name}】到数据库失败: {dbe}")
+
+                        if new_grp:
+                            group = new_grp
+                            created_groups += 1
+                            log.LogInfo(f"根据子文件夹自动创建新集合: 【{col_name}】 (ID: #{group['id']})")
+
+                    if group:
+                        groups_map[col_key] = group
+
+            if not group:
+                continue
+
+            group_id = int(group["id"])
+
+            # 3. 如果集合存在但没有封面，补全封面
+            if not group.get("front_image_path"):
+                cover_uri = resolve_folder_cover(cur, fold_id, fold_path, col_dir, col_name)
+                if cover_uri:
+                    try:
+                        client.update_group_cover(group_id, cover_uri)
+                        group["front_image_path"] = "updated"
+                        updated_covers += 1
+                        log.LogInfo(f"为集合 【{col_name}】 补全设置封面图")
+                    except Exception as e:
+                        log.LogDebug(f"更新集合封面失败: {e}")
+
+            # 4. 确保该子文件夹（及子目录）下的所有短片均与该集合关联
+            scene_ids = cur.execute("""
+                WITH RECURSIVE folder_tree(id) AS (
+                    SELECT ?
+                    UNION ALL
+                    SELECT f.id FROM folders f JOIN folder_tree ft ON f.parent_folder_id = ft.id
+                )
+                SELECT DISTINCT sf.scene_id
+                FROM folder_tree ft
+                JOIN files fl ON fl.parent_folder_id = ft.id
+                JOIN scenes_files sf ON sf.file_id = fl.id
+            """, (fold_id,)).fetchall()
+
+            for (s_id,) in scene_ids:
+                linked = cur.execute(
+                    "SELECT 1 FROM groups_scenes WHERE group_id = ? AND scene_id = ? LIMIT 1",
+                    (group_id, s_id)
+                ).fetchone()
+                if not linked:
+                    cur.execute(
+                        "INSERT OR IGNORE INTO groups_scenes (group_id, scene_id, scene_index) VALUES (?, ?, NULL)",
+                        (group_id, s_id)
+                    )
+                    linked_scenes_total += 1
+
+        conn.commit()
+        conn.close()
+
+        if created_groups > 0 or updated_covers > 0 or linked_scenes_total > 0:
+            log.LogInfo(f"子文件夹“集合”自动检查完成！新建集合: {created_groups} 个，补全封面: {updated_covers} 个，关联短片: {linked_scenes_total} 部。")
+        else:
+            log.LogDebug("所有子文件夹集合已处于最新状态，无需变更。")
+
+    except Exception as e:
+        log.LogWarning(f"自动创建与整理集合发生错误: {e}")
+
+
 def sync_folder_galleries(client, library_roots=None):
     """
     遍历媒体库中所有包含图片的目录子文件夹，根据文件夹名称自动创建或更新“图库”（Galleries），
@@ -1071,6 +1457,10 @@ def run_full(client):
 
     library_roots = get_library_roots(client)
     log.LogDebug(f"媒体库根目录: {library_roots}")
+
+    # 1. 首先遍历媒体库所有子文件夹，确保每个子文件夹都创建集合并关联短片
+    sync_folder_collections(client, library_roots)
+
     groups_map = client.get_all_groups()
     log.LogDebug(f"当前已存在集合数量: {len(groups_map)}")
 
@@ -1087,7 +1477,7 @@ def run_full(client):
         if (i + 1) % 5 == 0 or i == total - 1:
             log.LogProgress(((i + 1) / max(1, total)) * 0.7)
 
-    # 自动处理图片文件夹与图库
+    # 2. 自动处理图片文件夹与图库
     sync_folder_galleries(client, library_roots)
     log.LogProgress(1.0)
 
@@ -1112,6 +1502,45 @@ def run_fix_thumbnails(client):
     log.LogInfo(f"全媒体库短片缩略图优化完成！共优化替换了 {fixed} 部短片的黑帧/空白帧缩略图。")
 
 
+def get_scene_from_sqlite(scene_id):
+    db_path = get_sqlite_path()
+    if not os.path.exists(db_path):
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        cur = conn.cursor()
+        row = cur.execute("""
+            SELECT s.id, s.title, f.id, f.path, f.basename
+            FROM scenes s
+            JOIN scenes_files sf ON sf.scene_id = s.id
+            JOIN files f ON f.id = sf.file_id
+            WHERE s.id = ?
+            ORDER BY sf.file_id ASC LIMIT 1
+        """, (scene_id,)).fetchone()
+        if not row:
+            conn.close()
+            return None
+        sid, title, fid, fpath, fbasename = row
+        g_rows = cur.execute("""
+            SELECT sg.group_id, g.name, sg.scene_index
+            FROM scenes_groups sg
+            JOIN groups g ON g.id = sg.group_id
+            WHERE sg.scene_id = ?
+        """, (scene_id,)).fetchall()
+        groups = [{"group": {"id": str(gid), "name": gname}, "scene_index": sidx} for gid, gname, sidx in g_rows]
+        conn.close()
+        return {
+            "id": str(sid),
+            "title": title or "",
+            "files": [{"id": str(fid), "path": fpath, "basename": fbasename}],
+            "groups": groups,
+            "paths": {}
+        }
+    except Exception as e:
+        log.LogDebug(f"get_scene_from_sqlite failed: {e}")
+        return None
+
+
 def run_hook(client, hook_context):
     scene_id = hook_context.get("id")
     if not scene_id:
@@ -1121,18 +1550,27 @@ def run_hook(client, hook_context):
     groups_map = client.get_all_groups()
 
     scene = client.get_scene(scene_id)
+    if not scene or not scene.get("files"):
+        scene = get_scene_from_sqlite(scene_id)
+
     if scene:
         process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=False)
         log.LogInfo(f"短片 #{scene_id} 集合归类处理完成")
+    else:
+        log.LogWarning(f"未能获取到短片 #{scene_id} 的信息，无法进行子文件夹归类")
+
+    # 触发子文件夹集合全量同步，确保新子文件夹合集不被漏掉
+    sync_folder_collections(client, library_roots)
 
 
 def run_image_hook(client, hook_context):
     image_id = hook_context.get("id") if hook_context else None
-    log.LogInfo(f"检测到新图片创建或更新 (ID: {image_id})，正在执行图库归类...")
+    log.LogInfo(f"检测到新图片创建或更新 (ID: {image_id})，正在执行集合与图库归类...")
     library_roots = get_library_roots(client)
+    sync_folder_collections(client, library_roots)
     sync_folder_galleries(client, library_roots)
     if image_id:
-        log.LogInfo(f"图片 #{image_id} 图库归类处理完成")
+        log.LogInfo(f"图片 #{image_id} 集合与图库归类处理完成")
 
 
 def main():

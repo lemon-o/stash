@@ -1045,6 +1045,25 @@ ul.selectable-list {
       padding-bottom: 0;
       padding-top: 0;
     }
+
+    .clearable-text-field-clear {
+      background-color: transparent !important;
+      border: none !important;
+      bottom: auto !important;
+      box-shadow: none !important;
+      height: 20px !important;
+      line-height: 1 !important;
+      margin: 0 !important;
+      max-height: 20px !important;
+      max-width: 20px !important;
+      min-height: 20px !important;
+      min-width: 20px !important;
+      padding: 0 !important;
+      right: 0.5rem !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      width: 20px !important;
+    }
   }
 
   .sort-by-select {

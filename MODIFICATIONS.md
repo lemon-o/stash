@@ -22,6 +22,8 @@
    - [任务十一：顶部导航栏实用工具按钮激活状态白底胶囊异形 Bug 修复](#任务十一顶部导航栏实用工具按钮激活状态白底胶囊异形-bug-修复)
    - [任务十二：全域高对比纯暗黑进度条重构（解决任务进度条灰底白条与文字隐形问题）](#任务十二全域高对比纯暗黑进度条重构彻底解决任务队列进度条灰底白条与文字隐形问题)
    - [任务十三：播放器中心大播放按钮重构为独立放大圆角三角形（去除底圈与微光阴影）](#任务十三播放器中心大播放按钮重构为独立放大圆角三角形去除底圈与微光阴影)
+   - [任务十四：缩略图卡片分辨率与时长精准对齐引擎](#任务十四全域缩略图卡片浮动分辨率与时长精准对齐引擎)
+   - [任务十五：播放器换片防抖稳定化、自动播放与切片修复、搜索框清除按钮垂直居中、全页签更新时间默认降序、扫描生成后自动清理不存在项与漏建集合修复](#任务十五播放器换片防抖稳定化自动播放与切片修复搜索框清除按钮垂直居中全页签更新时间默认降序扫描生成后自动清理不存在项与漏建集合修复)
 3. [本地开发热重载与生产联调指南](#3-本地开发热重载与生产联调指南)
 4. [编译构建与定制 Docker 镜像部署方案](#4-编译构建与定制-docker-镜像部署方案)
 5. [Git 分支管理与未来上游同步策略](#5-git-分支管理与未来上游同步策略)
@@ -1901,7 +1903,52 @@ npx pnpm run start
 
 ---
 
-*文档更新时间：2026-10-09*  
+### 任务六十二：播放器换片防抖稳定化、自动播放与切片修复、搜索框清除按钮垂直居中、全页签更新时间默认降序、扫描生成后自动清理不存在项与漏建集合修复
+
+* **问题背景与机制分析**：
+  1. **播放器切换不同尺寸视频上下移动**：原 SCSS 中给 `.VideoPlayer.portrait .video-wrapper` 硬编码了 `height: 177.78vw`，并在 `<1200px` 下对非竖屏使用 `56.25vw`。当视频尺寸和宽高比改变时，容器高度剧烈暴增或缩水，导致播放控制条和整个页面结构上下跳动。
+  2. **自动播放与上一个/下一个视频失效**：
+     - `<ScenePlayer key="ScenePlayer"` 采用静态 key，跨视频切换时组件不卸载，导致旧视频的 `ready = true` 状态泄漏；在新视频加载未完成时触发 `player.play()` 引发浏览器 `AbortError`，并将 `auto.current` 置为 `false`，导致后续自动播放彻底死亡。
+     - 当从首页推荐、搜索或直接 URL 进入短片时，`sceneQueue.query` 与 `sceneQueue.sceneIDs` 为空，队列数组为空且 `currentQueueIndex === -1`，导致“上一个/下一个视频”按钮及播放完成连播（`continuePlaylist`）直接静默 return。
+  3. **搜索框右侧【x】错位**：在列表工具栏中，`.filtered-list-toolbar .btn` 强制了 32px 高度；而 `ClearableInput` 内的清除按钮带有 `top: 0; margin: 0.375rem 0.75rem;`，导致总偏移达到 38px，按钮底部凸出输入框外框 6px。
+  4. **所有页签默认排序改为【更新于】降序**：短片、图片、集合、标记、图库、演员、工作室、标签 8 大核心页签原默认排序列不一致（如名称、创建时间、标题等），需要统一设为 `updated_at` 降序。
+  5. **扫描/生成完成后自动清理不存在项**：原系统在扫描或生成任务完成后不会自动执行清理，导致被移动、重命名或删除的短片、图库及残留的孤儿生成切片（截图、雪碧图、转码等）滞留在库中。
+  6. **创建集合漏掉短片**：
+     - 路径匹配 Bug：Windows 根目录（如 `D:\`）经 `normpath` 处理后保留末尾斜杠，拼接 `os.sep` 产生 `d:\\\\`，导致 `file.startswith` 判定永久为 `False`；
+     - 网络与锁瞬断：`graphql()` 无重试机制，高并发扫描时遇锁直接崩溃退出；且并发 hook 可能因数据库记录尚未就绪而读空短片文件。
+
+* **精准代码落地与架构重构**：
+  1. **播放器容器绝对防抖稳定化（`ScenePlayer/styles.scss`）**：
+     - 移除 `.portrait .video-wrapper` 的变长高度定义；
+     - `>=1200px` 锁死 `.VideoPlayer` 高度为 `calc(100vh - 4rem)`，内层 `.video-wrapper` 使用 `flex: 1 1 0; min-height: 0; background: #000;`，由 Video.js 原生自适应 letterboxing（保持比例黑边填充居中），底栏控制条牢牢锚定在容器底端 `bottom: 0`，换片零位移；
+     - `<1200px` 移动端统一采用 `height: 56.25vw; min-height: 240px;` 保证全画幅与竖屏视频一致尺寸。
+  2. **自动播放竞态消除与换片容错（`ScenePlayer.tsx` & `Scene.tsx`）**：
+     - `Scene.tsx` 中改用 `key={scene.id}` 重新挂载播放器，确保换片时干净重置播放器生命周期与 `ready` 状态；
+     - `ScenePlayer.tsx` 播放 Effect 中为 `player.play()` 添加 Promise 异常捕获，若遭遇浏览器无交互自动播放拦截（`NotAllowedError`），自动静音后安全重试，保障切片流畅连播；
+     - `Scene.tsx` 中当 `sceneQueue` 为空时，默认回退构造当前视图模式的 `ListFilterModel` 并加载队列；在 `queueNext` 与 `queuePrevious` 中容错处理 `currentQueueIndex === -1`，确保任意入口进入均能顺畅点击上下首与连播。
+  3. **搜索框清除按钮精准绝对居中（`Shared/styles.scss` & `List/styles.scss`）**：
+     - `.clearable-text-field` 增加 `padding-right: 2rem;` 防止文本与按钮重叠；
+     - `.clearable-text-field-clear` 采用 `top: 50%; transform: translateY(-50%); right: 0.5rem;` 弹性绝对居中，并将尺寸锁死为 `20px x 20px`，去除背景与边框，在所有 32px 及其他规格工具栏中均完美居中无溢出。
+  4. **全页签默认排序统一更新时间降序（`models/list-filter/*.ts`）**：
+     - 分别修改 `scenes.ts`、`images.ts`、`groups.ts`、`scene-markers.ts`、`galleries.ts`、`performers.ts`、`studios.ts`、`tags.ts` 中的 `defaultSortBy = "updated_at";`；
+     - 配合 `filter.ts` 中的 `isDescDefault("updated_at") === true`，8 大页签首次加载及重置过滤时默认方向全部自动设为降序。
+  5. **扫描与生成后智能自动清理机制（`manager_tasks.go`, `task_clean.go`, `task_scan.go`, `task_generate.go`）**：
+     - 在 `Manager` 中封装 `TriggerAutoClean(ctx)`，智能防重保护（若当前已有正在执行或排队的清理任务则跳过）；
+     - 在 `cleanJob.Execute` 中追加 `task.CleanGeneratedJob` 运行逻辑（清除无引用孤儿截图、雪碧图、转码文件、标记与空图库）；
+     - 在 `ScanJob.Execute` 与 `GenerateJob.Execute` 顺利结束时，后台异步触发 `TriggerAutoClean`，实现增量扫描/生成后全自动无感清理。
+  6. **新子文件夹漏创建合集修复（`auto_group.py` & `task_scan.go`）**：
+     - **根因分析**：原先集合创建逻辑仅挂载在短片处理流（`process_scene`）中，全量扫描仅遍历短片（`get_all_scenes()`）。当媒体库目录下新增子文件夹，若该文件夹仅包含图片（如写真集/图库）、短片此前已入库、或 GraphQL 带封面创建因超时/图片体积超限失败时，系统**完全不会为该子文件夹创建集合（Group）**；
+     - **路径匹配与重试加固**：`determine_collection_info` 中使用 `os.path.normpath(r).rstrip("\\/") + os.sep` 处理库根路径，彻底修复 Windows 根驱动器（如 `D:\`）无法匹配的路径识别缺陷；`StashClient.graphql` 增加 3 次指数退避重试（0.5s、1s、1.5s），`create_group` 增加无封面回退兜底，消除瞬时并发与锁竞争导致的创建中断；
+     - **全新子文件夹集合同步引擎（`sync_folder_collections`）**：
+       - 直接从 SQLite `folders` 表查询所有子文件夹，精准识别第一级媒体集合目录；
+       - 为每个子文件夹建立幂等的集合创建与检查机制，结合跨进程互斥锁 `AutoGroupLock` 防重；
+       - 集成多源封面提取引擎（`resolve_folder_cover`）：优先读取磁盘封面 -> 数据库短片封面/ffmpeg 清晰帧 -> 文件夹图片/系统生成的缩略图（`data/generated/thumbnails`）-> 截图，并在极端情况下支持直接落库；
+       - 通过 SQLite 递归 CTE（`WITH RECURSIVE folder_tree`）秒级将该目录及其所有子目录下全部短片批量关联到该集合（`groups_scenes`）；
+     - **多端触发与全量兜底保障**：在全量任务 `run_full`、短片 Hook `run_hook`、图片 Hook `run_image_hook` 及扫描完成任务 `task_scan.go` 中全量调度 `sync_folder_collections`，无论新文件夹内是短片、图片还是混合媒体，100% 确保新子文件夹合集创建不遗漏。
+
+---
+
+*文档更新时间：2026-10-15*  
 *维护者：Antigravity & User Pair-Programming*
 
 

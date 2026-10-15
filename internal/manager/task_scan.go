@@ -23,6 +23,7 @@ import (
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/paths"
+	"github.com/stashapp/stash/pkg/plugin"
 	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stashapp/stash/pkg/utils"
@@ -119,6 +120,19 @@ func (j *ScanJob) Execute(ctx context.Context, progress *job.Progress) error {
 			if err != nil {
 				logger.Errorf("Failed to start background preview generation: %v", err)
 			}
+		}()
+	}
+
+	// 扫描完成后自动触发清理系统中不存在的所有短片、图库和生成文件
+	go mgr.TriggerAutoClean(context.Background())
+
+	// 扫描完成后，如果启用了自动集合插件，触发全量校验与归类，防止并发钩子漏掉短片
+	if agPlugin := mgr.PluginCache.GetPlugin("auto_group"); agPlugin != nil && agPlugin.Enabled {
+		logger.Infof("Scan completed. Enqueuing auto-group task to ensure all scenes are properly grouped...")
+		go func() {
+			taskName := "自动创建集合与封面图"
+			desc := "自动创建集合与封面图"
+			mgr.RunPluginTask(context.Background(), "auto_group", &taskName, &desc, plugin.OperationInput{"mode": "full"})
 		}()
 	}
 

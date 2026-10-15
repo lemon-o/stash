@@ -15,7 +15,7 @@ import { ListFilterOptions } from "./filter-options";
 import { DisplayMode } from "./types";
 import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 
-const defaultSortBy = "name";
+const defaultSortBy = "updated_at";
 const sortByOptions = [
   "name",
   "tag_count",

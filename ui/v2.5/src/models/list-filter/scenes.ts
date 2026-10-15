@@ -38,7 +38,7 @@ import { OrientationCriterionOption } from "./criteria/orientation";
 import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 import { FolderCriterionOption } from "./criteria/folder";
 
-const defaultSortBy = "created_at";
+const defaultSortBy = "updated_at";
 const sortByOptions = [
   "organized",
   "date",

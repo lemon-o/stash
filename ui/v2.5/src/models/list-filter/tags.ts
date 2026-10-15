@@ -17,7 +17,7 @@ import { FavoriteTagCriterionOption } from "./criteria/favorite";
 import { StashIDCriterionOption } from "./criteria/stash-ids";
 import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 
-const defaultSortBy = "name";
+const defaultSortBy = "updated_at";
 const sortByOptions = ["name", "random", "scenes_duration", "scenes_size"]
   .map(ListFilterOptions.createSortBy)
   .concat([

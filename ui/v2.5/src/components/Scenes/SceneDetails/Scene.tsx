@@ -942,8 +942,14 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       getQueueFilterScenes(sceneQueue.query);
     } else if (sceneQueue.sceneIDs) {
       getQueueScenes(sceneQueue.sceneIDs);
+    } else {
+      const defaultQuery = new ListFilterModel(
+        GQL.FilterMode.Scenes,
+        configuration
+      );
+      getQueueFilterScenes(defaultQuery);
     }
-  }, [sceneQueue]);
+  }, [sceneQueue, configuration]);
 
   async function onQueueLessScenes() {
     if (!sceneQueue.query || queueStart <= 1) {
@@ -996,41 +1002,43 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   }
 
   async function queueNext(autoPlay: boolean) {
-    if (currentQueueIndex === -1) return;
+    if (queueScenes.length === 0) return;
 
-    if (currentQueueIndex < queueScenes.length - 1) {
+    if (currentQueueIndex >= 0 && currentQueueIndex < queueScenes.length - 1) {
       loadScene(queueScenes[currentQueueIndex + 1].id, autoPlay);
-    } else {
-      // if we're at the end of the queue, load more scenes
-      if (currentQueueIndex === queueScenes.length - 1 && queueHasMoreScenes) {
-        const loadedScenes = await onQueueMoreScenes();
-        if (loadedScenes && loadedScenes.length > 0) {
-          // set the page to the next page
-          const newPage = (sceneQueue.query?.currentPage ?? 0) + 1;
-          loadScene(loadedScenes[0].id, autoPlay, newPage);
-        }
+    } else if (
+      currentQueueIndex >= 0 &&
+      currentQueueIndex === queueScenes.length - 1 &&
+      queueHasMoreScenes
+    ) {
+      const loadedScenes = await onQueueMoreScenes();
+      if (loadedScenes && loadedScenes.length > 0) {
+        // set the page to the next page
+        const newPage = (sceneQueue.query?.currentPage ?? 1) + 1;
+        loadScene(loadedScenes[0].id, autoPlay, newPage);
       }
+    } else if (currentQueueIndex === -1 && queueScenes.length > 0) {
+      loadScene(queueScenes[0].id, autoPlay);
     }
   }
 
   async function queuePrevious(autoPlay: boolean) {
-    if (currentQueueIndex === -1) return;
+    if (queueScenes.length === 0) return;
 
     if (currentQueueIndex > 0) {
       loadScene(queueScenes[currentQueueIndex - 1].id, autoPlay);
-    } else {
-      // if we're at the beginning of the queue, load the previous page
-      if (queueStart > 1) {
-        const loadedScenes = await onQueueLessScenes();
-        if (loadedScenes && loadedScenes.length > 0) {
-          const newPage = (sceneQueue.query?.currentPage ?? 0) - 1;
-          loadScene(
-            loadedScenes[loadedScenes.length - 1].id,
-            autoPlay,
-            newPage
-          );
-        }
+    } else if (currentQueueIndex === 0 && queueStart > 1) {
+      const loadedScenes = await onQueueLessScenes();
+      if (loadedScenes && loadedScenes.length > 0) {
+        const newPage = (sceneQueue.query?.currentPage ?? 1) - 1;
+        loadScene(
+          loadedScenes[loadedScenes.length - 1].id,
+          autoPlay,
+          newPage
+        );
       }
+    } else if (currentQueueIndex === -1 && queueScenes.length > 0) {
+      loadScene(queueScenes[0].id, autoPlay);
     }
   }
 
@@ -1120,7 +1128,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       />
       <div className={`scene-player-container ${collapsed ? "expanded" : ""}`}>
         <ScenePlayer
-          key="ScenePlayer"
+          key={scene.id}
           scene={scene}
           hideScrubberOverride={hideScrubber}
           autoplay={autoplay}

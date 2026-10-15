@@ -1072,8 +1072,25 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         return;
       }
 
-      player.play();
       auto.current = false;
+      const playPromise = player.play();
+      if (
+        playPromise !== undefined &&
+        typeof playPromise.catch === "function"
+      ) {
+        playPromise.catch((err: any) => {
+          if (err?.name === "NotAllowedError") {
+            player.muted(true);
+            const retryPromise = player.play();
+            if (
+              retryPromise !== undefined &&
+              typeof retryPromise.catch === "function"
+            ) {
+              retryPromise.catch(() => {});
+            }
+          }
+        });
+      }
     }, [getPlayer, scene, ready, interactiveClient, currentScript]);
 
     // Attach handler for onComplete event

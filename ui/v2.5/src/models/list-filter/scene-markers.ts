@@ -9,7 +9,7 @@ import {
   createNullDurationCriterionOption,
 } from "./criteria/criterion";
 
-const defaultSortBy = "title";
+const defaultSortBy = "updated_at";
 const sortByOptions = [
   "duration",
   "title",

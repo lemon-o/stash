@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -344,6 +345,21 @@ func (s *Manager) Clean(ctx context.Context, input CleanMetadataInput) int {
 	}
 
 	return s.JobManager.Add(ctx, "Cleaning...", &j)
+}
+
+func (s *Manager) TriggerAutoClean(ctx context.Context) {
+	if s.JobManager == nil {
+		return
+	}
+	for _, j := range s.JobManager.GetQueue() {
+		if (strings.HasPrefix(j.Description, "Cleaning") || j.Description == "Cleaning generated files...") && (j.Status == job.StatusRunning || j.Status == job.StatusReady) {
+			logger.Infof("Cleaning job already running or queued, skipping auto-clean trigger")
+			return
+		}
+	}
+
+	logger.Infof("Automatically cleaning missing scenes, galleries, and orphan generated assets...")
+	s.Clean(ctx, CleanMetadataInput{})
 }
 
 func (s *Manager) OptimiseDatabase(ctx context.Context) int {

@@ -24,7 +24,7 @@ import { PathCriterionOption } from "./criteria/path";
 import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 import { ParentFolderCriterionOption } from "./criteria/folder";
 
-const defaultSortBy = "path";
+const defaultSortBy = "updated_at";
 
 const sortByOptions = ["date", ...MediaSortByOptions]
   .map(ListFilterOptions.createSortBy)

@@ -20,7 +20,7 @@ import { RatingCriterionOption } from "./criteria/rating";
 import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 import { GroupsCriterionOption } from "./criteria/groups";
 
-const defaultSortBy = "name";
+const defaultSortBy = "updated_at";
 const sortByOptions = [
   "name",
   "height",

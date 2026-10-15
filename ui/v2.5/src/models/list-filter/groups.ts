@@ -19,7 +19,7 @@ import {
 } from "./criteria/groups";
 import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 
-const defaultSortBy = "name";
+const defaultSortBy = "updated_at";
 
 const sortByOptions = [
   "name",

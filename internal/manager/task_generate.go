@@ -317,6 +317,10 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 
 	elapsed := time.Since(start)
 	logger.Info(fmt.Sprintf("Generate finished (%s)", elapsed))
+
+	// 生成任务完成后自动触发清理系统中不存在的所有短片、图库和已经生成的残留内容
+	go instance.TriggerAutoClean(context.Background())
+
 	return nil
 }
 

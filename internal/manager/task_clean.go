@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/internal/manager/task"
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/image"
@@ -52,6 +53,28 @@ func (j *cleanJob) Execute(ctx context.Context, progress *job.Progress) error {
 	}
 
 	j.cleanEmptyGalleries(ctx)
+
+	if !j.input.DryRun && len(j.input.Paths) == 0 {
+		cleanGenJob := &task.CleanGeneratedJob{
+			Options: task.CleanGeneratedOptions{
+				BlobFiles:       true,
+				Sprites:         true,
+				Screenshots:     true,
+				Transcodes:      true,
+				Markers:         true,
+				ImageThumbnails: true,
+				DryRun:          false,
+			},
+			Paths:                    instance.Paths,
+			BlobsStorageType:         instance.Config.GetBlobsStorage(),
+			VideoFileNamingAlgorithm: instance.Config.GetVideoFileNamingAlgorithm(),
+			BlobCleaner:              instance.Repository.Blob,
+			Repository:               instance.Repository,
+		}
+		if err := cleanGenJob.Execute(ctx, progress); err != nil {
+			logger.Errorf("Error cleaning orphan generated assets: %v", err)
+		}
+	}
 
 	j.scanSubs.notify()
 	elapsed := time.Since(start)
