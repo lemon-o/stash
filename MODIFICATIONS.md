@@ -1974,7 +1974,28 @@ npx pnpm run start
 
 ---
 
-*文档更新时间：2026-10-15*  
+### 任务六十四：全自动伪装格式检测与流媒体时间戳自愈引擎（Auto Video Healing & FastStart Remux）
+
+* **问题背景与机制分析**：
+  1. **伪装 MP4 导致的流媒体死锁**：在实际使用中，许多短片源自网络直播录屏（TS 流）或第三方 m3u8 下载器，文件真实容器是 MPEG-TS（首字节为 `0x47`，编码为 Annex B NALU），但扩展名被粗暴命名为 `.mp4`。
+  2. **时间戳（PTS/DTS）坏死与参考帧丢失**：在录屏合并接缝处（如 176s / 2:56 位置），经常出现 MMCO 参考帧丢失（`mmco: unref short failure`）与时间戳缺失（`pkt_dts_time=N/A`）。由于原版 Stash 依据扩展名打上 `video/mp4` 并用 `http.ServeFile` 直传，浏览器的 Chromium/WebKit 原生解封装器无法处理 TS 封包和断裂帧，直接在此处挂起等待（Buffering 转圈），即便局域网千兆也无法播放。
+  3. **原版 Stash 缺乏文件自愈能力**：扫描只记录元数据，对扩展名与真实容器不符的畸形视频缺乏主动修整机制。
+
+* **精准代码落地与双引擎自愈架构**：
+  1. **Go 核心入库扫描自愈拦截（`pkg/file/video/scan.go` & `manager_tasks.go`）**：
+     - 在 `video.Decorator` 中集成 `isMpegTsFile`（极速检测首字节 `0x47` Sync Byte）与 `shouldAutoHeal`，精准识别扩展名为 `.mp4`/`.m4v` 但真实容器为 `mpegts`/`flv` 的伪装文件；
+     - 封装 `autoHealVideo`：调用底层 ffmpeg 执行 `-c copy -movflags +faststart` 毫秒级无损转封装，修复时间戳断层并规整为标准 ISOBMFF MP4（AVC1），将 `moov` 索引移至首部；
+     - 原生实现跨平台安全原子替换（Windows 下采用 `orig -> .bak`、`tmp -> orig`、`remove .bak` 事务级回滚保护，确保数据零丢失风险）；
+     - 修复完成后自动重测 `probe.NewVideoFile`，刷新文件尺寸、修改时间与真实 MP4 格式，确保入库元数据绝对真实；
+     - 在 `IsMissingMetadata` 中注入自愈探测，使媒体库中已存在的历史伪装视频在触发扫描/增量扫描时自动无感自愈。
+  2. **Python 插件与钩子双重兜底保障（`auto_group.py` & `auto_group.yml`）**：
+     - 在 `Scene.Create.Post` 钩子中挂载 `heal_video_file`：新短片入库时自动检查，秒级自愈并静默调用 `metadataScan` 刷新库内记录；
+     - 在全量扫描后处理（`run_full`）中全库遍历自愈检查；
+     - 在 `auto_group.yml` 中新增独立系统任务 **「自动检测并修复卡顿视频（无损转为 FastStart MP4）」**，支持在设置任务面板中一键全库批量排查与秒级自愈。
+
+---
+
+*文档更新时间：2026-10-16*  
 *维护者：Antigravity & User Pair-Programming*
 
 

@@ -822,6 +822,85 @@ def check_and_repair_scene_thumbnail(scene, client):
     return False
 
 
+def is_ts_masquerading_as_mp4(file_path):
+    real_path = resolve_real_path(file_path)
+    if not real_path or not os.path.exists(real_path):
+        return False
+    ext = os.path.splitext(real_path)[1].lower()
+    if ext not in [".mp4", ".m4v"]:
+        return False
+    try:
+        with open(real_path, "rb") as f:
+            header = f.read(16)
+            if header and len(header) > 0 and header[0] == 0x47:
+                return True
+            if header and len(header) >= 3 and header[:3] == b"FLV":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def heal_video_file(file_path):
+    real_path = resolve_real_path(file_path)
+    if not real_path or not os.path.exists(real_path):
+        return False
+    if not is_ts_masquerading_as_mp4(real_path):
+        return False
+
+    temp_path = real_path + ".tmp_heal.mp4"
+    bak_path = real_path + ".bak_heal"
+
+    try:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        if os.path.exists(bak_path):
+            os.remove(bak_path)
+    except Exception:
+        pass
+
+    log.LogInfo(f"[AutoHeal] 发现伪装格式或时间戳损坏视频: {real_path}，正在无损换封装为 FastStart MP4...")
+
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = 0x08000000  # CREATE_NO_WINDOW
+
+    cmd = [
+        "ffmpeg", "-y", "-v", "error",
+        "-i", real_path,
+        "-c", "copy",
+        "-movflags", "+faststart",
+        temp_path
+    ]
+
+    try:
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creationflags, timeout=300)
+        if res.returncode != 0 or not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            log.LogWarning(f"[AutoHeal] ffmpeg 无损修复失败 ({res.returncode}): {res.stderr.decode('utf-8', errors='ignore')}")
+            return False
+
+        # Atomic replacement
+        os.rename(real_path, bak_path)
+        try:
+            os.rename(temp_path, real_path)
+            if os.path.exists(bak_path):
+                os.remove(bak_path)
+            log.LogInfo(f"[AutoHeal] 视频自愈修复完成: {real_path} (已转为标准 FastStart MP4)")
+            return True
+        except Exception as e:
+            if os.path.exists(bak_path):
+                os.rename(bak_path, real_path)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            log.LogWarning(f"[AutoHeal] 替换文件失败: {e}")
+            return False
+    except Exception as e:
+        log.LogWarning(f"[AutoHeal] 修复异常: {e}")
+        return False
+
+
 def resolve_group_cover(folder_dir, col_name, scene_id, video_path):
     folder_dir = resolve_real_path(folder_dir)
     video_path = resolve_real_path(video_path)
@@ -932,6 +1011,16 @@ def process_scene(scene, client, library_roots, groups_map, fix_scene_thumb=Fals
     file_path = primary_file.get("path")
     if not file_path:
         return
+
+    # 🎯 AutoHeal: 自动检测并修复伪装成 MP4 的 TS 直播流或损坏视频
+    if heal_video_file(file_path):
+        try:
+            client.graphql(
+                "mutation MetadataScan($input: ScanMetadataInput!) { metadataScan(input: $input) }",
+                {"input": {"paths": [file_path], "rescan": True}}
+            )
+        except Exception as e:
+            log.LogDebug(f"Trigger metadataScan after heal failed: {e}")
 
     is_subfolder, col_name, folder_dir = determine_collection_info(file_path, library_roots)
     if not is_subfolder or not col_name:
@@ -1502,6 +1591,35 @@ def run_fix_thumbnails(client):
     log.LogInfo(f"全媒体库短片缩略图优化完成！共优化替换了 {fixed} 部短片的黑帧/空白帧缩略图。")
 
 
+def run_heal_videos(client):
+    log.LogInfo("开始全媒体库视频格式与时间戳自愈检测（修复伪装 TS 与卡顿视频）...")
+    scenes = client.get_all_scenes()
+    total = len(scenes)
+    fixed = 0
+    paths_to_rescan = []
+    for i, scene in enumerate(scenes):
+        files = scene.get("files", [])
+        if files:
+            fpath = files[0].get("path")
+            if fpath and heal_video_file(fpath):
+                fixed += 1
+                paths_to_rescan.append(fpath)
+        if (i + 1) % 5 == 0 or i == total - 1:
+            log.LogProgress((i + 1) / max(1, total))
+
+    if paths_to_rescan:
+        log.LogInfo(f"正在更新已修复的 {len(paths_to_rescan)} 个视频元数据...")
+        try:
+            client.graphql(
+                "mutation MetadataScan($input: ScanMetadataInput!) { metadataScan(input: $input) }",
+                {"input": {"paths": paths_to_rescan, "rescan": True}}
+            )
+        except Exception as e:
+            log.LogDebug(f"Trigger batch metadataScan failed: {e}")
+
+    log.LogInfo(f"全媒体库视频自愈检测完成！共自动修复了 {fixed} 个卡顿/伪装视频。")
+
+
 def get_scene_from_sqlite(scene_id):
     db_path = get_sqlite_path()
     if not os.path.exists(db_path):
@@ -1595,7 +1713,9 @@ def main():
     hook_context = args.get("hookContext")
 
     try:
-        if mode == "fix_thumbnails":
+        if mode == "heal_videos":
+            run_heal_videos(client)
+        elif mode == "fix_thumbnails":
             run_fix_thumbnails(client)
         elif mode == "image_hook" or (hook_context and hook_context.get("type") == "image"):
             run_image_hook(client, hook_context)

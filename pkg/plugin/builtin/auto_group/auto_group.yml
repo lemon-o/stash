@@ -15,6 +15,10 @@ tasks:
     description: 遍历媒体库短片，自动识别黑帧、暗帧与空白帧缩略图，并重新抓取清晰高对比度画面替换。
     defaultArgs:
       mode: fix_thumbnails
+  - name: 自动检测并修复卡顿视频（无损转为 FastStart MP4）
+    description: 遍历媒体库，自动检测伪装成 MP4 的 MPEG-TS 直播流与损坏视频，毫秒级无损转封装并修复时间戳，彻底消除卡顿转圈。
+    defaultArgs:
+      mode: heal_videos
 hooks:
   - name: 新短片自动归类集合与封面
     description: 短片添加或扫描完成后自动执行集合归类与封面生成。
