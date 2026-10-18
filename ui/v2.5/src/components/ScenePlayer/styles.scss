@@ -82,26 +82,13 @@ $sceneTabWidth: 450px;
     outline: none;
   }
 
-  .vjs-big-button-group {
-    display: none;
-    height: 80px;
-    justify-content: space-around;
-    opacity: 0;
-    position: absolute;
-    top: calc(50% - 40px);
-    width: 100%;
-    z-index: 1;
-
-    .vjs-button {
-      font-size: 4em;
-      height: 100%;
-      width: 80px;
-
-      .vjs-icon-placeholder::before {
-        height: 100%;
-        line-height: 80px;
-      }
-    }
+  // Mobile duplicate play button disabled: only retain the standalone .vjs-big-play-button
+  .vjs-big-button-group,
+  .vjs-big-play-pause-button {
+    display: none !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
   }
 
   .vjs-airplay-button .vjs-icon-placeholder,
@@ -711,6 +698,8 @@ $sceneTabWidth: 450px;
     cursor: pointer !important;
     filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.65)) drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5)) !important;
     transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), filter 0.18s ease, opacity 0.18s ease !important;
+    z-index: 10 !important;
+    pointer-events: auto !important;
 
     .vjs-icon-placeholder {
       display: block !important;
@@ -1311,26 +1300,13 @@ $sceneTabWidth: 450px;
 
   @media (pointer: coarse) {
     &.vjs-touch-enabled {
-      &.vjs-has-started .vjs-big-button-group {
-        display: flex;
-        opacity: 1;
-        visibility: visible;
-      }
-
-      &.vjs-has-started.vjs-user-inactive.vjs-playing .vjs-big-button-group {
-        opacity: 0;
-        pointer-events: none;
-        transition: visibility 1s, opacity 1s;
-        visibility: visible;
-      }
-
-      .vjs-big-play-pause-button .vjs-icon-placeholder::before {
-        content: "\f101";
-        font-family: VideoJS;
-      }
-
-      &.vjs-playing .vjs-big-play-pause-button .vjs-icon-placeholder::before {
-        content: "\f103";
+      // Disallow .vjs-big-button-group from displaying on touch screens
+      .vjs-big-button-group,
+      .vjs-big-play-pause-button {
+        display: none !important;
+        pointer-events: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
       }
 
       .vjs-vtt-thumbnail-display {

@@ -1556,6 +1556,12 @@ input[type="range"].blue-slider {
             flex-shrink: 0;
             line-height: 1.3;
 
+            &.badge-group {
+              background: rgba(255, 255, 255, 0.2);
+              color: #ffffff;
+              border: 1px solid rgba(255, 255, 255, 0.35);
+            }
+
             &.badge-performer {
               background: rgba(255, 255, 255, 0.15);
               color: #ffffff;

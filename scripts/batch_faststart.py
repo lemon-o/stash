@@ -97,7 +97,7 @@ def optimize_file(item):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             creationflags=creationflags,
-            timeout=1800  # 30 mins max per file
+            timeout=7200  # 2 hours max per file
         )
         elapsed = time.time() - t0
         if res.returncode != 0 or not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:

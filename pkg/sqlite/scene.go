@@ -1094,7 +1094,7 @@ func (qb *SceneStore) makeQuery(ctx context.Context, sceneFilter *models.SceneFi
 		return nil, err
 	}
 
-	if err := qb.setSceneSort(&query, findFilter); err != nil {
+	if err := qb.setSceneSort(ctx, &query, findFilter); err != nil {
 		return nil, err
 	}
 	query.sortAndPagination += getPagination(findFilter)
@@ -1234,7 +1234,8 @@ var sceneSortOptions = sortOptions{
 	"performer_age",
 }
 
-func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindFilterType) error {
+func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) error {
+	userInfo := session.GetCurrentUserInfo(ctx)
 	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
 		return nil
 	}
@@ -1345,9 +1346,29 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 		addFolderTable()
 		query.sortAndPagination += " ORDER BY COALESCE(scenes.title, files.basename) COLLATE NATURAL_CI " + direction + ", folders.path COLLATE NATURAL_CI " + direction
 	case "play_count":
-		query.sortAndPagination += getCountSort(sceneTable, scenesViewDatesTable, sceneIDColumn, direction)
+		if userInfo != nil && userInfo.ID > 0 {
+			query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT COALESCE(play_count, 0) FROM users_scenes_activity WHERE user_id = %d AND scene_id = scenes.id) %s", userInfo.ID, getSortDirection(direction))
+		} else {
+			query.sortAndPagination += getCountSort(sceneTable, scenesViewDatesTable, sceneIDColumn, direction)
+		}
 	case "last_played_at":
-		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(view_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", scenesViewDatesTable, sceneIDColumn, sceneTable, getSortDirection(direction))
+		if userInfo != nil && userInfo.ID > 0 {
+			query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT COALESCE(last_played_at, datetime(0)) FROM users_scenes_activity WHERE user_id = %d AND scene_id = scenes.id) %s", userInfo.ID, getSortDirection(direction))
+		} else {
+			query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(view_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", scenesViewDatesTable, sceneIDColumn, sceneTable, getSortDirection(direction))
+		}
+	case "resume_time":
+		if userInfo != nil && userInfo.ID > 0 {
+			query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT COALESCE(resume_time, 0) FROM users_scenes_activity WHERE user_id = %d AND scene_id = scenes.id) %s", userInfo.ID, getSortDirection(direction))
+		} else {
+			query.sortAndPagination += getSort(sort, direction, "scenes")
+		}
+	case "play_duration":
+		if userInfo != nil && userInfo.ID > 0 {
+			query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT COALESCE(play_duration, 0) FROM users_scenes_activity WHERE user_id = %d AND scene_id = scenes.id) %s", userInfo.ID, getSortDirection(direction))
+		} else {
+			query.sortAndPagination += getSort(sort, direction, "scenes")
+		}
 	case "last_o_at":
 		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(o_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", scenesODatesTable, sceneIDColumn, sceneTable, getSortDirection(direction))
 	case "o_counter":

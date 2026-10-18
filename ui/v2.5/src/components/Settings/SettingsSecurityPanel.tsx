@@ -121,7 +121,7 @@ export const SettingsSecurityPanel: React.FC = () => {
 
   async function handleDeleteUser(user: IAccountUser) {
     if (user.id === 1) {
-      Toast.error("不可删除超级管理员默认账号");
+      Toast.error("不可删除管理员默认账号");
       return;
     }
 
@@ -235,7 +235,7 @@ export const SettingsSecurityPanel: React.FC = () => {
             <div className="sub-heading text-muted mt-1">
               <FormattedMessage
                 id="config.general.auth.multi_user_desc"
-                defaultMessage="支持多账号独立登录，各账号的观看记录与断点进度相互隔离。首个账号为超级管理员，仅管理员可新建并管理成员账号。"
+                defaultMessage="支持多账号独立登录，各账号的观看记录与断点进度相互隔离。首个账号为管理员，仅管理员可新建并管理成员账号。"
               />
             </div>
           </div>
@@ -300,7 +300,7 @@ export const SettingsSecurityPanel: React.FC = () => {
                       <td className="align-middle">
                         {isPrimaryAdmin ? (
                           <Badge variant="success" className="p-1 px-2 font-weight-normal">
-                            超级管理员 (默认首账号)
+                            管理员
                           </Badge>
                         ) : (
                           <Badge variant="secondary" className="p-1 px-2 font-weight-normal">

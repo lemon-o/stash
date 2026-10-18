@@ -151,19 +151,25 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
       return getDailySeed(d, salt);
     }, [todayStr, salt]);
 
-    // 3. Query recently/frequently played scenes to understand taste
+    // 3. Query recently/frequently played scenes to understand user taste
     const playedResult = GQL.useFindScenesQuery({
       variables: {
         filter: {
           page: 1,
-          per_page: 30,
+          per_page: 40,
           sort: "last_played_at",
           direction: GQL.SortDirectionEnum.Desc,
         },
         scene_filter: {
-          play_count: {
-            value: 0,
-            modifier: GQL.CriterionModifier.GreaterThan,
+          OR: {
+            play_count: {
+              value: 0,
+              modifier: GQL.CriterionModifier.GreaterThan,
+            },
+            resume_time: {
+              value: 0,
+              modifier: GQL.CriterionModifier.GreaterThan,
+            },
           },
         },
       },
@@ -171,144 +177,198 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
 
     const playedScenes = playedResult.data?.findScenes.scenes ?? [];
 
-    // 4. Extract top performers and tags from played scenes
-    const { topPerformerIds, topTagIds, playedSceneIds } = useMemo(() => {
-      const performerCounts: Record<string, number> = {};
-      const tagCounts: Record<string, number> = {};
-      const playedIds = new Set<string>();
+    // 4. Extract top performers, tags, and studios with recency weighting
+    const { topPerformerIds, topTagIds, topStudioIds, playedSceneIds } =
+      useMemo(() => {
+        const performerWeights: Record<string, number> = {};
+        const tagWeights: Record<string, number> = {};
+        const studioWeights: Record<string, number> = {};
+        const playedIds = new Set<string>();
 
-      playedScenes.forEach((scene) => {
-        playedIds.add(scene.id);
-        const weight = scene.play_count || 1;
-        scene.performers.forEach((p) => {
-          performerCounts[p.id] = (performerCounts[p.id] || 0) + weight;
+        playedScenes.forEach((scene, index) => {
+          playedIds.add(scene.id);
+          // Recency multiplier: most recent views get higher weight
+          const recencyMultiplier = Math.max(1, 40 - index);
+          const countWeight = (scene.play_count || 1) * recencyMultiplier;
+
+          scene.performers.forEach((p) => {
+            performerWeights[p.id] = (performerWeights[p.id] || 0) + countWeight;
+          });
+          scene.tags.forEach((t) => {
+            tagWeights[t.id] = (tagWeights[t.id] || 0) + countWeight;
+          });
+          if (scene.studio?.id) {
+            studioWeights[scene.studio.id] =
+              (studioWeights[scene.studio.id] || 0) + countWeight;
+          }
         });
-        scene.tags.forEach((t) => {
-          tagCounts[t.id] = (tagCounts[t.id] || 0) + weight;
-        });
-      });
 
-      const topPerformers = Object.keys(performerCounts).sort(
-        (a, b) => performerCounts[b] - performerCounts[a]
-      );
-      const topTags = Object.keys(tagCounts).sort(
-        (a, b) => tagCounts[b] - tagCounts[a]
-      );
+        const topPerformers = Object.keys(performerWeights).sort(
+          (a, b) => performerWeights[b] - performerWeights[a]
+        );
+        const topTags = Object.keys(tagWeights).sort(
+          (a, b) => tagWeights[b] - tagWeights[a]
+        );
+        const topStudios = Object.keys(studioWeights).sort(
+          (a, b) => studioWeights[b] - studioWeights[a]
+        );
 
-      return {
-        topPerformerIds: topPerformers,
-        topTagIds: topTags,
-        playedSceneIds: playedIds,
-      };
-    }, [playedScenes]);
-
-    const hasHistory = topPerformerIds.length > 0 || topTagIds.length > 0;
-
-    // 5. Build recommendation query variables using daily seed
-    const recommendationVariables: GQL.FindScenesQueryVariables = useMemo(() => {
-      if (topPerformerIds.length > 0) {
         return {
-          filter: {
-            page: 1,
-            per_page: 36,
-            sort: `random_${dailySeed}`,
-            direction: GQL.SortDirectionEnum.Desc,
-          },
-          scene_filter: {
-            performers: {
-              value: topPerformerIds.slice(0, 12),
-              modifier: GQL.CriterionModifier.Includes,
-            },
-          },
+          topPerformerIds: topPerformers,
+          topTagIds: topTags,
+          topStudioIds: topStudios,
+          playedSceneIds: playedIds,
         };
-      }
+      }, [playedScenes]);
 
-      if (topTagIds.length > 0) {
-        return {
-          filter: {
-            page: 1,
-            per_page: 36,
-            sort: `random_${dailySeed}`,
-            direction: GQL.SortDirectionEnum.Desc,
-          },
-          scene_filter: {
-            tags: {
-              value: topTagIds.slice(0, 12),
-              modifier: GQL.CriterionModifier.Includes,
-            },
-          },
-        };
-      }
+    const hasHistory =
+      topPerformerIds.length > 0 ||
+      topTagIds.length > 0 ||
+      topStudioIds.length > 0;
 
-      // Cold start: recommend across whole library with deterministic daily seed
-      return {
-        filter: {
-          page: 1,
-          per_page: 36,
-          sort: `random_${dailySeed}`,
-          direction: GQL.SortDirectionEnum.Desc,
-        },
-      };
-    }, [topPerformerIds, topTagIds, dailySeed]);
-
-    const recResult = GQL.useFindScenesQuery({
-      variables: recommendationVariables,
-      skip: playedResult.loading,
-    });
-
-    const primaryCandidates = recResult.data?.findScenes.scenes ?? [];
-    const needsFallback =
-      !recResult.loading && hasHistory && primaryCandidates.length < 16;
-
-    // 6. Fallback query if history-based candidates are too few in the library
-    const fallbackResult = GQL.useFindScenesQuery({
+    // 5. Multi-dimensional queries based on user taste
+    const performerRecResult = GQL.useFindScenesQuery({
       variables: {
         filter: {
           page: 1,
-          per_page: 24,
+          per_page: 30,
           sort: `random_${dailySeed}`,
           direction: GQL.SortDirectionEnum.Desc,
         },
+        scene_filter: {
+          performers: {
+            value: topPerformerIds.slice(0, 10),
+            modifier: GQL.CriterionModifier.Includes,
+          },
+        },
       },
-      skip: recResult.loading || !needsFallback,
+      skip: topPerformerIds.length === 0,
     });
 
-    // 7. Compose final recommendation list: unplayed first, then played, deduplicated, capped at 24
+    const tagRecResult = GQL.useFindScenesQuery({
+      variables: {
+        filter: {
+          page: 1,
+          per_page: 30,
+          sort: `random_${dailySeed + 1}`,
+          direction: GQL.SortDirectionEnum.Desc,
+        },
+        scene_filter: {
+          tags: {
+            value: topTagIds.slice(0, 8),
+            modifier: GQL.CriterionModifier.Includes,
+          },
+        },
+      },
+      skip: topTagIds.length === 0,
+    });
+
+    const studioRecResult = GQL.useFindScenesQuery({
+      variables: {
+        filter: {
+          page: 1,
+          per_page: 20,
+          sort: `random_${dailySeed + 2}`,
+          direction: GQL.SortDirectionEnum.Desc,
+        },
+        scene_filter: {
+          studios: {
+            value: topStudioIds.slice(0, 4),
+            modifier: GQL.CriterionModifier.Includes,
+          },
+        },
+      },
+      skip: topStudioIds.length === 0,
+    });
+
+    // Discovery / Cold-start query for diversity
+    const discoveryResult = GQL.useFindScenesQuery({
+      variables: {
+        filter: {
+          page: 1,
+          per_page: 30,
+          sort: `random_${dailySeed + 3}`,
+          direction: GQL.SortDirectionEnum.Desc,
+        },
+      },
+    });
+
+    // 6. Intelligent scoring, deduplication and assembly
     const recommendedScenes = useMemo(() => {
-      const pool = [...primaryCandidates];
-      if (needsFallback && fallbackResult.data?.findScenes.scenes) {
-        const existingIds = new Set(pool.map((s) => s.id));
-        for (const s of fallbackResult.data.findScenes.scenes) {
-          if (!existingIds.has(s.id)) {
-            pool.push(s);
-            existingIds.add(s.id);
-          }
-          if (pool.length >= 24) break;
-        }
-      }
+      const performerCandidates =
+        performerRecResult.data?.findScenes.scenes ?? [];
+      const tagCandidates = tagRecResult.data?.findScenes.scenes ?? [];
+      const studioCandidates = studioRecResult.data?.findScenes.scenes ?? [];
+      const discoveryCandidates = discoveryResult.data?.findScenes.scenes ?? [];
 
-      if (!hasHistory) {
-        return pool.slice(0, 24);
-      }
-
-      const unplayed: GQL.SlimSceneDataFragment[] = [];
-      const played: GQL.SlimSceneDataFragment[] = [];
-
-      pool.forEach((scene) => {
-        if (playedSceneIds.has(scene.id)) {
-          played.push(scene);
-        } else {
-          unplayed.push(scene);
+      const candidateMap = new Map<string, GQL.SlimSceneDataFragment>();
+      [
+        ...performerCandidates,
+        ...tagCandidates,
+        ...studioCandidates,
+        ...discoveryCandidates,
+      ].forEach((s) => {
+        if (!candidateMap.has(s.id)) {
+          candidateMap.set(s.id, s);
         }
       });
 
-      return [...unplayed, ...played].slice(0, 24);
+      if (!hasHistory) {
+        return discoveryCandidates.slice(0, 24);
+      }
+
+      const performerTopSet = new Set(topPerformerIds.slice(0, 10));
+      const tagTopSet = new Set(topTagIds.slice(0, 8));
+      const studioTopSet = new Set(topStudioIds.slice(0, 4));
+
+      const scored = Array.from(candidateMap.values()).map((scene) => {
+        let score = 0;
+        const isUnplayed = !playedSceneIds.has(scene.id);
+        if (isUnplayed) {
+          score += 25; // Prioritize fresh unwatched scenes
+        }
+
+        scene.performers.forEach((p) => {
+          if (performerTopSet.has(p.id)) {
+            score += 12;
+          }
+        });
+
+        scene.tags.forEach((t) => {
+          if (tagTopSet.has(t.id)) {
+            score += 6;
+          }
+        });
+
+        if (scene.studio?.id && studioTopSet.has(scene.studio.id)) {
+          score += 5;
+        }
+
+        return { scene, score };
+      });
+
+      // Sort descending by score, tiebreak with deterministic scene id hash
+      scored.sort((a, b) => {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        const hashA = (parseInt(a.scene.id, 10) ^ dailySeed) % 1000;
+        const hashB = (parseInt(b.scene.id, 10) ^ dailySeed) % 1000;
+        return hashB - hashA;
+      });
+
+      return scored.slice(0, 24).map((item) => item.scene);
     }, [
-      primaryCandidates,
-      fallbackResult.data,
-      needsFallback,
+      performerRecResult.data,
+      tagRecResult.data,
+      studioRecResult.data,
+      discoveryResult.data,
       hasHistory,
+      topPerformerIds,
+      topTagIds,
+      topStudioIds,
       playedSceneIds,
+      dailySeed,
     ]);
 
     // 8. Create dummyFilter and playback queue
@@ -384,10 +444,15 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
       </div>
     );
 
-    if (
+    const isLoading =
       playedResult.loading ||
-      (recResult.loading && primaryCandidates.length === 0)
-    ) {
+      (recommendedScenes.length === 0 &&
+        (performerRecResult.loading ||
+          tagRecResult.loading ||
+          studioRecResult.loading ||
+          discoveryResult.loading));
+
+    if (isLoading) {
       return (
         <RecommendationRow
           className="scene-recommendations"

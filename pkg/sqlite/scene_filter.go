@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/session"
 )
 
 type sceneFilterHandler struct {
@@ -162,18 +163,71 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 
 		qb.captionCriterionHandler(sceneFilter.Captions),
 
-		floatIntCriterionHandler(sceneFilter.ResumeTime, "scenes.resume_time", nil),
-		floatIntCriterionHandler(sceneFilter.PlayDuration, "scenes.play_duration", nil),
-		qb.playCountCriterionHandler(sceneFilter.PlayCount),
+		criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
+			if sceneFilter.ResumeTime != nil {
+				userInfo := session.GetCurrentUserInfo(ctx)
+				if userInfo != nil && userInfo.ID > 0 {
+					f.addLeftJoin(
+						fmt.Sprintf("(SELECT scene_id, resume_time FROM users_scenes_activity WHERE user_id = %d)", userInfo.ID),
+						"user_activity_resume",
+						"user_activity_resume.scene_id = scenes.id",
+					)
+					floatIntCriterionHandler(sceneFilter.ResumeTime, "IFNULL(user_activity_resume.resume_time, 0)", nil)(ctx, f)
+				} else {
+					floatIntCriterionHandler(sceneFilter.ResumeTime, "scenes.resume_time", nil)(ctx, f)
+				}
+			}
+		}),
+		criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
+			if sceneFilter.PlayDuration != nil {
+				userInfo := session.GetCurrentUserInfo(ctx)
+				if userInfo != nil && userInfo.ID > 0 {
+					f.addLeftJoin(
+						fmt.Sprintf("(SELECT scene_id, play_duration FROM users_scenes_activity WHERE user_id = %d)", userInfo.ID),
+						"user_activity_duration",
+						"user_activity_duration.scene_id = scenes.id",
+					)
+					floatIntCriterionHandler(sceneFilter.PlayDuration, "IFNULL(user_activity_duration.play_duration, 0)", nil)(ctx, f)
+				} else {
+					floatIntCriterionHandler(sceneFilter.PlayDuration, "scenes.play_duration", nil)(ctx, f)
+				}
+			}
+		}),
+		criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
+			if sceneFilter.PlayCount != nil {
+				userInfo := session.GetCurrentUserInfo(ctx)
+				if userInfo != nil && userInfo.ID > 0 {
+					f.addLeftJoin(
+						fmt.Sprintf("(SELECT scene_id, play_count FROM users_scenes_activity WHERE user_id = %d)", userInfo.ID),
+						"user_activity_play_count",
+						"user_activity_play_count.scene_id = scenes.id",
+					)
+					intCriterionHandler(sceneFilter.PlayCount, "IFNULL(user_activity_play_count.play_count, 0)", nil)(ctx, f)
+				} else {
+					qb.playCountCriterionHandler(sceneFilter.PlayCount)(ctx, f)
+				}
+			}
+		}),
 		criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
 			if sceneFilter.LastPlayedAt != nil {
-				f.addLeftJoin(
-					fmt.Sprintf("(SELECT %s, MAX(%s) as last_played_at FROM %s GROUP BY %s)", sceneIDColumn, sceneViewDateColumn, scenesViewDatesTable, sceneIDColumn),
-					"scene_last_view",
-					fmt.Sprintf("scene_last_view.%s = scenes.id", sceneIDColumn),
-				)
-				h := timestampCriterionHandler{sceneFilter.LastPlayedAt, "IFNULL(last_played_at, datetime(0))", nil}
-				h.handle(ctx, f)
+				userInfo := session.GetCurrentUserInfo(ctx)
+				if userInfo != nil && userInfo.ID > 0 {
+					f.addLeftJoin(
+						fmt.Sprintf("(SELECT scene_id, last_played_at FROM users_scenes_activity WHERE user_id = %d)", userInfo.ID),
+						"user_activity_last_view",
+						"user_activity_last_view.scene_id = scenes.id",
+					)
+					h := timestampCriterionHandler{sceneFilter.LastPlayedAt, "IFNULL(user_activity_last_view.last_played_at, datetime(0))", nil}
+					h.handle(ctx, f)
+				} else {
+					f.addLeftJoin(
+						fmt.Sprintf("(SELECT %s, MAX(%s) as last_played_at FROM %s GROUP BY %s)", sceneIDColumn, sceneViewDateColumn, scenesViewDatesTable, sceneIDColumn),
+						"scene_last_view",
+						fmt.Sprintf("scene_last_view.%s = scenes.id", sceneIDColumn),
+					)
+					h := timestampCriterionHandler{sceneFilter.LastPlayedAt, "IFNULL(last_played_at, datetime(0))", nil}
+					h.handle(ctx, f)
+				}
 			}
 		}),
 

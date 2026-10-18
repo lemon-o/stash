@@ -26,6 +26,7 @@ import TextUtils from "src/utils/text";
 import { useHistory } from "react-router-dom";
 import { runAutoGroupIfAvailable } from "src/core/StashService";
 import { ContinueWatchingRow } from "./ContinueWatchingRow";
+import { FrontPageSearchBar } from "./FrontPageSearchBar";
 
 const FrontPage: React.FC = PatchComponent("FrontPage", () => {
   const history = useHistory();
@@ -159,6 +160,7 @@ const FrontPage: React.FC = PatchComponent("FrontPage", () => {
 
   return (
     <div className="recommendations-container">
+      <FrontPageSearchBar />
       <div>
         {(!frontPageContent || frontPageContent.length === 0) && (
           <ContinueWatchingRow />
