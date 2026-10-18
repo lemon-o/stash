@@ -29,6 +29,39 @@ function getDailySeed(date: Date = new Date(), salt: number = 0): number {
   return (h % 90000000) + 10000000;
 }
 
+const STORAGE_KEY_DAILY_REC_SALT = "stash_daily_rec_salt_state";
+
+function getStoredDailySalt(curDate: string): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DAILY_REC_SALT);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed &&
+        parsed.date === curDate &&
+        typeof parsed.salt === "number" &&
+        Number.isFinite(parsed.salt)
+      ) {
+        return parsed.salt;
+      }
+    }
+  } catch {
+    // Ignore storage access errors
+  }
+  return 0;
+}
+
+function saveStoredDailySalt(curDate: string, salt: number): void {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY_DAILY_REC_SALT,
+      JSON.stringify({ date: curDate, salt })
+    );
+  } catch {
+    // Ignore storage quota or security errors
+  }
+}
+
 interface IRecommendedScenesRowProps {
   header: string;
   isTouch?: boolean;
@@ -42,12 +75,16 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
       "only screen and (max-width: 768px)"
     );
 
-    // 1. Daily tracking & refresh state
+    // 1. Daily tracking & refresh state with localStorage persistence
     const [todayStr, setTodayStr] = useState(() => {
       const d = new Date();
       return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
     });
-    const [salt, setSalt] = useState(0);
+    const [salt, setSalt] = useState(() => {
+      const d = new Date();
+      const cur = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      return getStoredDailySalt(cur);
+    });
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Watch date change (e.g. past midnight or tab focus on next day)
@@ -57,7 +94,9 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
         const cur = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
         if (cur !== todayStr) {
           setTodayStr(cur);
-          setSalt(0);
+          const newSalt = getStoredDailySalt(cur);
+          setSalt(newSalt);
+          saveStoredDailySalt(cur, newSalt);
         }
       };
 
@@ -69,9 +108,40 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
       };
     }, [todayStr]);
 
+    // Sync salt if updated in another tab
+    useEffect(() => {
+      const handleStorage = (e: StorageEvent) => {
+        if (e.key === STORAGE_KEY_DAILY_REC_SALT && e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            const d = new Date();
+            const cur = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+            if (
+              parsed &&
+              parsed.date === cur &&
+              typeof parsed.salt === "number"
+            ) {
+              setSalt(parsed.salt);
+            }
+          } catch {}
+        }
+      };
+
+      window.addEventListener("storage", handleStorage);
+      return () => {
+        window.removeEventListener("storage", handleStorage);
+      };
+    }, []);
+
     const handleRefresh = useCallback(() => {
       setIsRefreshing(true);
-      setSalt((s) => s + 1);
+      const d = new Date();
+      const cur = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      setSalt((s) => {
+        const nextSalt = s + 1;
+        saveStoredDailySalt(cur, nextSalt);
+        return nextSalt;
+      });
       setTimeout(() => setIsRefreshing(false), 600);
     }, []);
 

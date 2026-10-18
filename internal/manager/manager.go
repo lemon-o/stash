@@ -63,6 +63,9 @@ type Manager struct {
 	Database   *sqlite.Database
 	Repository models.Repository
 
+	UserStore         *sqlite.UserStore
+	UserActivityStore *sqlite.UserActivityStore
+
 	SceneService   SceneService
 	ImageService   ImageService
 	GalleryService GalleryService

@@ -2013,17 +2013,77 @@ npx pnpm run start
      - **固定行高与严格尺寸约束**：滑轨外层容器固定高度（桌面端 248px，移动端 216px），卡片固定尺寸（桌面端 260px × 226px，移动端 220px × 196px），避免任何高度跳动；
      - **全平台滑动支持**：移动端触控原生硬件加速滑动（`-webkit-overflow-scrolling: touch` 与 `scroll-snap-type: x proximity`），桌面端提供悬浮毛玻璃拟态翻页圆钮（`faChevronLeft` / `faChevronRight`）与鼠标垂直滚轮自动横向位移转换。
   4. **视听进度直观呈现与续播队列联动**：
-     - 缩略图底沿集成高亮度荧光渐变进度条（`#0284c7` -> `#00d2be`）与悬停发光效果；
-     - 智能计算未看完的续播点与剩余时长（`已看 XX%`）或已播毕状态（`已看完`）；
+     - 缩略图底沿集成纯白色高对比度发光进度条，指示清晰干净；
+     - 移除多余的左上角分辨率标签与标题右侧数量徽标，视觉层次更加清爽简洁；
+     - 右下角「已看 XX%」/「已看完」胶囊文字与边框均升级为纯白色，风格极简耐看；
+     - 悬停播放图标去除蓝色底圆，直接保留大号白色三角形（带有立体投影防止背景穿透），视觉焦点更加纯粹；
      - 点击卡片无缝组装 `SceneQueue.fromSceneIDList` 队列并附带 `continue: true`，点开即刻从上次中断点续播，并支持在播放器内无缝切歌切片。
-  5. **右上角「查看全部」深链直达**：
+  5. **右上角「查看全部」深链直达与样式对齐**：
+     - 直接对齐每日推荐同款 `.recommendation-row-head a` 胶囊按钮标准样式，去除冗余的箭头图标；
      - 基于 `ListFilterModel` 编码生成标准 URL 参数（`sortby=last_played_at&sortdir=desc&c={"type":"play_count","modifier":"GREATER_THAN","value":0}`）；
      - 点击直接进入 `/scenes` 场景全景列表，展示按最后播放时间由新到旧排列的全部观影历史。
 
 ---
 
+### 任务六十六：首页「每日推荐」换一批批次状态持久化（支持跨刷新保持当前批次、多标签页同步与次日自动归零）
+
+* **变更背景与问题剖析**：
+  - 用户在首页点击「每日推荐」的【换一批】按钮后，列表成功切换至下一批推荐；
+  - 但一旦用户刷新网页（F5 / Reload）或关闭标签页重新打开，推荐内容又会恢复回当天最初的第一批推荐内容；
+  - **根本原因**：`RecommendedScenesRow.tsx` 中的换批偏移量 `salt` 仅保存在 React 组件内存状态（`useState(0)`）中。刷新页面导致组件重新挂载，`salt` 归零，结合当天确定的日期种子重新计算出完全相同的第一批内容。
+
+* **精准代码落地与系统架构**：
+  1. **本地存储持久化与日期绑定（`RecommendedScenesRow.tsx`）**：
+     - 新增 `STORAGE_KEY_DAILY_REC_SALT`（`stash_daily_rec_salt_state`）持久化存储结构 `{ date: "YYYY-M-D", salt: number }`；
+     - 组件初次挂载与跨天定时检测时通过 `getStoredDailySalt(curDate)` 初始化与读取；
+     - 每次点击【换一批】时将最新递增的 `salt` 及当前日期原子写入 `localStorage`。
+  2. **跨天自动归零与多标签页同步机制**：
+     - **跨天自动重置**：次日 00:00 或新一天唤醒时，检测到日期与存储不一致，自动将 `salt` 重置为 `0`，确保次日准时开启全新一天的首批推荐；
+     - **多标签页实时联动**：注册 `window.addEventListener("storage", ...)` 事件监听，用户在一个标签页点击【换一批】时，其余已打开的首页标签页可静默同步更新当前批次。
+
+---
+
+### 任务六十七：全栈多用户体系与多账号独立观看记录系统重构
+
+* **功能需求与架构定义**：
+  1. 支持创建与管理多个账号，每个账号使用独立密码登录；
+  2. 首个账号默认自动升级为唯一超级管理员（Admin），如原系统凭证 `lemon`（ID: 1）；
+  3. 权限严格隔离：除超级管理员外，普通账号无权创建新账号、删除账号或管理他人，UI 界面对普通成员自动隐藏「+ 新建账号」及删除入口；
+  4. 每个账号的观看记录与断点进度完全相互独立（播放断点 `resume_time`、累计时长 `play_duration`、播放次数 `play_count`、观看记录与时间戳 `view_dates` / `last_played_at`、首页「继续观看」等各账号互不干扰）。
+
+* **全栈精准代码落地**：
+  1. **SQLite 数据库表架构扩展与自动迁移（`87_multi_user.up.sql` & `87_postmigrate.go`）**：
+     - 新建 `users` 用户主表（`id`, `username`, `password_hash`, `is_admin`, `created_at`）；
+     - 新建 `users_scenes_activity` 用户场景活动表（`user_id`, `scene_id`, `resume_time`, `play_duration`, `play_count`, `last_played_at`）；
+     - 新建 `users_scenes_views` 用户观看时间明细表（`id`, `user_id`, `scene_id`, `view_date`）；
+     - **平滑无感升级迁移**：初次迁移时自动将系统原有配置账号（如 `lemon`）初始化为 ID: 1 的超级管理员，并将既有全部历史观看记录与断点 100% 完好无损转移至管理员名下。
+  2. **Go 后端多账号仓储与持久化会话管理（`user.go`, `user_activity.go`, `session.go`）**：
+     - `sqlite.UserStore`：提供基于 bcrypt 加密的账号检索、列表、创建、删除与修改密码能力；
+     - `sqlite.UserActivityStore`：提供按 `userID` 隔离的断点进度原子保存、视图计数、历史检索与进度重置；
+     - `session.Store`：升级支持多账号动态认证（`SetUserValidator`），登录成功后在加密 Session Cookie 中写入 `dbUserID` 与 `isAdmin`；
+     - `authenticationHandler`：在请求上下文中注入 `UserAuthInfo`，保证所有 GraphQL 与 REST 请求均可准确获取当前登录身份。
+  3. **数据加载器与场景解析隔离（`dataloaders.go`, `scene.go`, `resolver_mutation_scene.go`）**：
+     - `fetchScenesPlayCount`、`fetchScenesLastPlayed`、`fetchScenesPlayHistory`：当普通成员访问时自动切入该成员专属的活动记录库，实现首页「继续观看」与已看筛选隔离；
+     - `SceneStore.getMany`：加载短片元数据时，按当前登录用户 ID 动态注入专属的 `ResumeTime` 与 `PlayDuration`，未看过的账号断点恒定为 `0.0`；
+     - `SceneSaveActivity` & `SceneResetActivity`：播放保存与重置操作严格绑定当前登录用户上下文。
+  4. **用户管理 REST API 接口（`internal/api/user.go` & `server.go`）**：
+     - `GET /api/users/current`：获取当前登录身份；
+     - `GET /api/users`：管理员获取全员列表，普通用户仅可见自身；
+     - `POST /api/users`：管理员专享新建账号接口（非管理员强制拦截返回 403 Forbidden）；
+     - `DELETE /api/users/{id}`：管理员专享删除成员账号接口（锁定保护 ID: 1 超级管理员）；
+     - `POST /api/users/{id}/password`：支持管理员重置他人密码及用户修改自身密码。
+  5. **前端「认证设置」多账号管理交互面板（`SettingsSecurityPanel.tsx`）**：
+     - 重构原单一凭证卡片为「账号凭证与多用户管理」控制台；
+     - 管理员视角：展示成员列表、身份胶囊徽标、修改密码按钮、删除按钮及右上角「+ 新建账号」模态框；
+     - 普通成员视角：展示当前登录身份状态，自动隐藏「+ 新建账号」按钮并给出“普通账号受限”明确提示；
+     - 优雅降级防护：若后端尚未重启生效，自动平滑回退至原通用凭证模式，零报错零异常。
+
+---
+
 *文档更新时间：2026-10-18*  
 *维护者：Antigravity & User Pair-Programming*
+
+
 
 
 

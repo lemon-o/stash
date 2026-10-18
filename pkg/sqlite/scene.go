@@ -18,6 +18,7 @@ import (
 	"gopkg.in/guregu/null.v4/zero"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/session"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/utils"
 )
@@ -583,6 +584,29 @@ func (qb *SceneStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mo
 		return nil
 	}); err != nil {
 		return nil, err
+	}
+
+	if len(ret) > 0 {
+		userInfo := session.GetCurrentUserInfo(ctx)
+		if userInfo != nil && userInfo.ID > 1 && qb.tableMgr != nil && qb.tableMgr.db != nil {
+			sceneIDs := make([]int, len(ret))
+			for i, s := range ret {
+				sceneIDs[i] = s.ID
+			}
+			actStore := NewUserActivityStore(qb.tableMgr.db)
+			acts, err := actStore.GetActivitiesForScenes(ctx, userInfo.ID, sceneIDs)
+			if err == nil {
+				for _, s := range ret {
+					if act, ok := acts[s.ID]; ok {
+						s.ResumeTime = act.ResumeTime
+						s.PlayDuration = act.PlayDuration
+					} else {
+						s.ResumeTime = 0.0
+						s.PlayDuration = 0.0
+					}
+				}
+			}
+		}
 	}
 
 	return ret, nil

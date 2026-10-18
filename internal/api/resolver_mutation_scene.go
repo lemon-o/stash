@@ -15,6 +15,7 @@ import (
 	"github.com/stashapp/stash/pkg/plugin"
 	"github.com/stashapp/stash/pkg/plugin/hook"
 	"github.com/stashapp/stash/pkg/scene"
+	"github.com/stashapp/stash/pkg/session"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/utils"
@@ -1083,6 +1084,19 @@ func (r *mutationResolver) SceneSaveActivity(ctx context.Context, id string, res
 		return false, fmt.Errorf("converting id: %w", err)
 	}
 
+	userInfo := session.GetCurrentUserInfo(ctx)
+	userID := 1
+	if userInfo != nil && userInfo.ID > 0 {
+		userID = userInfo.ID
+	}
+
+	mgr := manager.GetInstance()
+	if mgr.UserActivityStore != nil {
+		if err := mgr.UserActivityStore.SaveActivity(ctx, userID, sceneID, resumeTime, playDuration); err != nil {
+			logger.Errorf("Error saving user scene activity: %v", err)
+		}
+	}
+
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
@@ -1099,6 +1113,17 @@ func (r *mutationResolver) SceneResetActivity(ctx context.Context, id string, re
 	sceneID, err := strconv.Atoi(id)
 	if err != nil {
 		return false, fmt.Errorf("converting id: %w", err)
+	}
+
+	userInfo := session.GetCurrentUserInfo(ctx)
+	userID := 1
+	if userInfo != nil && userInfo.ID > 0 {
+		userID = userInfo.ID
+	}
+
+	mgr := manager.GetInstance()
+	if mgr.UserActivityStore != nil {
+		_ = mgr.UserActivityStore.ResetActivity(ctx, userID, sceneID, utils.IsTrue(resetResume), utils.IsTrue(resetDuration))
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
@@ -1118,6 +1143,17 @@ func (r *mutationResolver) SceneIncrementPlayCount(ctx context.Context, id strin
 	sceneID, err := strconv.Atoi(id)
 	if err != nil {
 		return 0, fmt.Errorf("converting id: %w", err)
+	}
+
+	userInfo := session.GetCurrentUserInfo(ctx)
+	userID := 1
+	if userInfo != nil && userInfo.ID > 0 {
+		userID = userInfo.ID
+	}
+
+	mgr := manager.GetInstance()
+	if mgr.UserActivityStore != nil {
+		_ = mgr.UserActivityStore.AddView(ctx, userID, sceneID, time.Now())
 	}
 
 	var updatedTimes []time.Time

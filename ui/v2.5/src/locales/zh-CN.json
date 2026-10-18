@@ -310,6 +310,11 @@
           "description": "用以限制使用Stash的账户凭证。",
           "heading": "账户凭证"
         },
+        "multi_user_heading": "账号凭证与多用户管理",
+        "multi_user_desc": "支持多账号独立登录，各账号的观看记录与断点进度相互隔离。首个账号为超级管理员，仅管理员可新建并管理成员账号。",
+        "create_user": "新建账号",
+        "non_admin_hint": "普通账号（受限无权创建新账号）",
+        "modal_create_title": "新建成员账号",
         "generate_api_key": "生成 API 密钥",
         "log_file": "日志文件",
         "log_file_desc": "日志文件的路径，如果为空则表示关闭日志记录。更改之后需要重启。",

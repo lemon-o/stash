@@ -45,9 +45,22 @@ func (e InvalidCredentialsError) Error() string {
 
 var ErrUnauthorized = errors.New("unauthorized")
 
+type UserAuthInfo struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	IsAdmin  bool   `json:"is_admin"`
+}
+
+type UserValidatorFunc func(username string, password string) (*UserAuthInfo, bool)
+
 type Store struct {
-	sessionStore *sessions.CookieStore
-	config       SessionConfig
+	sessionStore  *sessions.CookieStore
+	config        SessionConfig
+	userValidator UserValidatorFunc
+}
+
+func (s *Store) SetUserValidator(fn UserValidatorFunc) {
+	s.userValidator = fn
 }
 
 func NewStore(c SessionConfig) *Store {
@@ -69,15 +82,29 @@ func (s *Store) Login(w http.ResponseWriter, r *http.Request) error {
 	username := r.FormValue(usernameFormKey)
 	password := r.FormValue(passwordFormKey)
 
-	// authenticate the user
-	if !s.config.ValidateCredentials(username, password) {
-		return &InvalidCredentialsError{Username: username}
+	var authInfo *UserAuthInfo
+	if s.userValidator != nil {
+		info, valid := s.userValidator(username, password)
+		if !valid {
+			return &InvalidCredentialsError{Username: username}
+		}
+		authInfo = info
+	} else {
+		if !s.config.ValidateCredentials(username, password) {
+			return &InvalidCredentialsError{Username: username}
+		}
+		authInfo = &UserAuthInfo{
+			ID:       1,
+			Username: username,
+			IsAdmin:  true,
+		}
 	}
 
-	// since we only have one user, don't leak the name
-	logger.Info("User logged in")
+	logger.Infof("User '%s' logged in", username)
 
 	newSession.Values[userIDKey] = username
+	newSession.Values["dbUserID"] = authInfo.ID
+	newSession.Values["isAdmin"] = authInfo.IsAdmin
 
 	err := newSession.Save(r, w)
 	if err != nil {
@@ -94,6 +121,8 @@ func (s *Store) Logout(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	delete(session.Values, userIDKey)
+	delete(session.Values, "dbUserID")
+	delete(session.Values, "isAdmin")
 	session.Options.MaxAge = -1
 
 	err = session.Save(r, w)
@@ -101,35 +130,76 @@ func (s *Store) Logout(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	// since we only have one user, don't leak the name
 	logger.Infof("User logged out")
 
 	return nil
 }
 
-func (s *Store) GetSessionUserID(w http.ResponseWriter, r *http.Request) (string, error) {
+func (s *Store) GetSessionUserInfo(w http.ResponseWriter, r *http.Request) (*UserAuthInfo, error) {
 	session, err := s.sessionStore.Get(r, cookieName)
-	// ignore errors and treat as an empty user id, so that we handle expired
-	// cookie
 	if err != nil {
-		return "", nil
+		return nil, nil
 	}
 
 	if !session.IsNew {
 		val := session.Values[userIDKey]
-
-		// refresh the cookie
-		err = session.Save(r, w)
-		if err != nil {
-			return "", err
+		if val == nil {
+			return nil, nil
+		}
+		username, _ := val.(string)
+		if username == "" {
+			return nil, nil
 		}
 
-		ret, _ := val.(string)
+		dbUserID, _ := session.Values["dbUserID"].(int)
+		isAdmin, _ := session.Values["isAdmin"].(bool)
+		if dbUserID == 0 {
+			dbUserID = 1
+		}
 
-		return ret, nil
+		// refresh cookie
+		_ = session.Save(r, w)
+
+		return &UserAuthInfo{
+			ID:       dbUserID,
+			Username: username,
+			IsAdmin:  isAdmin,
+		}, nil
 	}
 
-	return "", nil
+	return nil, nil
+}
+
+func (s *Store) GetSessionUserID(w http.ResponseWriter, r *http.Request) (string, error) {
+	info, err := s.GetSessionUserInfo(w, r)
+	if err != nil || info == nil {
+		return "", err
+	}
+	return info.Username, nil
+}
+
+const contextUserInfo key = 10
+
+func SetCurrentUserInfo(ctx context.Context, info *UserAuthInfo) context.Context {
+	return context.WithValue(ctx, contextUserInfo, info)
+}
+
+func GetCurrentUserInfo(ctx context.Context) *UserAuthInfo {
+	val := ctx.Value(contextUserInfo)
+	if val != nil {
+		if info, ok := val.(*UserAuthInfo); ok {
+			return info
+		}
+	}
+	uID := GetCurrentUserID(ctx)
+	if uID != nil {
+		return &UserAuthInfo{
+			ID:       1,
+			Username: *uID,
+			IsAdmin:  true,
+		}
+	}
+	return nil
 }
 
 func SetCurrentUserID(ctx context.Context, userID string) context.Context {
@@ -147,34 +217,33 @@ func GetCurrentUserID(ctx context.Context) *string {
 	return nil
 }
 
-func (s *Store) Authenticate(w http.ResponseWriter, r *http.Request) (userID string, err error) {
+func (s *Store) AuthenticateUserInfo(w http.ResponseWriter, r *http.Request) (info *UserAuthInfo, err error) {
 	c := s.config
 
-	// translate api key into current user, if present
 	apiKey := r.Header.Get(ApiKeyHeader)
-
-	// try getting the api key as a query parameter
 	if apiKey == "" {
 		apiKey = r.URL.Query().Get(ApiKeyParameter)
 	}
 
 	if apiKey != "" {
-		// match against configured API and set userID to the
-		// configured username. In future, we'll want to
-		// get the username from the key.
 		if c.GetAPIKey() != apiKey {
-			return "", ErrUnauthorized
+			return nil, ErrUnauthorized
 		}
 
-		userID = c.GetUsername()
-	} else {
-		// handle session
-		userID, err = s.GetSessionUserID(w, r)
+		return &UserAuthInfo{
+			ID:       1,
+			Username: c.GetUsername(),
+			IsAdmin:  true,
+		}, nil
 	}
 
-	if err != nil {
+	return s.GetSessionUserInfo(w, r)
+}
+
+func (s *Store) Authenticate(w http.ResponseWriter, r *http.Request) (userID string, err error) {
+	info, err := s.AuthenticateUserInfo(w, r)
+	if err != nil || info == nil {
 		return "", err
 	}
-
-	return
+	return info.Username, nil
 }

@@ -84,12 +84,13 @@ func authenticateHandler() func(http.Handler) http.Handler {
 			if username, ok := authenticateSignedRequest(r); ok {
 				ctx := r.Context()
 				ctx = session.SetCurrentUserID(ctx, username)
+				ctx = session.SetCurrentUserInfo(ctx, &session.UserAuthInfo{ID: 1, Username: username, IsAdmin: true})
 				r = r.WithContext(ctx)
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			userID, err := manager.GetInstance().SessionStore.Authenticate(w, r)
+			userInfo, err := manager.GetInstance().SessionStore.AuthenticateUserInfo(w, r)
 			if err != nil {
 				if !errors.Is(err, session.ErrUnauthorized) {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -100,6 +101,12 @@ func authenticateHandler() func(http.Handler) http.Handler {
 				w.Header().Add("WWW-Authenticate", "FormBased")
 				w.WriteHeader(http.StatusUnauthorized)
 				return
+			}
+
+			var userID string
+			if userInfo != nil {
+				userID = userInfo.Username
+				ctx = session.SetCurrentUserInfo(ctx, userInfo)
 			}
 
 			// reject connections from the public internet if authentication is not configured
@@ -148,6 +155,9 @@ func authenticateHandler() func(http.Handler) http.Handler {
 			}
 
 			ctx = session.SetCurrentUserID(ctx, userID)
+			if userInfo != nil {
+				ctx = session.SetCurrentUserInfo(ctx, userInfo)
+			}
 
 			r = r.WithContext(ctx)
 

@@ -27,7 +27,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/session"
 )
 
 type contextKey struct{ name string }
@@ -540,6 +542,14 @@ func (m Middleware) fetchScenesOCount(ctx context.Context) func(keys []int) ([]i
 
 func (m Middleware) fetchScenesPlayCount(ctx context.Context) func(keys []int) ([]int, []error) {
 	return func(keys []int) (ret []int, errs []error) {
+		userInfo := session.GetCurrentUserInfo(ctx)
+		mgr := manager.GetInstance()
+		if userInfo != nil && userInfo.ID > 1 && mgr.UserActivityStore != nil {
+			var err error
+			ret, err = mgr.UserActivityStore.GetManyViewCount(ctx, userInfo.ID, keys)
+			return ret, toErrorSlice(err)
+		}
+
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Scene.GetManyViewCount(ctx, keys)
@@ -562,6 +572,14 @@ func (m Middleware) fetchScenesOHistory(ctx context.Context) func(keys []int) ([
 
 func (m Middleware) fetchScenesPlayHistory(ctx context.Context) func(keys []int) ([][]time.Time, []error) {
 	return func(keys []int) (ret [][]time.Time, errs []error) {
+		userInfo := session.GetCurrentUserInfo(ctx)
+		mgr := manager.GetInstance()
+		if userInfo != nil && userInfo.ID > 1 && mgr.UserActivityStore != nil {
+			var err error
+			ret, err = mgr.UserActivityStore.GetManyViewDates(ctx, userInfo.ID, keys)
+			return ret, toErrorSlice(err)
+		}
+
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Scene.GetManyViewDates(ctx, keys)
@@ -573,6 +591,14 @@ func (m Middleware) fetchScenesPlayHistory(ctx context.Context) func(keys []int)
 
 func (m Middleware) fetchScenesLastPlayed(ctx context.Context) func(keys []int) ([]*time.Time, []error) {
 	return func(keys []int) (ret []*time.Time, errs []error) {
+		userInfo := session.GetCurrentUserInfo(ctx)
+		mgr := manager.GetInstance()
+		if userInfo != nil && userInfo.ID > 1 && mgr.UserActivityStore != nil {
+			var err error
+			ret, err = mgr.UserActivityStore.GetManyLastViewed(ctx, userInfo.ID, keys)
+			return ret, toErrorSlice(err)
+		}
+
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Scene.GetManyLastViewed(ctx, keys)

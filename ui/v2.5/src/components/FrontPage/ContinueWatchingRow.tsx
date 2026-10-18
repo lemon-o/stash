@@ -8,7 +8,6 @@ import { useConfigurationContext } from "src/hooks/Config";
 import { objectTitle } from "src/core/files";
 import {
   getMainVideoFile,
-  getVideoResolutionLabel,
   formatVideoDuration,
 } from "src/utils/resolution";
 import TextUtils from "src/utils/text";
@@ -106,26 +105,16 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
     }
 
     const headerNode = (
-      <div className="continue-watching-header d-inline-flex align-items-center">
-        <span>
-          <FormattedMessage
-            id="continue_watching"
-            defaultMessage="继续观看"
-          />
-        </span>
-        <span className="continue-watching-count ml-2">
-          {scenes.length >= 10 ? "最近 10 部" : `${scenes.length} 部`}
-        </span>
-      </div>
+      <FormattedMessage
+        id="continue_watching"
+        defaultMessage="继续观看"
+      />
     );
 
     const linkNode = (
-      <div className="continue-watching-actions d-inline-flex align-items-center">
-        <Link to={allHistoryUrl} className="continue-watching-all-link">
-          <FormattedMessage id="view_all" defaultMessage="查看全部" />
-          <Icon icon={faChevronRight} className="ml-1" />
-        </Link>
-      </div>
+      <Link to={allHistoryUrl}>
+        <FormattedMessage id="view_all" defaultMessage="查看全部" />
+      </Link>
     );
 
     return (
@@ -164,10 +153,6 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
 
               const title = objectTitle(scene);
               const performers = scene.performers.map((p) => p.name).join(", ");
-              const resolution = getVideoResolutionLabel(
-                file?.width,
-                file?.height
-              );
               const timeDisplay = hasResume
                 ? `${TextUtils.secondsToTimestamp(resumeTime)} / ${TextUtils.secondsToTimestamp(duration)}`
                 : formatVideoDuration(duration);
@@ -207,12 +192,6 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
                     <div className="continue-watching-play-btn">
                       <Icon icon={faPlay} />
                     </div>
-
-                    {resolution && (
-                      <span className="continue-watching-resolution">
-                        {resolution}
-                      </span>
-                    )}
 
                     {scene.studio?.name && (
                       <span

@@ -317,6 +317,11 @@
           "description": "Credentials to restrict access to Stash.",
           "heading": "Credentials"
         },
+        "multi_user_heading": "Account Credentials & User Management",
+        "multi_user_desc": "Supports independent logins for multiple accounts. Watch history and playback progress are isolated per user. The first account is the Administrator with exclusive management rights.",
+        "create_user": "New Account",
+        "non_admin_hint": "Standard Account (Restricted: cannot create accounts)",
+        "modal_create_title": "Create Member Account",
         "generate_api_key": "Generate API key",
         "log_file": "Log file",
         "log_file_desc": "Path to the file to output logging to. Blank to disable file logging. Requires restart.",

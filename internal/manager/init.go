@@ -29,6 +29,7 @@ import (
 	"github.com/stashapp/stash/pkg/sqlite"
 	"github.com/stashapp/stash/pkg/utils"
 	"github.com/stashapp/stash/ui"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Called at startup
@@ -232,6 +233,34 @@ func (s *Manager) postInit(ctx context.Context) error {
 		} else {
 			return err
 		}
+	}
+
+	if s.Database.WriteDB() != nil {
+		s.UserStore = sqlite.NewUserStore(s.Database.WriteDB())
+		s.UserActivityStore = sqlite.NewUserActivityStore(s.Database.WriteDB())
+		s.SessionStore.SetUserValidator(func(username, password string) (*session.UserAuthInfo, bool) {
+			if s.UserStore != nil {
+				u, err := s.UserStore.GetByUsername(context.Background(), username)
+				if err == nil && u != nil {
+					err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
+					if err == nil {
+						return &session.UserAuthInfo{
+							ID:       u.ID,
+							Username: u.Username,
+							IsAdmin:  u.IsAdmin,
+						}, true
+					}
+				}
+			}
+			if s.Config.ValidateCredentials(username, password) {
+				return &session.UserAuthInfo{
+					ID:       1,
+					Username: username,
+					IsAdmin:  true,
+				}, true
+			}
+			return nil, false
+		})
 	}
 
 	// Set the proxy if defined in config

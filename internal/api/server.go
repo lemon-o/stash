@@ -221,6 +221,7 @@ func Initialize() (*Server, error) {
 	r.Mount("/tag", server.getTagRoutes())
 	r.Mount("/downloads", server.getDownloadsRoutes())
 	r.Mount("/plugin", server.getPluginRoutes())
+	r.Mount("/api/users", server.getUserRoutes())
 
 	r.HandleFunc("/css", cssHandler(cfg))
 	r.HandleFunc("/javascript", javascriptHandler(cfg))
