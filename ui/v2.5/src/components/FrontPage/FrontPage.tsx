@@ -25,6 +25,7 @@ import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import TextUtils from "src/utils/text";
 import { useHistory } from "react-router-dom";
 import { runAutoGroupIfAvailable } from "src/core/StashService";
+import { ContinueWatchingRow } from "./ContinueWatchingRow";
 
 const FrontPage: React.FC = PatchComponent("FrontPage", () => {
   const history = useHistory();
@@ -149,12 +150,30 @@ const FrontPage: React.FC = PatchComponent("FrontPage", () => {
 
   const frontPageContent = getFrontPageContent(ui);
 
+  const recIndex =
+    frontPageContent?.findIndex(
+      (c) =>
+        c.__typename === "CustomFilter" &&
+        (c.message?.id === "recommendations" || c.sortBy === "recommended")
+    ) ?? -1;
+
   return (
     <div className="recommendations-container">
       <div>
-        {frontPageContent?.map((content, i) => (
-          <Control key={i} content={content} />
-        ))}
+        {(!frontPageContent || frontPageContent.length === 0) && (
+          <ContinueWatchingRow />
+        )}
+        {frontPageContent?.map((content, i) => {
+          const showContinueWatchingBefore =
+            recIndex !== -1 ? i === recIndex : i === 0;
+
+          return (
+            <React.Fragment key={i}>
+              {showContinueWatchingBefore && <ContinueWatchingRow />}
+              <Control content={content} />
+            </React.Fragment>
+          );
+        })}
       </div>
       <div className="recommendations-footer">
         <Button onClick={() => setIsEditing(true)}>

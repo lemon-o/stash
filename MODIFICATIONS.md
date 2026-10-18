@@ -1995,7 +1995,34 @@ npx pnpm run start
 
 ---
 
-*文档更新时间：2026-10-16*  
+### 任务六十五：首页「继续观看」智能横向滑轨组件开发（有观看记录自动置顶于每日推荐上方、固定行高、单行10部、左右平滑滑动、查看全部新到旧排序）
+
+* **功能需求与交互定义**：
+  1. 若有观看记录，则首页【每日推荐】上面新增【继续观看】区块；若无观看记录则完全静默隐藏；
+  2. 固定行高，单行显示最近 10 个观看记录，且支持左右滑动；
+  3. 右上角设置【查看全部】直达链接，支持浏览媒体库所有观看历史，且观看记录严格由新到旧排序。
+
+* **精准代码落地与系统架构**：
+  1. **首页智能动态定位挂载（`FrontPage.tsx`）**：
+     - 在 `FrontPage.tsx` 中扫描 `frontPageContent`，动态计算每日推荐卡片索引 `recIndex = findIndex(...)`；
+     - 渲染时直接将 `<ContinueWatchingRow />` 精准插在每日推荐行正上方；若用户自定义移除了推荐卡片，则自适应置于首行。
+  2. **双状态无感冷启动感知（`ContinueWatchingRow.tsx`）**：
+     - 通过 GraphQL `useFindScenesQuery` 检索 `sort: "last_played_at", direction: Desc, play_count > 0, per_page: 10`；
+     - 加载中或无任何播放记录时严格返回 `null`，无骨架跳动与空白占位；一旦产生播放行为即刻自动浮现。
+  3. **单行固定行高与丝滑左右滑动系统（`ContinueWatchingRow.tsx` & `styles.scss`）**：
+     - **固定行高与严格尺寸约束**：滑轨外层容器固定高度（桌面端 248px，移动端 216px），卡片固定尺寸（桌面端 260px × 226px，移动端 220px × 196px），避免任何高度跳动；
+     - **全平台滑动支持**：移动端触控原生硬件加速滑动（`-webkit-overflow-scrolling: touch` 与 `scroll-snap-type: x proximity`），桌面端提供悬浮毛玻璃拟态翻页圆钮（`faChevronLeft` / `faChevronRight`）与鼠标垂直滚轮自动横向位移转换。
+  4. **视听进度直观呈现与续播队列联动**：
+     - 缩略图底沿集成高亮度荧光渐变进度条（`#0284c7` -> `#00d2be`）与悬停发光效果；
+     - 智能计算未看完的续播点与剩余时长（`已看 XX%`）或已播毕状态（`已看完`）；
+     - 点击卡片无缝组装 `SceneQueue.fromSceneIDList` 队列并附带 `continue: true`，点开即刻从上次中断点续播，并支持在播放器内无缝切歌切片。
+  5. **右上角「查看全部」深链直达**：
+     - 基于 `ListFilterModel` 编码生成标准 URL 参数（`sortby=last_played_at&sortdir=desc&c={"type":"play_count","modifier":"GREATER_THAN","value":0}`）；
+     - 点击直接进入 `/scenes` 场景全景列表，展示按最后播放时间由新到旧排列的全部观影历史。
+
+---
+
+*文档更新时间：2026-10-18*  
 *维护者：Antigravity & User Pair-Programming*
 
 
