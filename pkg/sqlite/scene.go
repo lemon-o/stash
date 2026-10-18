@@ -588,12 +588,12 @@ func (qb *SceneStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mo
 
 	if len(ret) > 0 {
 		userInfo := session.GetCurrentUserInfo(ctx)
-		if userInfo != nil && userInfo.ID > 1 && qb.tableMgr != nil && qb.tableMgr.db != nil {
+		if userInfo != nil && userInfo.ID > 1 {
 			sceneIDs := make([]int, len(ret))
 			for i, s := range ret {
 				sceneIDs[i] = s.ID
 			}
-			actStore := NewUserActivityStore(qb.tableMgr.db)
+			actStore := NewUserActivityStore(nil)
 			acts, err := actStore.GetActivitiesForScenes(ctx, userInfo.ID, sceneIDs)
 			if err == nil {
 				for _, s := range ret {

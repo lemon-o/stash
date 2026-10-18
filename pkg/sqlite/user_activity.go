@@ -44,15 +44,25 @@ func (s *UserActivityStore) SaveActivity(ctx context.Context, userID, sceneID in
 			play_duration = play_duration + ?,
 			last_played_at = CURRENT_TIMESTAMP
 	`
-	_, err := s.db.ExecContext(ctx, query, userID, sceneID, rTime, pDur, resumeTime, rTime, pDur)
+	if s.db != nil {
+		_, err := s.db.ExecContext(ctx, query, userID, sceneID, rTime, pDur, resumeTime, rTime, pDur)
+		return err
+	}
+	_, err := dbWrapper.Exec(ctx, query, userID, sceneID, rTime, pDur, resumeTime, rTime, pDur)
 	return err
 }
 
 func (s *UserActivityStore) AddView(ctx context.Context, userID, sceneID int, viewDate time.Time) error {
-	_, err := s.db.ExecContext(ctx, "INSERT INTO users_scenes_views (user_id, scene_id, view_date) VALUES (?, ?, ?)", userID, sceneID, viewDate)
-	if err != nil {
-		return err
+	if s.db != nil {
+		if _, err := s.db.ExecContext(ctx, "INSERT INTO users_scenes_views (user_id, scene_id, view_date) VALUES (?, ?, ?)", userID, sceneID, viewDate); err != nil {
+			return err
+		}
+	} else {
+		if _, err := dbWrapper.Exec(ctx, "INSERT INTO users_scenes_views (user_id, scene_id, view_date) VALUES (?, ?, ?)", userID, sceneID, viewDate); err != nil {
+			return err
+		}
 	}
+
 	updateQuery := `
 		INSERT INTO users_scenes_activity (user_id, scene_id, play_count, last_played_at)
 		VALUES (?, ?, 1, ?)
@@ -60,14 +70,23 @@ func (s *UserActivityStore) AddView(ctx context.Context, userID, sceneID int, vi
 			play_count = play_count + 1,
 			last_played_at = ?
 	`
-	_, err = s.db.ExecContext(ctx, updateQuery, userID, sceneID, viewDate, viewDate)
+	if s.db != nil {
+		_, err := s.db.ExecContext(ctx, updateQuery, userID, sceneID, viewDate, viewDate)
+		return err
+	}
+	_, err := dbWrapper.Exec(ctx, updateQuery, userID, sceneID, viewDate, viewDate)
 	return err
 }
 
 func (s *UserActivityStore) GetActivity(ctx context.Context, userID, sceneID int) (*UserSceneActivity, error) {
 	var act UserSceneActivity
 	query := "SELECT user_id, scene_id, resume_time, play_duration, play_count, last_played_at FROM users_scenes_activity WHERE user_id = ? AND scene_id = ?"
-	err := s.db.GetContext(ctx, &act, query, userID, sceneID)
+	var err error
+	if s.db != nil {
+		err = s.db.GetContext(ctx, &act, query, userID, sceneID)
+	} else {
+		err = dbWrapper.Get(ctx, &act, query, userID, sceneID)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -85,10 +104,14 @@ func (s *UserActivityStore) GetActivitiesForScenes(ctx context.Context, userID i
 	if err != nil {
 		return nil, err
 	}
-	query = s.db.Rebind(query)
 
 	var acts []UserSceneActivity
-	err = s.db.SelectContext(ctx, &acts, query, args...)
+	if s.db != nil {
+		query = s.db.Rebind(query)
+		err = s.db.SelectContext(ctx, &acts, query, args...)
+	} else {
+		err = dbWrapper.Select(ctx, &acts, query, args...)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -101,19 +124,23 @@ func (s *UserActivityStore) GetActivitiesForScenes(ctx context.Context, userID i
 }
 
 func (s *UserActivityStore) ResetActivity(ctx context.Context, userID, sceneID int, resetResume, resetDuration bool) error {
+	var query string
 	if resetResume && resetDuration {
-		_, err := s.db.ExecContext(ctx, "UPDATE users_scenes_activity SET resume_time = 0, play_duration = 0 WHERE user_id = ? AND scene_id = ?", userID, sceneID)
+		query = "UPDATE users_scenes_activity SET resume_time = 0, play_duration = 0 WHERE user_id = ? AND scene_id = ?"
+	} else if resetResume {
+		query = "UPDATE users_scenes_activity SET resume_time = 0 WHERE user_id = ? AND scene_id = ?"
+	} else if resetDuration {
+		query = "UPDATE users_scenes_activity SET play_duration = 0 WHERE user_id = ? AND scene_id = ?"
+	} else {
+		return nil
+	}
+
+	if s.db != nil {
+		_, err := s.db.ExecContext(ctx, query, userID, sceneID)
 		return err
 	}
-	if resetResume {
-		_, err := s.db.ExecContext(ctx, "UPDATE users_scenes_activity SET resume_time = 0 WHERE user_id = ? AND scene_id = ?", userID, sceneID)
-		return err
-	}
-	if resetDuration {
-		_, err := s.db.ExecContext(ctx, "UPDATE users_scenes_activity SET play_duration = 0 WHERE user_id = ? AND scene_id = ?", userID, sceneID)
-		return err
-	}
-	return nil
+	_, err := dbWrapper.Exec(ctx, query, userID, sceneID)
+	return err
 }
 
 func (s *UserActivityStore) GetManyViewCount(ctx context.Context, userID int, sceneIDs []int) ([]int, error) {
@@ -156,14 +183,18 @@ func (s *UserActivityStore) GetManyViewDates(ctx context.Context, userID int, sc
 	if err != nil {
 		return nil, err
 	}
-	query = s.db.Rebind(query)
 
 	type row struct {
 		SceneID  int       `db:"scene_id"`
 		ViewDate time.Time `db:"view_date"`
 	}
 	var rows []row
-	err = s.db.SelectContext(ctx, &rows, query, args...)
+	if s.db != nil {
+		query = s.db.Rebind(query)
+		err = s.db.SelectContext(ctx, &rows, query, args...)
+	} else {
+		err = dbWrapper.Select(ctx, &rows, query, args...)
+	}
 	if err != nil {
 		return nil, err
 	}
