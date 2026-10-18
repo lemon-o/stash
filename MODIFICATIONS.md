@@ -2136,6 +2136,31 @@ npx pnpm run start
 
 ---
 
+### 任务七十：首页继续观看即时增量同步修复与移动端触屏点击暂停/播放全链路支持
+
+* **功能需求与问题现象剖析**：
+  1. **首页「继续观看」不新增观看记录 Bug**：用户播放新视频后，返回首页「继续观看」横向卡片栏未能及时出现刚才观看的视频。
+     - **根因分析**：
+       - 原 `ContinueWatchingRow.tsx` 仅使用 `play_count > 0` 过滤。视频播放时，只有达到 `minimumPlayPercent`（甚至 90%+ 播完）才会递增 `play_count`；试看或中断未播完的视频仅更新断点 `resume_time`，直接被排他性条件过滤抛弃；
+       - Apollo Client 默认查询缓存策略为 `cache-first`，从播放页返回首页时直接命中了旧的客户端快照，未发起增量拉取；
+       - 未与本地播放行为的时间戳进行毫秒级联动，导致在看/续播视频未被置顶排序。
+  2. **移动端播放时点击屏幕不暂停/反之同理 Bug**：在手机端或触屏模式下，轻触视频画面无法切换暂停与播放状态。
+     - **根因分析**：
+       - Video.js 移动端触屏模式（`.vjs-touch-enabled`）默认屏蔽了底层 `<video>`/`.vjs-tech` 的 click 事件；
+       - 自研手势插件 `touch-gestures.ts` 拦截了 touch 序列，但只处理了 320ms 长按倍速与水平滑动快进快退，在 `gestureState === "IDLE"` 且未移动的快速点击（Tap）动作下未触发播放/暂停切换，导致点击视频画面无响应。
+
+* **全栈精准修复与架构重构**：
+  1. **首页「继续观看」双路联合查询与毫秒级即时置顶（`ContinueWatchingRow.tsx` & `ScenePlayer.tsx`）**：
+     - **在看断点与历史完播双路并行检索**：在 `ContinueWatchingRow.tsx` 中并发检索 `inProgressQuery`（`resume_time > 0` 按 `updated_at DESC`）与 `playedQuery`（`play_count > 0` 按 `last_played_at DESC`），强制采用 `fetchPolicy: "cache-and-network"`，打开首页及窗口获得焦点（`focus`）时自动即刻静默刷新；
+     - **即时起播同步落盘（`ScenePlayer.tsx`）**：在短片起播事件 `player.on("play")` 中立即触发 `sceneSaveActivity` 标记断点（至少 0.1s），并在 `localStorage.stash_recent_watched_scenes` 中写入高精度访问时间戳；
+     - **动态合并与精准权重排序**：综合去重合并「在看」与「已看完」候选池，结合本地设备最新交互时间戳置顶排列，确保无论看完还是半路暂停退出，只要点开看过的视频必即刻置顶呈现，并精准标识「已看 X%」或「已看完」。
+  2. **移动端触屏单击防抖暂停/播放引擎（`touch-gestures.ts`）**：
+     - **触控点击手势精准捕获**：在 `touch-gestures.ts` 中引入轻触判据（移动距离 `< 10px` 且触控时长 `< 320ms` 且状态为 `IDLE`），在 `onTouchEnd` 中自动切换 `player.paused() ? player.play() : player.pause()`，并激活 `player.userActive(true)`；
+     - **幽灵点击（Ghost Click）捕获与阻断**：监听 `click` 捕获阶段，拦截 touch 事件后 450ms 内由浏览器合成的冗余 click 事件，防止播放态瞬间被二次翻转；
+     - **原生控件安全区域保护**：严格豁免底栏控制条（`.vjs-control-bar`）、设置弹窗（`.vjs-yt-settings-panel`）、下拉菜单及加载圈的交互，弹窗展开状态下轻触画面仅执行关闭弹窗逻辑而不误暂停/播放。
+
+---
+
 *文档更新时间：2026-10-18*  
 *维护者：Antigravity & User Pair-Programming*
 

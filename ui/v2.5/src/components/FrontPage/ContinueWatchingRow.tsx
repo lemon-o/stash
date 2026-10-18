@@ -32,12 +32,32 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
 
-    // Query 10 most recent watch records, sorted by last_played_at DESC
-    const { data, loading } = GQL.useFindScenesQuery({
+    // 1. Query scenes with in-progress watch (resume_time > 0)
+    const inProgressQuery = GQL.useFindScenesQuery({
+      fetchPolicy: "cache-and-network",
       variables: {
         filter: {
           page: 1,
-          per_page: 10,
+          per_page: 15,
+          sort: "updated_at",
+          direction: GQL.SortDirectionEnum.Desc,
+        },
+        scene_filter: {
+          resume_time: {
+            value: 0,
+            modifier: GQL.CriterionModifier.GreaterThan,
+          },
+        },
+      },
+    });
+
+    // 2. Query completed/played scenes (play_count > 0)
+    const playedQuery = GQL.useFindScenesQuery({
+      fetchPolicy: "cache-and-network",
+      variables: {
+        filter: {
+          page: 1,
+          per_page: 15,
           sort: "last_played_at",
           direction: GQL.SortDirectionEnum.Desc,
         },
@@ -50,9 +70,69 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       },
     });
 
+    const refetchAll = useCallback(() => {
+      inProgressQuery.refetch().catch(() => {});
+      playedQuery.refetch().catch(() => {});
+    }, [inProgressQuery, playedQuery]);
+
+    // Refetch when tab becomes visible or focused
+    useEffect(() => {
+      const handleFocus = () => {
+        refetchAll();
+      };
+      window.addEventListener("focus", handleFocus);
+      return () => window.removeEventListener("focus", handleFocus);
+    }, [refetchAll]);
+
+    const loading =
+      inProgressQuery.loading &&
+      !inProgressQuery.data &&
+      playedQuery.loading &&
+      !playedQuery.data;
+
     const scenes = useMemo(() => {
-      return data?.findScenes.scenes ?? [];
-    }, [data?.findScenes.scenes]);
+      const inProgress = inProgressQuery.data?.findScenes.scenes ?? [];
+      const played = playedQuery.data?.findScenes.scenes ?? [];
+
+      const map = new Map<string, (typeof inProgress)[number]>();
+      for (const s of inProgress) {
+        map.set(s.id, s);
+      }
+      for (const s of played) {
+        if (!map.has(s.id)) {
+          map.set(s.id, s);
+        }
+      }
+
+      // Read local storage recent timestamps for optimal ordering
+      let localRecent: Array<{ id: string; time: number }> = [];
+      try {
+        const raw = localStorage.getItem("stash_recent_watched_scenes");
+        if (raw) localRecent = JSON.parse(raw);
+      } catch {}
+
+      const localTimeMap = new Map<string, number>();
+      for (const item of localRecent) {
+        localTimeMap.set(item.id, item.time);
+      }
+
+      const combined = Array.from(map.values());
+      combined.sort((a, b) => {
+        const aLocal = localTimeMap.get(a.id);
+        const bLocal = localTimeMap.get(b.id);
+        if (aLocal !== undefined && bLocal !== undefined) {
+          return bLocal - aLocal;
+        }
+        if (aLocal !== undefined) return -1;
+        if (bLocal !== undefined) return 1;
+        return 0;
+      });
+
+      return combined.slice(0, 10);
+    }, [
+      inProgressQuery.data?.findScenes.scenes,
+      playedQuery.data?.findScenes.scenes,
+    ]);
 
     // Build playback queue so clicking a card allows smooth cycling in the player
     const sceneQueue = useMemo(() => {

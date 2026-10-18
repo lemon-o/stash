@@ -999,8 +999,44 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const player = getPlayer();
       if (!player) return;
 
+      const recordWatch = (resumeTime?: number) => {
+        if (!scene.id) return;
+        try {
+          const raw = localStorage.getItem("stash_recent_watched_scenes");
+          let list: Array<{ id: string; time: number; resumeTime?: number }> = raw
+            ? JSON.parse(raw)
+            : [];
+          list = list.filter((item) => item.id !== scene.id);
+          list.unshift({
+            id: scene.id,
+            time: Date.now(),
+            resumeTime,
+          });
+          if (list.length > 30) list = list.slice(0, 30);
+          localStorage.setItem(
+            "stash_recent_watched_scenes",
+            JSON.stringify(list)
+          );
+        } catch {}
+      };
+
+      const handlePlay = () => {
+        const curTime = player.currentTime() || 0;
+        recordWatch(curTime);
+        sceneSaveActivity({
+          variables: {
+            id: scene.id,
+            playDuration: 0,
+            resume_time: Math.max(0.1, curTime),
+          },
+        }).catch(() => {});
+      };
+      player.on("play", handlePlay);
+
       async function saveActivity(resumeTime: number, playDuration: number) {
         if (!scene.id) return;
+
+        recordWatch(resumeTime);
 
         await sceneSaveActivity({
           variables: {
@@ -1014,6 +1050,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       async function incrementPlayCount() {
         if (!scene.id) return;
 
+        recordWatch(0);
+
         await sceneIncrementPlayCount({
           variables: {
             id: scene.id,
@@ -1026,6 +1064,10 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       activity.incrementPlayCount = incrementPlayCount;
       activity.minimumPlayPercent = minimumPlayPercent;
       activity.setEnabled(trackActivity);
+
+      return () => {
+        player.off("play", handlePlay);
+      };
     }, [
       getPlayer,
       scene,

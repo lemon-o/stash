@@ -19,6 +19,10 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
 
   private touchStartX = 0;
   private touchStartY = 0;
+  private touchStartTime = 0;
+  private hasMoved = false;
+  private touchedTarget: HTMLElement | null = null;
+  private lastTapTime = 0;
   private seekStartTime = 0;
   private targetSeekTime = 0;
   private originalRate = 1;
@@ -31,6 +35,7 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
     this.onTouchStart = this.onTouchStart.bind(this);
     this.onTouchMove = this.onTouchMove.bind(this);
     this.onTouchEnd = this.onTouchEnd.bind(this);
+    this.onPlayerClick = this.onPlayerClick.bind(this);
 
     player.ready(() => {
       this.initUI();
@@ -81,8 +86,9 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
     if (!el) return;
     el.addEventListener("touchstart", this.onTouchStart as any, { passive: false });
     el.addEventListener("touchmove", this.onTouchMove as any, { passive: false });
-    el.addEventListener("touchend", this.onTouchEnd as any, { passive: true });
+    el.addEventListener("touchend", this.onTouchEnd as any, { passive: false });
     el.addEventListener("touchcancel", this.onTouchEnd as any, { passive: true });
+    el.addEventListener("click", this.onPlayerClick as any, true);
   }
 
   private unbindEvents() {
@@ -92,25 +98,58 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
     el.removeEventListener("touchmove", this.onTouchMove as any);
     el.removeEventListener("touchend", this.onTouchEnd as any);
     el.removeEventListener("touchcancel", this.onTouchEnd as any);
+    el.removeEventListener("click", this.onPlayerClick as any, true);
+  }
+
+  private onPlayerClick(e: MouseEvent) {
+    if (Date.now() - this.lastTapTime < 450) {
+      const target = e.target as HTMLElement;
+      if (
+        !target.closest(".vjs-control-bar") &&
+        !target.closest(".vjs-yt-settings-panel") &&
+        !target.closest(".vjs-modal-dialog") &&
+        !target.closest(".vjs-menu")
+      ) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }
   }
 
   private onTouchStart(e: TouchEvent) {
     if (e.touches.length > 1) {
       this.clearLongPress();
+      this.touchedTarget = null;
       return;
     }
 
     const target = e.target as HTMLElement;
-    // Don't intercept touches on control bar, settings panel, modal dialogs, or buttons
+    // Don't intercept touches on control bar, settings panel, modal dialogs, or normal control buttons
     if (
       target.closest(".vjs-control-bar") ||
       target.closest(".vjs-yt-settings-panel") ||
       target.closest(".vjs-modal-dialog") ||
       target.closest(".vjs-menu") ||
-      target.closest(".vjs-button")
+      target.closest(".vjs-loading-spinner") ||
+      (target.closest(".vjs-button") && !target.closest(".vjs-big-play-button"))
     ) {
+      this.touchedTarget = null;
       return;
     }
+
+    // If settings panel is open, tapping outside dismisses it; don't toggle play/pause
+    const rootEl = this.player.el();
+    const ytPanel = rootEl?.querySelector(
+      ".vjs-yt-settings-panel.vjs-yt-panel-visible"
+    );
+    if (ytPanel) {
+      this.touchedTarget = null;
+      return;
+    }
+
+    this.touchedTarget = target;
+    this.touchStartTime = Date.now();
+    this.hasMoved = false;
 
     const touch = e.touches[0];
     this.touchStartX = touch.clientX;
@@ -145,6 +184,10 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
     const touch = e.touches[0];
     const deltaX = touch.clientX - this.touchStartX;
     const deltaY = touch.clientY - this.touchStartY;
+
+    if (Math.hypot(deltaX, deltaY) > 10) {
+      this.hasMoved = true;
+    }
 
     // Check if horizontal movement is dominant
     if (this.gestureState === "IDLE") {
@@ -185,7 +228,7 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
     }
   }
 
-  private onTouchEnd() {
+  private onTouchEnd(e?: TouchEvent) {
     this.clearLongPress();
 
     if (this.gestureState === "SPEEDING") {
@@ -194,8 +237,30 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
     } else if (this.gestureState === "SEEKING") {
       this.player.currentTime(this.targetSeekTime);
       this.hideScrubHud();
+    } else if (
+      this.gestureState === "IDLE" &&
+      !this.hasMoved &&
+      this.touchedTarget
+    ) {
+      const elapsed = Date.now() - this.touchStartTime;
+      if (elapsed < 320) {
+        this.lastTapTime = Date.now();
+        if (e && e.cancelable) {
+          e.preventDefault();
+        }
+        if (this.player.paused()) {
+          const playPromise = this.player.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {});
+          }
+        } else {
+          this.player.pause();
+        }
+        this.player.userActive(true);
+      }
     }
 
+    this.touchedTarget = null;
     this.gestureState = "IDLE";
   }
 
