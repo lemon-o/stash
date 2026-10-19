@@ -39,9 +39,9 @@ async function sha256(str: string): Promise<string> {
     .join("");
 }
 
-async function syncUsersToBackend(usersList: IAccountUser[]): Promise<void> {
+async function syncUsersToBackend(usersList: IAccountUser[]): Promise<boolean> {
   try {
-    await fetch("/graphql", {
+    const res = await fetch("/graphql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -57,9 +57,14 @@ async function syncUsersToBackend(usersList: IAccountUser[]): Promise<void> {
         },
       }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      return data?.data?.runPluginOperation?.status === "ok";
+    }
   } catch (e) {
     console.error("Failed to sync users to backend:", e);
   }
+  return false;
 }
 
 function getLocalUsers(): IAccountUser[] {
@@ -168,18 +173,57 @@ export const SettingsSecurityPanel: React.FC = () => {
     setLoadingUsers(true);
     let userList: IAccountUser[] = [];
 
-    // 1. Fetch authoritative users from /assets/users.json
+    // 1. Fetch authoritative users from backend via GraphQL operation
     try {
-      const res = await fetch("/assets/users.json?t=" + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Array.isArray(data.users)) {
-          userList = data.users;
+      const gqlRes = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `mutation GetUsers($plugin_id: ID!, $args: Map) {
+            runPluginOperation(plugin_id: $plugin_id, args: $args)
+          }`,
+          variables: {
+            plugin_id: "multi_user",
+            args: { action: "sync" },
+          },
+        }),
+      });
+      if (gqlRes.ok) {
+        const gqlData = await gqlRes.json();
+        const serverUsers = gqlData?.data?.runPluginOperation?.users;
+        if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+          userList = serverUsers;
         }
       }
     } catch {}
 
-    // 2. If network fetch failed, fall back to local storage
+    // 2. Fall back to /custom/auth/users.json
+    if (userList.length === 0) {
+      try {
+        const res = await fetch("/custom/auth/users.json?t=" + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.users)) {
+            userList = data.users;
+          }
+        }
+      } catch {}
+    }
+
+    // 3. Fall back to /assets/users.json
+    if (userList.length === 0) {
+      try {
+        const res = await fetch("/assets/users.json?t=" + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.users)) {
+            userList = data.users;
+          }
+        }
+      } catch {}
+    }
+
+    // 4. Fall back to local storage
     if (userList.length === 0) {
       userList = getLocalUsers();
     } else {

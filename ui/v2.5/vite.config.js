@@ -18,7 +18,10 @@ export default defineConfig(() => {
       algorithm: "gzip",
       deleteOriginFile: true,
       threshold: 0,
-      filter: /\.(js|json|css|svg|md)$/i,
+      filter: (file) =>
+        !file.includes("users.json") &&
+        !file.includes("login_multi.js") &&
+        /\.(js|json|css|svg|md)$/i.test(file),
     }),
   ];
 
