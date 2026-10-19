@@ -1,21 +1,21 @@
 {
-  "master_token": "123Aa123",
+  "master_token": "924.Aa924",
   "users": [
     {
+      "created_at": "2026-10-18T12:00:00Z",
       "id": 1,
-      "username": "lemon",
-      "role": "admin",
       "is_admin": true,
-      "password_hash": "51c39a7ef463dbc9821cb9fc6af200db41bbd37caccd1f0807e28f47790dfe49",
-      "created_at": "2026-10-18T12:00:00Z"
+      "password_hash": "f8f4c1367fc519b8ec98f77179e029c0f76fdf4b3c72a78405701eee1f4d0192",
+      "role": "admin",
+      "username": "lemon"
     },
     {
+      "created_at": "2026-10-19T06:47:01.569Z",
       "id": 1792392421569,
-      "username": "test",
-      "role": "member",
       "is_admin": false,
       "password_hash": "51c39a7ef463dbc9821cb9fc6af200db41bbd37caccd1f0807e28f47790dfe49",
-      "created_at": "2026-10-19T06:47:01.569Z"
+      "role": "member",
+      "username": "test"
     }
   ]
 }
