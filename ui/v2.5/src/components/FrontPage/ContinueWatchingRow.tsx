@@ -20,6 +20,7 @@ import {
   faPlay,
 } from "@fortawesome/free-solid-svg-icons";
 import { PatchComponent } from "src/patch";
+import { useUserActivity } from "src/utils/userActivity";
 
 export const ContinueWatchingRow: React.FC = PatchComponent(
   "ContinueWatchingRow",
@@ -32,111 +33,69 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
 
-    // 1. Query scenes with in-progress watch (resume_time > 0)
-    const inProgressQuery = GQL.useFindScenesQuery({
+    const { activities } = useUserActivity();
+
+    // Extract scene IDs that THIS user has watched or has progress on
+    const watchedIds = useMemo(() => {
+      const entries = Object.entries(activities)
+        .filter(
+          ([_, act]) =>
+            (act.resume_time ?? 0) > 0 || (act.play_count ?? 0) > 0
+        )
+        .sort(
+          (a, b) =>
+            (b[1].last_played_at || 0) - (a[1].last_played_at || 0)
+        )
+        .map(([id]) => parseInt(id, 10))
+        .filter((id) => !isNaN(id) && id > 0);
+      return entries.slice(0, 20);
+    }, [activities]);
+
+    const { data, loading, refetch } = GQL.useFindScenesQuery({
       fetchPolicy: "network-only",
+      skip: watchedIds.length === 0,
       variables: {
         filter: {
           page: 1,
           per_page: 20,
-          sort: "last_played_at",
-          direction: GQL.SortDirectionEnum.Desc,
         },
-        scene_filter: {
-          resume_time: {
-            value: 0,
-            modifier: GQL.CriterionModifier.GreaterThan,
-          },
-        },
+        scene_ids: watchedIds.length > 0 ? watchedIds : undefined,
       },
     });
 
-    // 2. Query completed/played scenes (play_count > 0)
-    const playedQuery = GQL.useFindScenesQuery({
-      fetchPolicy: "network-only",
-      variables: {
-        filter: {
-          page: 1,
-          per_page: 20,
-          sort: "last_played_at",
-          direction: GQL.SortDirectionEnum.Desc,
-        },
-        scene_filter: {
-          play_count: {
-            value: 0,
-            modifier: GQL.CriterionModifier.GreaterThan,
-          },
-        },
-      },
-    });
-
-    const refetchAll = useCallback(() => {
-      inProgressQuery.refetch().catch(() => {});
-      playedQuery.refetch().catch(() => {});
-    }, [inProgressQuery, playedQuery]);
-
-    // Refetch on mount and when tab becomes visible or focused
+    // Refetch when tab becomes focused
     useEffect(() => {
-      refetchAll();
       const handleFocus = () => {
-        refetchAll();
+        if (watchedIds.length > 0) {
+          refetch().catch(() => {});
+        }
       };
       window.addEventListener("focus", handleFocus);
       return () => window.removeEventListener("focus", handleFocus);
-    }, [refetchAll]);
-
-    const loading =
-      inProgressQuery.loading &&
-      !inProgressQuery.data &&
-      playedQuery.loading &&
-      !playedQuery.data;
+    }, [watchedIds, refetch]);
 
     const scenes = useMemo(() => {
-      const inProgress = inProgressQuery.data?.findScenes.scenes ?? [];
-      const played = playedQuery.data?.findScenes.scenes ?? [];
-
-      const map = new Map<string, (typeof inProgress)[number]>();
-      for (const s of inProgress) {
-        map.set(s.id, s);
+      if (watchedIds.length === 0) return [];
+      const foundScenes = data?.findScenes.scenes ?? [];
+      const map = new Map<string, (typeof foundScenes)[number]>();
+      for (const s of foundScenes) {
+        map.set(String(s.id), s);
       }
-      for (const s of played) {
-        if (!map.has(s.id)) {
-          map.set(s.id, s);
+
+      const list: typeof foundScenes = [];
+      for (const id of watchedIds) {
+        const s = map.get(String(id));
+        if (s) {
+          const userResume = activities[String(s.id)]?.resume_time ?? 0;
+          list.push({
+            ...s,
+            resume_time: userResume,
+          });
         }
       }
+      return list.slice(0, 10);
+    }, [watchedIds, data?.findScenes.scenes, activities]);
 
-      // Read local storage recent timestamps for optimal ordering
-      let localRecent: Array<{ id: string; time: number }> = [];
-      try {
-        const raw = localStorage.getItem("stash_recent_watched_scenes");
-        if (raw) localRecent = JSON.parse(raw);
-      } catch {}
-
-      const localTimeMap = new Map<string, number>();
-      for (const item of localRecent) {
-        localTimeMap.set(item.id, item.time);
-      }
-
-      const combined = Array.from(map.values());
-      combined.sort((a, b) => {
-        const aLocal = localTimeMap.get(a.id);
-        const bLocal = localTimeMap.get(b.id);
-        if (aLocal !== undefined && bLocal !== undefined) {
-          return bLocal - aLocal;
-        }
-        if (aLocal !== undefined) return -1;
-        if (bLocal !== undefined) return 1;
-
-        const aResume = a.resume_time ?? 0;
-        const bResume = b.resume_time ?? 0;
-        return bResume - aResume;
-      });
-
-      return combined.slice(0, 10);
-    }, [
-      inProgressQuery.data?.findScenes.scenes,
-      playedQuery.data?.findScenes.scenes,
-    ]);
 
     // Build playback queue so clicking a card allows smooth cycling in the player
     const sceneQueue = useMemo(() => {
@@ -184,7 +143,7 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
     };
 
     // If loading or no watch records exist, do not render
-    if (loading || scenes.length === 0) {
+    if ((loading && !data) || scenes.length === 0) {
       return null;
     }
 

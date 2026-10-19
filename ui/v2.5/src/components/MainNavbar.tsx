@@ -282,6 +282,11 @@ export const MainNavbar: React.FC = () => {
         <Button
           className="minimal logout-button d-flex align-items-center"
           href={`${baseURL}logout`}
+          onClick={() => {
+            try {
+              localStorage.removeItem("stash_current_user");
+            } catch (e) {}
+          }}
           title={intl.formatMessage({ id: "actions.logout" })}
         >
           <Icon icon={faSignOutAlt} />
@@ -426,6 +431,11 @@ export const MainNavbar: React.FC = () => {
               <a
                 className="d-flex flex-column align-items-center text-muted text-decoration-none logout-button"
                 href={`${baseURL}logout`}
+                onClick={() => {
+                  try {
+                    localStorage.removeItem("stash_current_user");
+                  } catch (e) {}
+                }}
               >
                 <Button className="minimal p-0 d-flex align-items-center justify-content-center">
                   <Icon icon={faSignOutAlt} />

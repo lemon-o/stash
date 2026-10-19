@@ -25,6 +25,7 @@ import { useConfigurationContext } from "src/hooks/Config";
 import { useToast } from "src/hooks/Toast";
 import { TextField } from "src/utils/field";
 import TextUtils from "src/utils/text";
+import { recordUserActivity } from "src/utils/userActivity";
 
 const History: React.FC<{
   className?: string;
@@ -258,6 +259,7 @@ export const SceneHistoryPanel: React.FC<ISceneHistoryProps> = ({ scene }) => {
 
   async function handleResetResume() {
     try {
+      recordUserActivity(scene.id, { reset: true });
       await resetResume({
         variables: {
           id: scene.id,

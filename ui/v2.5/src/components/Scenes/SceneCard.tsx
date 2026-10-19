@@ -32,6 +32,7 @@ import { FileSize } from "../Shared/FileSize";
 import { OCounterButton } from "../Shared/CountButton";
 import { defaultPreviewVolume } from "src/core/config";
 import { getSceneHoverVideoSource } from "src/utils/wallPreview";
+import { getUserResumeTime } from "src/utils/userActivity";
 
 interface IScenePreviewProps {
   isPortrait: boolean;
@@ -497,7 +498,7 @@ export const SceneCard = React.memo(
         width={props.width}
         linkClassName="scene-card-link"
         thumbnailSectionClassName="video-section"
-        resumeTime={props.scene.resume_time ?? undefined}
+        resumeTime={getUserResumeTime(props.scene.id) || undefined}
         duration={file?.duration ?? undefined}
         interactiveHeatmap={
           props.scene.interactive_speed

@@ -173,6 +173,32 @@
             } catch(e) {}
           }
 
+          // Pre-fetch user activity into localStorage before redirecting
+          try {
+            var actRes = await fetch("graphql", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                query: 'mutation Act($plugin_id: ID!, $args: Map) { runPluginOperation(plugin_id: $plugin_id, args: $args) }',
+                variables: {
+                  plugin_id: "multi_user",
+                  args: {
+                    action: "get_activity",
+                    user_id: activeUser.id,
+                    username: activeUser.username
+                  }
+                }
+              })
+            });
+            if (actRes.ok) {
+              var actData = await actRes.json();
+              var actObj = actData && actData.data && actData.data.runPluginOperation && actData.data.runPluginOperation.activity;
+              if (actObj) {
+                localStorage.setItem("stash_user_activity_" + activeUser.username.toLowerCase(), JSON.stringify(actObj));
+              }
+            }
+          } catch(e) {}
+
           window.location.replace(ret);
         } else {
           if (errBox) errBox.innerHTML = (window.localeStrings && window.localeStrings.invalid_credentials) || "用户名或密码错误";

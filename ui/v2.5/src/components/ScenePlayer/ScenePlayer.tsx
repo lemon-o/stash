@@ -57,6 +57,7 @@ import chromecast from "@silvermine/videojs-chromecast";
 import abLoopPlugin from "videojs-abloop";
 import ScreenUtils from "src/utils/screen";
 import { PatchComponent } from "src/patch";
+import { getUserResumeTime, recordUserActivity } from "src/utils/userActivity";
 
 // register videojs plugins
 airplay(videojs);
@@ -853,15 +854,15 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       const alwaysStartFromBeginning =
         uiConfig?.alwaysStartFromBeginning ?? false;
-      const resumeTime = scene.resume_time ?? 0;
+      const userResumeTime = getUserResumeTime(scene.id);
 
       let startPosition = _initialTimestamp;
       if (
         !startPosition &&
         !alwaysStartFromBeginning &&
-        file.duration > resumeTime
+        file.duration > userResumeTime
       ) {
-        startPosition = resumeTime;
+        startPosition = userResumeTime;
       }
 
       setTime(startPosition);
@@ -1024,6 +1025,10 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         const curTime = player.currentTime() || 0;
         const resumeSec = Math.max(1, curTime);
         recordWatch(curTime);
+        recordUserActivity(scene.id, {
+          resume_time: resumeSec,
+          play_count_inc: 1,
+        });
 
         // 1. Immediately persist resume_time so continue watching has current position
         sceneSaveActivity({
@@ -1047,6 +1052,9 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         const curTime = player.currentTime() || 0;
         const resumeSec = Math.max(1, curTime);
         recordWatch(curTime);
+        recordUserActivity(scene.id, {
+          resume_time: resumeSec,
+        });
         sceneSaveActivity({
           variables: {
             id: scene.id,
@@ -1074,6 +1082,11 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
         const resumeSec =
           resumeTime > 0 ? Math.max(1, resumeTime) : 0;
+        recordUserActivity(scene.id, {
+          resume_time: resumeSec,
+          play_duration: playDuration,
+        });
+
         await sceneSaveActivity({
           variables: {
             id: scene.id,
@@ -1087,6 +1100,10 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         if (!scene.id) return;
 
         recordWatch(0);
+        recordUserActivity(scene.id, {
+          resume_time: 0,
+          play_count_inc: 1,
+        });
 
         await sceneIncrementPlayCount({
           variables: {
