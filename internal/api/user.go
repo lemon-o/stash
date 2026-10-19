@@ -121,10 +121,6 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if id == 1 {
-		http.Error(w, "Forbidden: Cannot delete primary administrator account", http.StatusBadRequest)
-		return
-	}
 
 	mgr := manager.GetInstance()
 	if mgr.UserStore == nil {

@@ -166,42 +166,54 @@ export const SettingsSecurityPanel: React.FC = () => {
 
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
-    let localList = getLocalUsers();
+    let userList: IAccountUser[] = [];
 
-    // First try fetching latest user accounts from server assets
+    // 1. Try querying backend REST API
     try {
-      const assetRes = await fetch("/assets/users.json?t=" + Date.now());
-      if (assetRes.ok) {
-        const assetData = await assetRes.json();
-        if (
-          assetData &&
-          Array.isArray(assetData.users) &&
-          assetData.users.length > 0
-        ) {
-          localList = assetData.users;
-          saveLocalUsers(localList);
+      const res = await fetch("/api/users");
+      if (
+        res.ok &&
+        res.headers.get("content-type")?.includes("application/json")
+      ) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          userList = data;
         }
       }
     } catch {}
 
-    // Ensure admin user is present if list is empty
-    if (localList.length === 0 && general.username) {
-      const defaultAdmin: IAccountUser = {
-        id: 1,
-        username: general.username,
-        is_admin: true,
-        created_at: new Date().toISOString(),
-      };
-      localList = [defaultAdmin];
-      saveLocalUsers(localList);
-      syncUsersToBackend(localList);
+    // 2. If backend REST returned nothing, fall back to local storage
+    if (userList.length === 0) {
+      userList = getLocalUsers();
     }
 
-    setUsers(localList);
+    // 3. If still empty, check if general.username is set in config.yml
+    if (userList.length === 0 && general.username) {
+      userList = [
+        {
+          id: 1,
+          username: general.username,
+          is_admin: true,
+          created_at: new Date().toISOString(),
+        },
+      ];
+    }
+
+    // If general.username is empty and userList has only an old admin with no credentials, clean it
+    if (
+      !general.username &&
+      userList.length === 1 &&
+      (userList[0].id === 1 || userList[0].is_admin)
+    ) {
+      userList = [];
+    }
+
+    saveLocalUsers(userList);
+    setUsers(userList);
 
     let cur = getLocalCurrentUser();
-    if (!cur || !localList.some((u) => u.username === cur?.username)) {
-      cur = localList[0] ?? null;
+    if (!cur || !userList.some((u) => u.username === cur?.username)) {
+      cur = userList[0] ?? null;
       saveLocalCurrentUser(cur);
     }
     setCurrentUser(cur);
@@ -223,9 +235,8 @@ export const SettingsSecurityPanel: React.FC = () => {
 
     setIsCreating(true);
     try {
-      const localList = getLocalUsers();
       if (
-        localList.some(
+        users.some(
           (u) => u.username.toLowerCase() === uname.toLowerCase()
         )
       ) {
@@ -234,24 +245,45 @@ export const SettingsSecurityPanel: React.FC = () => {
         return;
       }
 
-      const pHash = await sha256(newPassword);
-      const isFirstAdmin = localList.length === 0;
-      const newUser: IAccountUser = {
+      const isFirstAdmin = users.length === 0;
+
+      // 1. If this is the first account (Admin), also save into config.yml
+      if (isFirstAdmin) {
+        await saveGeneral({ username: uname, password: newPassword });
+      }
+
+      // 2. Call backend REST API to create user in SQLite
+      let createdUser: IAccountUser = {
         id: isFirstAdmin ? 1 : Date.now(),
         username: uname,
         is_admin: isFirstAdmin,
-        password_hash: pHash,
         created_at: new Date().toISOString(),
       };
 
-      const updatedList = [...localList, newUser];
+      try {
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: uname, password: newPassword }),
+        });
+        if (
+          res.ok &&
+          res.headers.get("content-type")?.includes("application/json")
+        ) {
+          const data = await res.json();
+          if (data && data.id) {
+            createdUser = data;
+          }
+        }
+      } catch {}
+
+      const updatedList = [...users, createdUser];
       saveLocalUsers(updatedList);
       setUsers(updatedList);
-      await syncUsersToBackend(updatedList);
 
       if (isFirstAdmin) {
-        setCurrentUser(newUser);
-        saveLocalCurrentUser(newUser);
+        setCurrentUser(createdUser);
+        saveLocalCurrentUser(createdUser);
         Toast.success(`成功创建管理员账号: ${uname}`);
       } else {
         Toast.success(`成功创建成员账号: ${uname}`);
@@ -274,32 +306,48 @@ export const SettingsSecurityPanel: React.FC = () => {
   }
 
   async function handleDeleteUser(user: IAccountUser) {
-    if (user.id === 1 || user.is_admin) {
-      Toast.error("不可删除管理员默认账号");
-      return;
-    }
+    const isPrimaryAdmin =
+      user.id === 1 ||
+      user.is_admin ||
+      (general.username && user.username === general.username);
 
-    if (
-      !window.confirm(
-        `确定要删除账号 "${user.username}" 吗？该账号的所有独立观看记录将被清除。`
-      )
-    ) {
+    const confirmMsg = isPrimaryAdmin
+      ? `确定要删除管理员账号 "${user.username}" 吗？删除后将同时清除系统登录认证凭据，系统将恢复为免登录开放模式。`
+      : `确定要删除账号 "${user.username}" 吗？该账号的所有独立观看记录将被清除。`;
+
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
     try {
-      const localList = getLocalUsers().filter((u) => u.id !== user.id && u.username !== user.username);
-      saveLocalUsers(localList);
-      setUsers(localList);
-      await syncUsersToBackend(localList);
+      // 1. Try calling backend REST API
+      try {
+        await fetch(`/api/users/${user.id}`, { method: "DELETE" });
+      } catch {}
+
+      // 2. If admin was deleted, clear username & password in config.yml
+      if (isPrimaryAdmin) {
+        await saveGeneral({ username: "", password: "" });
+      }
+
+      // 3. Update local state
+      const remainingList = users.filter(
+        (u) => u.id !== user.id && u.username !== user.username
+      );
+      saveLocalUsers(remainingList);
+      setUsers(remainingList);
 
       if (currentUser?.username === user.username) {
-        const fallback = localList[0] ?? null;
+        const fallback = remainingList[0] ?? null;
         setCurrentUser(fallback);
         saveLocalCurrentUser(fallback);
       }
 
-      Toast.success(`账号 ${user.username} 已成功删除`);
+      if (isPrimaryAdmin && remainingList.length === 0) {
+        Toast.success("管理员账号已删除，系统已恢复为免登录开放模式");
+      } else {
+        Toast.success(`账号 ${user.username} 已成功删除`);
+      }
     } catch (err: any) {
       Toast.error(err.message || "删除账号异常");
     }
@@ -314,46 +362,23 @@ export const SettingsSecurityPanel: React.FC = () => {
 
     setIsChangingPassword(true);
     try {
-      const pHash = await sha256(changePassword);
-      const localList = getLocalUsers();
-      const updatedList = localList.map((u) => {
-        if (
-          u.id === selectedUserForPassword.id ||
-          u.username === selectedUserForPassword.username
-        ) {
-          return { ...u, password_hash: pHash };
-        }
-        return u;
-      });
-
-      saveLocalUsers(updatedList);
-      setUsers(updatedList);
-      await syncUsersToBackend(updatedList);
-
-      if (
+      const isPrimaryAdmin =
         selectedUserForPassword.id === 1 ||
         selectedUserForPassword.is_admin ||
-        selectedUserForPassword.username.toLowerCase() === "lemon"
-      ) {
+        (general.username &&
+          selectedUserForPassword.username === general.username);
+
+      if (isPrimaryAdmin) {
         await saveGeneral({ password: changePassword });
-        try {
-          await fetch("/graphql", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              query: `mutation SyncMaster($plugin_id: ID!, $args: Map) { runPluginOperation(plugin_id: $plugin_id, args: $args) }`,
-              variables: {
-                plugin_id: "multi_user",
-                args: {
-                  action: "save_master_token",
-                  token: changePassword,
-                  admin_hash: pHash,
-                },
-              },
-            }),
-          });
-        } catch {}
       }
+
+      try {
+        await fetch(`/api/users/${selectedUserForPassword.id}/password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: changePassword }),
+        });
+      } catch {}
 
       Toast.success(
         `已成功更新账号 ${selectedUserForPassword.username} 的密码`
@@ -534,7 +559,7 @@ export const SettingsSecurityPanel: React.FC = () => {
                       修改密码
                     </Button>
 
-                    {isCurrentAdmin && u.id !== 1 && !u.is_admin && (
+                    {isCurrentAdmin && (
                       <Button
                         variant="outline-danger"
                         size="sm"

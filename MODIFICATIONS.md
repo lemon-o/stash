@@ -2426,6 +2426,33 @@ npx pnpm run start
 
 ---
 
+### 任务八十二：测试账号全量清除、默认免登录开放态回归与全账号自由删除闭环
+
+* **问题背景与用户反馈**：
+  - 用户反馈：“怎么把 lemon 和 test 两个账户也打包进去了，默认不需要账户，而且账户还删除不了”。
+  - **根因分析**：
+    1. **测试账号与凭证残留打包**：在本地联调多用户系统时，测试账号 `lemon` 与 `test` 的哈希和令牌被意外存入了 `ui/v2.5/public/assets/users.json` 及 `login_multi.js` 的硬编码兜底变量中；在打包生产 Docker 镜像时被自动复制进静态资源目录，导致所有拉取镜像的用户默认均内置了这两个测试账号；
+    2. **SQLite 迁移强制注入假账号**：在 `pkg/sqlite/migrations/87_postmigrate.go` 中，原逻辑在未配置凭证（`username == ""`）时强行插入了名为 `admin` 的用户（ID: 1），违背了 Stash 默认全新安装免登录开放的原则；
+    3. **账号删除逻辑锁死（无法删除）**：
+       - 前端代码在 `SettingsSecurityPanel.tsx` 中对管理员账号硬编码了禁止删除规则（`u.id !== 1 && !u.is_admin`），导致无法显示删除按钮，且后台报错“不可删除管理员默认账号”；
+       - 后端 `internal/api/user.go` 与 `pkg/sqlite/user.go` 同样强制拦截 `if id == 1`；
+       - 前端每次刷新页面（`fetchUsers`）时重新拉取静态 `/assets/users.json`，即使本地删除了 `test`，一刷新页面又被静态文件重新恢复。
+
+* **精准代码落地与系统架构**：
+  1. **全域彻底清除测试账号与硬编码信息（`users.json` & `login_multi.js`）**：
+     - 将 `ui/v2.5/public/assets/users.json` 重置为空列表：`{ "users": [] }`；
+     - 彻底清除 `login_multi.js` 中所有硬编码的账号、密码哈希与固定请求体，恢复为通用轻量网关，仅根据用户实时输入的凭据发起认证；
+  2. **系统默认状态回归“免登录开放态”（`87_postmigrate.go` & `SettingsSecurityPanel.tsx`）**：
+     - 在数据库迁移脚本中加入条件限制：仅当用户已在 `config.yml` 中显式配置了用户名时（`username != ""`），才初始化超级管理员，绝不自动创建虚假账号；
+     - 前端在 `general.username` 为空且无成员时保持纯净空状态（0 个账号），完全免登录直通进入媒体库；
+  3. **全账号（含管理员）自由安全删除闭环**：
+     - 后端移除 `UserStore.Delete` 与 REST API 中关于 `id == 1` 的硬编码拦截；
+     - 前端为所有账号（包含管理员）均开放「删除」按钮：
+       - 当删除普通成员时：调用 `DELETE /api/users/{id}` 并同步清空本地缓存；
+       - 当删除管理员账号时：弹出风险二次确认，确认后同步调用 `saveGeneral({ username: "", password: "" })` 清空服务端配置，彻底清除认证凭据，使系统平滑安全地恢复为纯净的默认免登录开放模式。
+
+---
+
 *文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
 
