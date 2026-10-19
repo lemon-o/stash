@@ -1,0 +1,21 @@
+{
+  "master_token": "stash_session_master_2026",
+  "users": [
+    {
+      "id": 1,
+      "username": "lemon",
+      "role": "admin",
+      "is_admin": true,
+      "password_hash": "ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f",
+      "created_at": "2026-10-18T12:00:00Z"
+    },
+    {
+      "id": 2,
+      "username": "test",
+      "role": "member",
+      "is_admin": false,
+      "password_hash": "ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f",
+      "created_at": "2026-10-19T12:00:00Z"
+    }
+  ]
+}

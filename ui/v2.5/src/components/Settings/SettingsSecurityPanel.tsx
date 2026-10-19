@@ -22,11 +22,45 @@ interface IAccountUser {
   id: number;
   username: string;
   is_admin: boolean;
+  password_hash?: string;
   created_at?: string;
 }
 
 const STORAGE_KEY_USERS = "stash_user_accounts";
 const STORAGE_KEY_CURRENT_USER = "stash_current_user";
+
+async function sha256(str: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(str)
+  );
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function syncUsersToBackend(usersList: IAccountUser[]): Promise<void> {
+  try {
+    await fetch("/graphql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `mutation SyncUsers($plugin_id: ID!, $args: Map) {
+          runPluginOperation(plugin_id: $plugin_id, args: $args)
+        }`,
+        variables: {
+          plugin_id: "multi_user",
+          args: {
+            action: "save_users",
+            users: usersList,
+          },
+        },
+      }),
+    });
+  } catch (e) {
+    console.error("Failed to sync users to backend:", e);
+  }
+}
 
 function getLocalUsers(): IAccountUser[] {
   try {
@@ -134,45 +168,43 @@ export const SettingsSecurityPanel: React.FC = () => {
     setLoadingUsers(true);
     let localList = getLocalUsers();
 
-    // If general.username exists (from config.yml), ensure admin user is present
-    if (general.username) {
-      const existingAdmin = localList.find((u) => u.id === 1 || u.is_admin);
-      if (!existingAdmin) {
-        const defaultAdmin: IAccountUser = {
-          id: 1,
-          username: general.username,
-          is_admin: true,
-          created_at: new Date().toISOString(),
-        };
-        localList = [defaultAdmin, ...localList.filter((u) => u.id !== 1)];
-        saveLocalUsers(localList);
-      } else if (existingAdmin.username !== general.username) {
-        existingAdmin.username = general.username;
-        saveLocalUsers(localList);
+    // First try fetching latest user accounts from server assets
+    try {
+      const assetRes = await fetch("/assets/users.json?t=" + Date.now());
+      if (assetRes.ok) {
+        const assetData = await assetRes.json();
+        if (
+          assetData &&
+          Array.isArray(assetData.users) &&
+          assetData.users.length > 0
+        ) {
+          localList = assetData.users;
+          saveLocalUsers(localList);
+        }
       }
+    } catch {}
+
+    // Ensure admin user is present if list is empty
+    if (localList.length === 0 && general.username) {
+      const defaultAdmin: IAccountUser = {
+        id: 1,
+        username: general.username,
+        is_admin: true,
+        created_at: new Date().toISOString(),
+      };
+      localList = [defaultAdmin];
+      saveLocalUsers(localList);
+      syncUsersToBackend(localList);
     }
 
     setUsers(localList);
 
     let cur = getLocalCurrentUser();
-    if (!cur || !localList.some((u) => u.id === cur?.id)) {
+    if (!cur || !localList.some((u) => u.username === cur?.username)) {
       cur = localList[0] ?? null;
       saveLocalCurrentUser(cur);
     }
     setCurrentUser(cur);
-
-    // Optional API check if backend is running multi-user
-    try {
-      const listRes = await fetch("/api/users");
-      const ct = listRes.headers.get("content-type");
-      if (listRes.ok && ct && ct.includes("application/json")) {
-        const listData = await listRes.json();
-        if (Array.isArray(listData) && listData.length > 0) {
-          setUsers(listData);
-          saveLocalUsers(listData);
-        }
-      }
-    } catch {}
 
     setLoadingUsers(false);
   }, [general.username]);
@@ -202,44 +234,28 @@ export const SettingsSecurityPanel: React.FC = () => {
         return;
       }
 
-      const isFirstAdmin = localList.length === 0 && !general.username;
+      const pHash = await sha256(newPassword);
+      const isFirstAdmin = localList.length === 0;
       const newUser: IAccountUser = {
         id: isFirstAdmin ? 1 : Date.now(),
         username: uname,
         is_admin: isFirstAdmin,
+        password_hash: pHash,
         created_at: new Date().toISOString(),
       };
 
       const updatedList = [...localList, newUser];
       saveLocalUsers(updatedList);
       setUsers(updatedList);
+      await syncUsersToBackend(updatedList);
 
-      // If this is the admin (first account), sync with Stash native config.yml
       if (isFirstAdmin) {
-        await saveGeneral({
-          username: uname,
-          password: newPassword,
-        });
         setCurrentUser(newUser);
         saveLocalCurrentUser(newUser);
-        Toast.success(
-          `成功创建管理员账号: ${uname}（已同步配置后台凭证）`
-        );
+        Toast.success(`成功创建管理员账号: ${uname}`);
       } else {
         Toast.success(`成功创建成员账号: ${uname}`);
       }
-
-      // Also try API in case backend is supported
-      try {
-        await fetch("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: uname,
-            password: newPassword,
-          }),
-        });
-      } catch {}
 
       setNewUsername("");
       setNewPassword("");
@@ -272,22 +288,18 @@ export const SettingsSecurityPanel: React.FC = () => {
     }
 
     try {
-      const localList = getLocalUsers().filter((u) => u.id !== user.id);
+      const localList = getLocalUsers().filter((u) => u.id !== user.id && u.username !== user.username);
       saveLocalUsers(localList);
       setUsers(localList);
-      if (currentUser?.id === user.id) {
+      await syncUsersToBackend(localList);
+
+      if (currentUser?.username === user.username) {
         const fallback = localList[0] ?? null;
         setCurrentUser(fallback);
         saveLocalCurrentUser(fallback);
       }
 
       Toast.success(`账号 ${user.username} 已成功删除`);
-
-      try {
-        await fetch(`/api/users/${user.id}`, {
-          method: "DELETE",
-        });
-      } catch {}
     } catch (err: any) {
       Toast.error(err.message || "删除账号异常");
     }
@@ -302,33 +314,27 @@ export const SettingsSecurityPanel: React.FC = () => {
 
     setIsChangingPassword(true);
     try {
-      // If user 1 (admin), also update general settings for config.yml sync
-      if (
-        selectedUserForPassword.id === 1 ||
-        selectedUserForPassword.is_admin
-      ) {
-        await saveGeneral({
-          username: selectedUserForPassword.username,
-          password: changePassword,
-        });
-      }
+      const pHash = await sha256(changePassword);
+      const localList = getLocalUsers();
+      const updatedList = localList.map((u) => {
+        if (
+          u.id === selectedUserForPassword.id ||
+          u.username === selectedUserForPassword.username
+        ) {
+          return { ...u, password_hash: pHash };
+        }
+        return u;
+      });
+
+      saveLocalUsers(updatedList);
+      setUsers(updatedList);
+      await syncUsersToBackend(updatedList);
 
       Toast.success(
         `已成功更新账号 ${selectedUserForPassword.username} 的密码`
       );
       setChangePassword("");
       setShowPasswordModal(false);
-
-      try {
-        await fetch(
-          `/api/users/${selectedUserForPassword.id}/password`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ password: changePassword }),
-          }
-        );
-      } catch {}
     } catch (err: any) {
       Toast.error(err.message || "修改密码异常");
     } finally {

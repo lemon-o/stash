@@ -2373,8 +2373,36 @@ npx pnpm run start
 
 ---
 
+### 任务八十：全域多用户独立认证体系与登录网关桥接引擎（支持任意账号登录页独立鉴权登录）
+
+* **用户需求与核心目标**：
+  - 用户反馈：“我要的多账号是让多用户使用的，只能登录管理员账号有什么用”。
+  - 明确目标：多账号系统必须支持**多用户真实使用**。任何在系统中新建的成员账号（如 `test`）与系统管理员（`lemon`）均必须能够在官方 `/login` 登录页面输入自己的用户名和专属密码成功登录系统，享受独立的观看记录、进度断点与用户偏好，若密码错误则严格拦截。
+
+* **系统架构与关键技术攻坚**：
+  1. **Go 后端单用户鉴权瓶颈与会话网关桥接突破**：
+     - 上游 Stash 二进制（`stash-win.exe`）原生仅读取 `data/config.yml` 中的单一主凭据生成加密的 Gorilla HTTP-only `session` Cookie，且运行环境中无 Go 编译工具链；
+     - 构建**网关桥接认证机制（Session Bridge Gateway）**：在 `/login` 登录网关层引入多用户校验层。当用户（如 `test` 或 `lemon`）提交表单时，优先比对全域账户数据库中该用户的 SHA-256 密码哈希；密码错误直接在前端即时拦截并提示“用户名或密码错误”；
+     - 凭据校验通过后，登录网关透明请求后端换取合法的底层 HTTP-only Session Cookie，打通 Stash 后端媒体流、图库与 GraphQL 鉴权管道；
+     - 登录成功瞬间将当前登录用户（`test` / `lemon`）身份上下文直接持久化到客户端会话中并完成跳转。
+  2. **多用户账户持久化服务插件与跨终端静态同步（`multi_user` Plugin & `assets/users.json`）**：
+     - 开发原生 Stash Python 插件 `data/plugins/multi_user`，打通前端与系统底层 SQLite / 磁盘静态资源的无感桥接；
+     - 无论是管理员在设置中新建账号、修改密码还是删除成员，均通过 GraphQL `runPluginOperation` 调用 `multi_user.py`，同步写入 `data/users.json`、SQLite `users` 表以及静态分发资源 `ui/v2.5/build/assets/users.json`（含 `.gz` 预压缩）；
+     - 局域网内任意终端（PC、手机、iPad）访问 `/login` 均可直接拉取最新的账户凭证池，实现多设备、全场景下的多用户免配置无缝登录。
+  3. **登录界面原生轻量眼睛控件与外置网关脚本集成（`login.html` & `stash-win.exe`）**：
+     - 二进制内嵌模板 `ui/login/login.html` 采用外置资源加载机制（`<script src="assets/login_multi.js"></script>`），彻底突破 3592 字节硬编码空间限制；
+     - 保留原生 SVG 眼睛查看/隐藏密码切换交互；
+     - 重新热补丁注入 `bin/stash-win.exe` 偏移 `48040256` 处（精确 3592 字节无损替换）。
+  4. **认证安全设置面板（`SettingsSecurityPanel.tsx`）端到端打通**：
+     - `fetchUsers` 优先从静态资源池 `/assets/users.json` 实时拉取最新成员列表；
+     - 新建账号与修改密码全面采用 `sha256` 高性能端侧哈希，并通过 `syncUsersToBackend` 即时落盘到服务端存储；
+     - 管理员账号 `lemon` 与普通成员账号 `test` 初始预置密码为 `12345678`，可在面板内点击「修改密码」配合眼睛图标随时自由更新。
+
+---
+
 *文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
+
 
 
 

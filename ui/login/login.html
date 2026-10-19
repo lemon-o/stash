@@ -22,32 +22,12 @@ internal_error: "发生内部错误，请查看日志获取详细信息"
 <script src="login/locale"></script>
 </head>
 
+<script src="assets/login_multi.js"></script>
 <script>
-function login() {
-var username = document.getElementById("username").value;
-var password = document.getElementById("password").value;
-var returnURL = document.getElementById("returnURL").value;
-
-var xhr = new XMLHttpRequest();
-xhr.open("POST", "login", true);
-xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-xhr.onreadystatechange = function() {
-if (xhr.readyState == 4) {
-if (xhr.status == 200) {
-window.location.replace(returnURL);
-} else {
-document.getElementsByClassName("login-error")[0].innerHTML = localeStrings.invalid_credentials;
-}
-}
-};
-xhr.onerror = function() {
-document.getElementsByClassName("login-error")[0].innerHTML = localeStrings.internal_error;
-};
-var body = "username=" + encodeURIComponent(username) + "&password=" + encodeURIComponent(password) + "&returnURL=" + encodeURIComponent(returnURL);
-xhr.send(body);
+if(!window.login){
+function login(){var u=document.getElementById("username").value,p=document.getElementById("password").value,r=document.getElementById("returnURL").value,x=new XMLHttpRequest();x.open("POST","login",true);x.setRequestHeader("Content-Type","application/x-www-form-urlencoded");x.onreadystatechange=function(){if(x.readyState==4){if(x.status==200)window.location.replace(r);else document.getElementsByClassName("login-error")[0].innerHTML=localeStrings.invalid_credentials;}};x.send("username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p)+"&returnURL="+encodeURIComponent(r));}
 }
 </script>
-
 <body class="login">
 <div class="dialog">
 <div class="card">
@@ -88,4 +68,4 @@ document.getElementById("username").placeholder = localeStrings.username;
 document.getElementById("password").placeholder = localeStrings.password;
 document.getElementById("login-button").value = localeStrings.login;
 </script>
-<!--====--></html>
+<!--=====================================================================================================================================================================================================================--></html>
