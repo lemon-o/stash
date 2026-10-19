@@ -428,34 +428,13 @@ export const SettingsSecurityPanel: React.FC = () => {
                       {u.username}
                     </span>
 
-                    {isPrimaryAdmin ? (
+                    {isPrimaryAdmin && (
                       <Badge
                         variant="success"
                         className="px-2 py-1 font-weight-normal"
                         style={{ fontSize: "0.8rem" }}
                       >
                         管理员
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="secondary"
-                        className="px-2 py-1 font-weight-normal"
-                        style={{
-                          fontSize: "0.8rem",
-                          backgroundColor: "#4a5568",
-                        }}
-                      >
-                        普通成员
-                      </Badge>
-                    )}
-
-                    {isCurrent && (
-                      <Badge
-                        variant="info"
-                        className="px-2 py-1 font-weight-normal"
-                        style={{ fontSize: "0.8rem" }}
-                      >
-                        当前在线
                       </Badge>
                     )}
                   </div>
@@ -465,30 +444,18 @@ export const SettingsSecurityPanel: React.FC = () => {
                     className="d-inline-flex align-items-center flex-shrink-0 ml-3"
                     style={{ gap: "8px" }}
                   >
-                    {!isCurrent && (
-                      <Button
-                        variant="outline-light"
-                        size="sm"
-                        onClick={() => handleSwitchUser(u)}
-                      >
-                        切换账号
-                      </Button>
-                    )}
-
-                    {(isCurrentAdmin || isCurrent) && (
-                      <Button
-                        variant="outline-light"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedUserForPassword(u);
-                          setChangePassword("");
-                          setShowPasswordModal(true);
-                        }}
-                      >
-                        <Icon icon={faKey} className="mr-1" />
-                        修改密码
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline-light"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedUserForPassword(u);
+                        setChangePassword("");
+                        setShowPasswordModal(true);
+                      }}
+                    >
+                      <Icon icon={faKey} className="mr-1" />
+                      修改密码
+                    </Button>
 
                     {isCurrentAdmin && u.id !== 1 && !u.is_admin && (
                       <Button
@@ -527,11 +494,13 @@ export const SettingsSecurityPanel: React.FC = () => {
           >
             {intl.formatMessage({
               id: "config.general.auth.generate_api_key",
+              defaultMessage: "生成",
             })}
           </Button>
           <Button variant="danger" onClick={() => onClearAPIKey()}>
             {intl.formatMessage({
               id: "config.general.auth.clear_api_key",
+              defaultMessage: "清除",
             })}
           </Button>
         </div>
