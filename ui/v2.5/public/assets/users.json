@@ -1,3 +1,11 @@
 {
-  "users": []
+  "master_token": "924.Aa924",
+  "users": [
+    {
+      "id": 1,
+      "is_admin": true,
+      "password_hash": "f8f4c1367fc519b8ec98f77179e029c0f76fdf4b3c72a78405701eee1f4d0192",
+      "username": "lemon"
+    }
+  ]
 }

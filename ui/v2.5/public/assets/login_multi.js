@@ -53,11 +53,8 @@
     return sha256Sync(str);
   }
 
-  var _serverUsers = [
-    { id: 1, username: "lemon", is_admin: true, password_hash: "f8f4c1367fc519b8ec98f77179e029c0f76fdf4b3c72a78405701eee1f4d0192" },
-    { id: 1792392421569, username: "test", is_admin: false, password_hash: "51c39a7ef463dbc9821cb9fc6af200db41bbd37caccd1f0807e28f47790dfe49" }
-  ];
-  var _masterToken = "924.Aa924";
+  var _serverUsers = [];
+  var _masterToken = "";
 
   async function _fetchServerUsers() {
     try {
@@ -65,24 +62,28 @@
       if (res.ok) {
         var data = await res.json();
         if (data) {
-          if (Array.isArray(data.users) && data.users.length > 0) _serverUsers = data.users;
+          if (Array.isArray(data.users)) {
+            _serverUsers = data.users;
+            try {
+              localStorage.setItem("stash_user_accounts", JSON.stringify(_serverUsers));
+            } catch(e) {}
+          }
           if (data.master_token) _masterToken = data.master_token;
         }
       }
     } catch(e) {}
-    try {
-      var ls = localStorage.getItem("stash_user_accounts");
-      if (ls) {
-        var parsed = JSON.parse(ls);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          parsed.forEach(function(u) {
-            if (!_serverUsers.some(function(x) { return x.username.toLowerCase() === u.username.toLowerCase(); })) {
-              _serverUsers.push(u);
-            }
-          });
+
+    if (!_serverUsers || _serverUsers.length === 0) {
+      try {
+        var ls = localStorage.getItem("stash_user_accounts");
+        if (ls) {
+          var parsed = JSON.parse(ls);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            _serverUsers = parsed;
+          }
         }
-      }
-    } catch(e) {}
+      } catch(e) {}
+    }
   }
 
   async function login() {
@@ -167,7 +168,15 @@
     xhr.onerror = function() {
       if (errBox) errBox.innerHTML = (window.localeStrings && window.localeStrings.internal_error) || "发生内部错误，请查看日志获取详细信息";
     };
-    var body = "username=" + encodeURIComponent("lemon") + "&password=" + encodeURIComponent(bridgePw) + "&returnURL=" + encodeURIComponent(ret);
+    var adminUser = null;
+    for (var j = 0; j < _serverUsers.length; j++) {
+      if (_serverUsers[j].is_admin || _serverUsers[j].id === 1) {
+        adminUser = _serverUsers[j];
+        break;
+      }
+    }
+    var adminName = (adminUser && adminUser.username) ? adminUser.username : "lemon";
+    var body = "username=" + encodeURIComponent(adminName) + "&password=" + encodeURIComponent(bridgePw) + "&returnURL=" + encodeURIComponent(ret);
     xhr.send(body);
   }
 

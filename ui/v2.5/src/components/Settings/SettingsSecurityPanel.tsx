@@ -202,7 +202,12 @@ export const SettingsSecurityPanel: React.FC = () => {
 
     // 4. Resolve current user (preserve member session)
     let cur = getLocalCurrentUser();
-    if (!cur) {
+    if (
+      !cur ||
+      !userList.some(
+        (u) => u.username.toLowerCase() === cur?.username.toLowerCase()
+      )
+    ) {
       cur = userList.find((u) => u.is_admin) || userList[0] || null;
     } else {
       const matched = userList.find(
@@ -249,34 +254,21 @@ export const SettingsSecurityPanel: React.FC = () => {
         await saveGeneral({ username: uname, password: newPassword });
       }
 
-      // 2. Call backend REST API to create user in SQLite
-      let createdUser: IAccountUser = {
+      const pHash = await sha256(newPassword);
+      const createdUser: IAccountUser = {
         id: isFirstAdmin ? 1 : Date.now(),
         username: uname,
         is_admin: isFirstAdmin,
+        password_hash: pHash,
         created_at: new Date().toISOString(),
       };
-
-      try {
-        const res = await fetch("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: uname, password: newPassword }),
-        });
-        if (
-          res.ok &&
-          res.headers.get("content-type")?.includes("application/json")
-        ) {
-          const data = await res.json();
-          if (data && data.id) {
-            createdUser = data;
-          }
-        }
-      } catch {}
 
       const updatedList = [...users, createdUser];
       saveLocalUsers(updatedList);
       setUsers(updatedList);
+
+      // 同步到后端持久化存储 (users.json 及 SQLite)
+      await syncUsersToBackend(updatedList);
 
       if (isFirstAdmin) {
         setCurrentUser(createdUser);
@@ -306,7 +298,10 @@ export const SettingsSecurityPanel: React.FC = () => {
     const isPrimaryAdmin =
       user.id === 1 ||
       user.is_admin ||
-      (general.username && user.username === general.username);
+      Boolean(
+        general.username &&
+          user.username.toLowerCase() === general.username.toLowerCase()
+      );
 
     if (isPrimaryAdmin) {
       Toast.error("管理员账号不可删除");
@@ -322,25 +317,25 @@ export const SettingsSecurityPanel: React.FC = () => {
     }
 
     try {
-      // 1. Call backend REST API to permanently delete from SQLite database
-      const res = await fetch(`/api/users/${user.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || "后端删除失败");
-      }
-
-      // 2. Update local state and local storage
+      // 1. 更新本地状态与 localStorage
       const remainingList = users.filter(
-        (u) => u.id !== user.id && u.username !== user.username
+        (u) =>
+          u.id !== user.id &&
+          u.username.toLowerCase() !== user.username.toLowerCase()
       );
       saveLocalUsers(remainingList);
       setUsers(remainingList);
 
-      if (currentUser?.username === user.username) {
+      if (
+        currentUser?.username?.toLowerCase() === user.username.toLowerCase()
+      ) {
         const fallback = remainingList[0] ?? null;
         setCurrentUser(fallback);
         saveLocalCurrentUser(fallback);
       }
+
+      // 2. 调用后端持久化存储同步删除 (写入 users.json 并从 SQLite 清除)
+      await syncUsersToBackend(remainingList);
 
       Toast.success(`成员账号 ${user.username} 已成功删除`);
     } catch (err: any) {
@@ -358,9 +353,11 @@ export const SettingsSecurityPanel: React.FC = () => {
     const isTargetAdmin =
       selectedUserForPassword.id === 1 ||
       selectedUserForPassword.is_admin ||
-      (general.username &&
-        selectedUserForPassword.username.toLowerCase() ===
-          general.username.toLowerCase());
+      Boolean(
+        general.username &&
+          selectedUserForPassword.username.toLowerCase() ===
+            general.username.toLowerCase()
+      );
 
     // 核心安全校验：普通成员绝无权限修改管理员密码
     if (isTargetAdmin && !isCurrentAdmin) {
@@ -385,21 +382,46 @@ export const SettingsSecurityPanel: React.FC = () => {
         await saveGeneral({ password: changePassword });
       }
 
-      // 同步更新 SQLite 数据库用户表
-      const res = await fetch(
-        `/api/users/${selectedUserForPassword.id}/password`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: changePassword }),
+      const newHash = await sha256(changePassword);
+      const updatedList = users.map((u) => {
+        if (
+          u.id === selectedUserForPassword.id ||
+          u.username.toLowerCase() ===
+            selectedUserForPassword.username.toLowerCase()
+        ) {
+          return { ...u, password_hash: newHash };
         }
-      );
-      if (!res.ok) {
-        const errText = await res.text();
-        if (!isTargetAdmin) {
-          throw new Error(errText || "后端修改密码失败");
-        }
+        return u;
+      });
+
+      saveLocalUsers(updatedList);
+      setUsers(updatedList);
+
+      // 如果管理员修改了自身密码，同步更新 master_token，防止其他子账号桥接认证失效
+      if (isTargetAdmin && isCurrentAdmin) {
+        try {
+          await fetch("/graphql", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: `mutation SyncToken($plugin_id: ID!, $args: Map) {
+                runPluginOperation(plugin_id: $plugin_id, args: $args)
+              }`,
+              variables: {
+                plugin_id: "multi_user",
+                args: {
+                  action: "save_master_token",
+                  token: changePassword,
+                  admin_hash: newHash,
+                },
+              },
+            }),
+          });
+        } catch {}
       }
+
+      // 同步到后端持久化存储
+      await syncUsersToBackend(updatedList);
 
       Toast.success(
         `已成功更新账号 ${selectedUserForPassword.username} 的密码`
@@ -448,8 +470,7 @@ export const SettingsSecurityPanel: React.FC = () => {
     currentUser?.is_admin === true ||
     (currentUser?.username &&
       general.username &&
-      currentUser.username.toLowerCase() === general.username.toLowerCase() &&
-      currentUser.username.toLowerCase() !== "test")
+      currentUser.username.toLowerCase() === general.username.toLowerCase())
   );
 
   // 普通账户登陆后，不要显示其他所有账号，只需要管理自己的账号即可
@@ -457,18 +478,21 @@ export const SettingsSecurityPanel: React.FC = () => {
     if (isCurrentAdmin) {
       return users;
     }
-    const currentName = currentUser?.username?.toLowerCase() || "test";
-    const self = users.filter(
-      (u) => u.username.toLowerCase() === currentName
-    );
-    if (self.length > 0) return self;
-    return [
-      {
-        id: currentUser?.id || 1792392421569,
-        username: currentUser?.username || "test",
-        is_admin: false,
-      },
-    ];
+    const currentName = currentUser?.username?.toLowerCase();
+    if (currentName) {
+      const self = users.filter(
+        (u) => u.username.toLowerCase() === currentName
+      );
+      if (self.length > 0) return self;
+      return [
+        {
+          id: currentUser?.id || Date.now(),
+          username: currentUser.username,
+          is_admin: false,
+        },
+      ];
+    }
+    return [];
   }, [users, isCurrentAdmin, currentUser]);
 
   return (
@@ -728,7 +752,7 @@ export const SettingsSecurityPanel: React.FC = () => {
               <Form.Text className="text-muted mt-2">
                 {users.length === 0
                   ? "创建首个账号，该账号将自动设为系统管理员，并同步配置为系统后台认证凭证。"
-                  : "新建的账号为普通成员账号，拥有独立的观看记录与断点进度。普通账号无权创建新账号。"}
+                  : "新建的账号为普通成员账号，拥有独立的观看记录与断点进度。"}
               </Form.Text>
             </Form.Group>
           </Modal.Body>
