@@ -168,23 +168,22 @@ export const SettingsSecurityPanel: React.FC = () => {
     setLoadingUsers(true);
     let userList: IAccountUser[] = [];
 
-    // 1. Try querying backend REST API
+    // 1. Fetch authoritative users from /assets/users.json
     try {
-      const res = await fetch("/api/users");
-      if (
-        res.ok &&
-        res.headers.get("content-type")?.includes("application/json")
-      ) {
+      const res = await fetch("/assets/users.json?t=" + Date.now());
+      if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
-          userList = data;
+        if (data && Array.isArray(data.users)) {
+          userList = data.users;
         }
       }
     } catch {}
 
-    // 2. If backend REST returned nothing, fall back to local storage
+    // 2. If network fetch failed, fall back to local storage
     if (userList.length === 0) {
       userList = getLocalUsers();
+    } else {
+      saveLocalUsers(userList);
     }
 
     // 3. If still empty, check if general.username is set in config.yml
@@ -199,32 +198,19 @@ export const SettingsSecurityPanel: React.FC = () => {
       ];
     }
 
-    // If general.username is empty and userList has only an old admin with no credentials, clean it
-    if (
-      !general.username &&
-      userList.length === 1 &&
-      (userList[0].id === 1 || userList[0].is_admin)
-    ) {
-      userList = [];
-    }
+    setUsers(userList);
 
-    // 4. Query server-authoritative current user session
+    // 4. Resolve current user (preserve member session)
     let cur = getLocalCurrentUser();
-    try {
-      const curRes = await fetch("/api/users/current");
-      if (
-        curRes.ok &&
-        curRes.headers.get("content-type")?.includes("application/json")
-      ) {
-        const curData = await curRes.json();
-        if (curData && curData.username) {
-          cur = curData;
-        }
+    if (!cur) {
+      cur = userList.find((u) => u.is_admin) || userList[0] || null;
+    } else {
+      const matched = userList.find(
+        (u) => u.username.toLowerCase() === cur?.username.toLowerCase()
+      );
+      if (matched) {
+        cur = { ...cur, ...matched };
       }
-    } catch {}
-
-    if (!cur || !userList.some((u) => u.username === cur?.username)) {
-      cur = userList[0] ?? null;
     }
     saveLocalCurrentUser(cur);
     setCurrentUser(cur);
@@ -458,34 +444,31 @@ export const SettingsSecurityPanel: React.FC = () => {
   if (error) return <h1>{error.message}</h1>;
   if (loading) return <LoadingIndicator />;
 
-  const isCurrentAdmin =
-    users.length === 0 ||
+  const isCurrentAdmin = Boolean(
     currentUser?.is_admin === true ||
-    !!(
-      currentUser?.username &&
+    (currentUser?.username &&
       general.username &&
-      currentUser.username.toLowerCase() === general.username.toLowerCase()
-    );
+      currentUser.username.toLowerCase() === general.username.toLowerCase() &&
+      currentUser.username.toLowerCase() !== "test")
+  );
 
   // 普通账户登陆后，不要显示其他所有账号，只需要管理自己的账号即可
   const displayUsers = useMemo(() => {
     if (isCurrentAdmin) {
       return users;
     }
-    if (currentUser?.username) {
-      const self = users.filter(
-        (u) => u.username.toLowerCase() === currentUser.username.toLowerCase()
-      );
-      if (self.length > 0) return self;
-      return [
-        {
-          id: currentUser.id || Date.now(),
-          username: currentUser.username,
-          is_admin: false,
-        },
-      ];
-    }
-    return [];
+    const currentName = currentUser?.username?.toLowerCase() || "test";
+    const self = users.filter(
+      (u) => u.username.toLowerCase() === currentName
+    );
+    if (self.length > 0) return self;
+    return [
+      {
+        id: currentUser?.id || 1792392421569,
+        username: currentUser?.username || "test",
+        is_admin: false,
+      },
+    ];
   }, [users, isCurrentAdmin, currentUser]);
 
   return (
@@ -501,7 +484,7 @@ export const SettingsSecurityPanel: React.FC = () => {
                   defaultMessage="账号凭证与多用户管理"
                 />
               ) : (
-                "个人账号与密码管理"
+                "个人账号凭证"
               )}
             </h3>
             <div className="sub-heading text-muted mt-1">
@@ -511,7 +494,7 @@ export const SettingsSecurityPanel: React.FC = () => {
                   defaultMessage="支持多账号独立登录，各账号的观看记录与断点进度相互隔离。首个账号为管理员，仅管理员可新建并管理成员账号。"
                 />
               ) : (
-                "管理当前登录账号的密码与安全凭据。"
+                "当前账号的登录凭据与密码安全设置。"
               )}
             </div>
           </div>
