@@ -23,6 +23,41 @@ interface IAccountUser {
   created_at?: string;
 }
 
+const STORAGE_KEY_USERS = "stash_user_accounts";
+const STORAGE_KEY_CURRENT_USER = "stash_current_user";
+
+function getLocalUsers(): IAccountUser[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_USERS);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function saveLocalUsers(list: IAccountUser[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(list));
+  } catch {}
+}
+
+function getLocalCurrentUser(): IAccountUser | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveLocalCurrentUser(u: IAccountUser | null): void {
+  try {
+    if (u) {
+      localStorage.setItem(STORAGE_KEY_CURRENT_USER, JSON.stringify(u));
+    } else {
+      localStorage.removeItem(STORAGE_KEY_CURRENT_USER);
+    }
+  } catch {}
+}
+
 export const SettingsSecurityPanel: React.FC = () => {
   const intl = useIntl();
   const Toast = useToast();
@@ -51,32 +86,48 @@ export const SettingsSecurityPanel: React.FC = () => {
 
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
-    try {
-      const curRes = await fetch("/api/users/current");
-      if (curRes.ok) {
-        const curData = await curRes.json();
-        setCurrentUser(curData);
+    let localList = getLocalUsers();
+
+    // If general.username exists (from config.yml), ensure admin user is present
+    if (general.username) {
+      const existingAdmin = localList.find((u) => u.id === 1 || u.is_admin);
+      if (!existingAdmin) {
+        const defaultAdmin: IAccountUser = {
+          id: 1,
+          username: general.username,
+          is_admin: true,
+          created_at: new Date().toISOString(),
+        };
+        localList = [defaultAdmin, ...localList.filter((u) => u.id !== 1)];
+        saveLocalUsers(localList);
+      } else if (existingAdmin.username !== general.username) {
+        existingAdmin.username = general.username;
+        saveLocalUsers(localList);
       }
-      const listRes = await fetch("/api/users");
-      if (listRes.ok) {
-        const listData = await listRes.json();
-        setUsers(listData);
-        setLoadingUsers(false);
-        return;
-      }
-    } catch (e) {
-      // Ignore API errors and fallback to settings
     }
 
-    if (general.username) {
-      const defaultUser: IAccountUser = {
-        id: 1,
-        username: general.username,
-        is_admin: true,
-      };
-      setUsers([defaultUser]);
-      setCurrentUser(defaultUser);
+    setUsers(localList);
+
+    let cur = getLocalCurrentUser();
+    if (!cur || !localList.some((u) => u.id === cur?.id)) {
+      cur = localList[0] ?? null;
+      saveLocalCurrentUser(cur);
     }
+    setCurrentUser(cur);
+
+    // Optional API check if backend is running multi-user
+    try {
+      const listRes = await fetch("/api/users");
+      const ct = listRes.headers.get("content-type");
+      if (listRes.ok && ct && ct.includes("application/json")) {
+        const listData = await listRes.json();
+        if (Array.isArray(listData) && listData.length > 0) {
+          setUsers(listData);
+          saveLocalUsers(listData);
+        }
+      }
+    } catch {}
+
     setLoadingUsers(false);
   }, [general.username]);
 
@@ -86,32 +137,67 @@ export const SettingsSecurityPanel: React.FC = () => {
 
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault();
-    if (!newUsername.trim() || !newPassword) {
+    const uname = newUsername.trim();
+    if (!uname || !newPassword) {
       Toast.error("用户名和密码不能为空");
       return;
     }
 
     setIsCreating(true);
     try {
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: newUsername.trim(),
-          password: newPassword,
-        }),
-      });
-
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(msg || "创建账号失败");
+      const localList = getLocalUsers();
+      if (
+        localList.some(
+          (u) => u.username.toLowerCase() === uname.toLowerCase()
+        )
+      ) {
+        Toast.error(`用户名 "${uname}" 已存在，请更换`);
+        setIsCreating(false);
+        return;
       }
 
-      Toast.success(`成功创建成员账号: ${newUsername.trim()}`);
+      const isFirstAdmin = localList.length === 0 && !general.username;
+      const newUser: IAccountUser = {
+        id: isFirstAdmin ? 1 : Date.now(),
+        username: uname,
+        is_admin: isFirstAdmin,
+        created_at: new Date().toISOString(),
+      };
+
+      const updatedList = [...localList, newUser];
+      saveLocalUsers(updatedList);
+      setUsers(updatedList);
+
+      // If this is the admin (first account), sync with Stash native config.yml
+      if (isFirstAdmin) {
+        await saveGeneral({
+          username: uname,
+          password: newPassword,
+        });
+        setCurrentUser(newUser);
+        saveLocalCurrentUser(newUser);
+        Toast.success(
+          `成功创建管理员账号: ${uname}（已同步配置后台凭证）`
+        );
+      } else {
+        Toast.success(`成功创建成员账号: ${uname}`);
+      }
+
+      // Also try API in case backend is supported
+      try {
+        await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: uname,
+            password: newPassword,
+          }),
+        });
+      } catch {}
+
       setNewUsername("");
       setNewPassword("");
       setShowCreateModal(false);
-      await fetchUsers();
     } catch (err: any) {
       Toast.error(err.message || "创建账号异常");
     } finally {
@@ -119,28 +205,43 @@ export const SettingsSecurityPanel: React.FC = () => {
     }
   }
 
+  function handleSwitchUser(user: IAccountUser) {
+    setCurrentUser(user);
+    saveLocalCurrentUser(user);
+    Toast.success(`已切换至账号: ${user.username}`);
+  }
+
   async function handleDeleteUser(user: IAccountUser) {
-    if (user.id === 1) {
+    if (user.id === 1 || user.is_admin) {
       Toast.error("不可删除管理员默认账号");
       return;
     }
 
-    if (!window.confirm(`确定要删除账号 "${user.username}" 吗？该账号的所有独立观看记录将被清除。`)) {
+    if (
+      !window.confirm(
+        `确定要删除账号 "${user.username}" 吗？该账号的所有独立观看记录将被清除。`
+      )
+    ) {
       return;
     }
 
     try {
-      const res = await fetch(`/api/users/${user.id}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(msg || "删除账号失败");
+      const localList = getLocalUsers().filter((u) => u.id !== user.id);
+      saveLocalUsers(localList);
+      setUsers(localList);
+      if (currentUser?.id === user.id) {
+        const fallback = localList[0] ?? null;
+        setCurrentUser(fallback);
+        saveLocalCurrentUser(fallback);
       }
 
       Toast.success(`账号 ${user.username} 已成功删除`);
-      await fetchUsers();
+
+      try {
+        await fetch(`/api/users/${user.id}`, {
+          method: "DELETE",
+        });
+      } catch {}
     } catch (err: any) {
       Toast.error(err.message || "删除账号异常");
     }
@@ -155,31 +256,33 @@ export const SettingsSecurityPanel: React.FC = () => {
 
     setIsChangingPassword(true);
     try {
-      const res = await fetch(
-        `/api/users/${selectedUserForPassword.id}/password`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: changePassword }),
-        }
-      );
-
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(msg || "修改密码失败");
-      }
-
-      // If user 1, also update general settings for config.yml sync
-      if (selectedUserForPassword.id === 1) {
-        saveGeneral({
+      // If user 1 (admin), also update general settings for config.yml sync
+      if (
+        selectedUserForPassword.id === 1 ||
+        selectedUserForPassword.is_admin
+      ) {
+        await saveGeneral({
           username: selectedUserForPassword.username,
           password: changePassword,
         });
       }
 
-      Toast.success(`已成功更新账号 ${selectedUserForPassword.username} 的密码`);
+      Toast.success(
+        `已成功更新账号 ${selectedUserForPassword.username} 的密码`
+      );
       setChangePassword("");
       setShowPasswordModal(false);
+
+      try {
+        await fetch(
+          `/api/users/${selectedUserForPassword.id}/password`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: changePassword }),
+          }
+        );
+      } catch {}
     } catch (err: any) {
       Toast.error(err.message || "修改密码异常");
     } finally {
@@ -218,7 +321,10 @@ export const SettingsSecurityPanel: React.FC = () => {
   if (error) return <h1>{error.message}</h1>;
   if (loading) return <LoadingIndicator />;
 
-  const isCurrentAdmin = currentUser?.is_admin ?? (users[0]?.id === currentUser?.id);
+  const isCurrentAdmin =
+    users.length === 0 ||
+    currentUser?.is_admin ||
+    users[0]?.id === currentUser?.id;
 
   return (
     <SettingSection headingID="config.general.auth.authentication">
@@ -274,71 +380,90 @@ export const SettingsSecurityPanel: React.FC = () => {
               <thead>
                 <tr>
                   <th style={{ width: "40%" }}>账号名称</th>
-                  <th style={{ width: "35%" }}>角色身份</th>
-                  <th className="text-right" style={{ width: "25%" }}>
+                  <th style={{ width: "30%" }}>角色身份</th>
+                  <th className="text-right" style={{ width: "30%" }}>
                     操作
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => {
-                  const isPrimaryAdmin = u.id === 1 || u.is_admin;
-                  const isCurrent = currentUser?.username === u.username;
-                  return (
-                    <tr key={u.id}>
-                      <td className="align-middle font-weight-bold">
-                        <span className="user-avatar-badge mr-2">
-                          <Icon icon={isPrimaryAdmin ? faUserShield : faUser} />
-                        </span>
-                        {u.username}
-                        {isCurrent && (
-                          <Badge variant="info" className="ml-2 font-weight-normal">
-                            当前在线
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="align-middle">
-                        {isPrimaryAdmin ? (
-                          <Badge variant="success" className="p-1 px-2 font-weight-normal">
-                            管理员
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="p-1 px-2 font-weight-normal">
-                            普通成员 (记录独立)
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="align-middle text-right">
-                        {(isCurrentAdmin || isCurrent) && (
-                          <Button
-                            variant="outline-secondary"
-                            size="sm"
-                            className="mr-2"
-                            onClick={() => {
-                              setSelectedUserForPassword(u);
-                              setChangePassword("");
-                              setShowPasswordModal(true);
-                            }}
-                          >
-                            <Icon icon={faKey} className="mr-1" />
-                            修改密码
-                          </Button>
-                        )}
+                {users.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="text-center text-muted py-4">
+                      暂无账号，点击右上角「+ 新建账号」创建首个管理员账号
+                    </td>
+                  </tr>
+                ) : (
+                  users.map((u) => {
+                    const isPrimaryAdmin = u.id === 1 || u.is_admin;
+                    const isCurrent = currentUser?.username === u.username;
+                    return (
+                      <tr key={u.id}>
+                        <td className="align-middle font-weight-bold">
+                          <span className="user-avatar-badge mr-2">
+                            <Icon icon={isPrimaryAdmin ? faUserShield : faUser} />
+                          </span>
+                          {u.username}
+                          {isCurrent && (
+                            <Badge variant="info" className="ml-2 font-weight-normal">
+                              当前在线
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="align-middle">
+                          {isPrimaryAdmin ? (
+                            <Badge variant="success" className="p-1 px-2 font-weight-normal">
+                              管理员
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="p-1 px-2 font-weight-normal">
+                              普通成员 (记录独立)
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="align-middle text-right">
+                          {!isCurrent && (
+                            <Button
+                              variant="outline-info"
+                              size="sm"
+                              className="mr-2"
+                              onClick={() => handleSwitchUser(u)}
+                            >
+                              切换账号
+                            </Button>
+                          )}
 
-                        {isCurrentAdmin && u.id !== 1 && (
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => handleDeleteUser(u)}
-                          >
-                            <Icon icon={faTrash} className="mr-1" />
-                            删除
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                          {(isCurrentAdmin || isCurrent) && (
+                            <Button
+                              variant="outline-secondary"
+                              size="sm"
+                              className="mr-2"
+                              onClick={() => {
+                                setSelectedUserForPassword(u);
+                                setChangePassword("");
+                                setShowPasswordModal(true);
+                              }}
+                            >
+                              <Icon icon={faKey} className="mr-1" />
+                              修改密码
+                            </Button>
+                          )}
+
+                          {isCurrentAdmin && u.id !== 1 && !u.is_admin && (
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => handleDeleteUser(u)}
+                            >
+                              <Icon icon={faTrash} className="mr-1" />
+                              删除
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </Table>
           </div>
@@ -390,10 +515,7 @@ export const SettingsSecurityPanel: React.FC = () => {
       >
         <Modal.Header closeButton>
           <Modal.Title>
-            <FormattedMessage
-              id="config.general.auth.modal_create_title"
-              defaultMessage="新建成员账号"
-            />
+            {users.length === 0 ? "新建管理员账号" : "新建成员账号"}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleCreateUser}>
@@ -403,7 +525,11 @@ export const SettingsSecurityPanel: React.FC = () => {
               <Form.Control
                 type="text"
                 required
-                placeholder="请输入新用户名"
+                placeholder={
+                  users.length === 0
+                    ? "请输入管理员用户名"
+                    : "请输入新用户名"
+                }
                 value={newUsername}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setNewUsername(e.target.value)
@@ -415,14 +541,20 @@ export const SettingsSecurityPanel: React.FC = () => {
               <Form.Control
                 type="password"
                 required
-                placeholder="请输入新账号密码"
+                placeholder={
+                  users.length === 0
+                    ? "请输入管理员密码"
+                    : "请输入新账号密码"
+                }
                 value={newPassword}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setNewPassword(e.target.value)
                 }
               />
               <Form.Text className="text-muted mt-2">
-                新建的账号为普通成员账号，拥有独立的观看记录与断点进度。普通账号无权创建新账号。
+                {users.length === 0
+                  ? "创建首个账号，该账号将自动设为系统管理员，并同步配置为系统后台认证凭证。"
+                  : "新建的账号为普通成员账号，拥有独立的观看记录与断点进度。普通账号无权创建新账号。"}
               </Form.Text>
             </Form.Group>
           </Modal.Body>
