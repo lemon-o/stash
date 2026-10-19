@@ -108,7 +108,8 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
         !target.closest(".vjs-control-bar") &&
         !target.closest(".vjs-yt-settings-panel") &&
         !target.closest(".vjs-modal-dialog") &&
-        !target.closest(".vjs-menu")
+        !target.closest(".vjs-menu") &&
+        !target.closest(".vjs-big-play-button")
       ) {
         e.stopPropagation();
         e.preventDefault();
@@ -124,14 +125,15 @@ class TouchGesturesPlugin extends videojs.getPlugin("plugin") {
     }
 
     const target = e.target as HTMLElement;
-    // Don't intercept touches on control bar, settings panel, modal dialogs, or normal control buttons
+    // Don't intercept touches on control bar, settings panel, modal dialogs, normal buttons, or big play button
     if (
       target.closest(".vjs-control-bar") ||
       target.closest(".vjs-yt-settings-panel") ||
       target.closest(".vjs-modal-dialog") ||
       target.closest(".vjs-menu") ||
       target.closest(".vjs-loading-spinner") ||
-      (target.closest(".vjs-button") && !target.closest(".vjs-big-play-button"))
+      target.closest(".vjs-button") ||
+      target.closest(".vjs-big-play-button")
     ) {
       this.touchedTarget = null;
       return;

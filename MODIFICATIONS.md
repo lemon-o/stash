@@ -2161,7 +2161,46 @@ npx pnpm run start
 
 ---
 
-*文档更新时间：2026-10-18*  
+### 任务七十一：首页「继续观看」观看记录无感即时录入与移动端屏幕大三角播放/暂停冲突彻底修复
+
+* **问题背景与深入根因分析**：
+  1. **Bug 1（继续观看不新增观看记录，特别是多用户功能增加后）**：
+     - **后端断点与视图更新机制**：在当前 Stash 架构中，调用 `sceneSaveActivity` 只更新 `scenes.resume_time`，**不会更新 `scenes.updated_at`**。因此此前使用 `sort: "updated_at"` 排序导致刚播放的视频其 `updated_at` 仍然停留在文件入库或刮削时的旧时间，在全库数百部短片中无法排入前列；
+     - **SQLite 整数强制转换阻断**：Stash 官方的 `scene_filter.resume_time` 底层使用 `CAST(scenes.resume_time AS INT) > 0`。此前代码在视频起播时写入 `resume_time = 0.1`，在 SQLite 中强转整数后结果为 `0`，`0 > 0` 判定为 False，导致刚看的视频在 `inProgressQuery` 中被完全丢弃；
+     - **播放计数与历史时间戳未即时写入**：`scenes.last_played_at` 严格依赖 `scenes_view_dates` 表的记录（由 `sceneIncrementPlayCount` 触发）。此前仅在达到 `minimumPlayPercent`（或 10 秒心跳）后才调用增量计数；若用户点开视频试看数秒即退出，`sceneIncrementPlayCount` 从未执行，导致 `scenes_view_dates` 完全没有新增记录，`playedQuery`（按 `last_played_at DESC`）始终无法查询到新视频；
+     - **缓存策略延迟**：此前 `fetchPolicy: "cache-and-network"` 在页面组件初次挂载时可能仅展示内存快照，且组件挂载时未显式调用 `refetchAll()`。
+  2. **Bug 2（手机端触屏播放如果点击大三角播放会又再暂停）**：
+     - **触摸事件竞争与状态反转**：在 `touch-gestures.ts` 的 `onTouchStart` 中，原豁免条件为 `(target.closest(".vjs-button") && !target.closest(".vjs-big-play-button"))`，特意把居中大播放按钮（`.vjs-big-play-button`）排除在豁免之外，记录了 `this.touchedTarget = target`；
+     - 当用户在移动端手指轻触大播放按钮时，Video.js 自身绑定的事件优先响应将视频起播（`player.play()`）；随后 `onTouchEnd` 触发，检测到当前播放器已经是播放状态（`!player.paused()`），直接执行了 `this.player.pause()`！造成“点大三角刚开始播放就立刻被暂停”的恶性循环。
+
+* **精准代码落地与系统架构**：
+  1. **彻底解决大三角播放冲突（`touch-gestures.ts`）**：
+     - 将 `.vjs-big-play-button` 正式加入触屏拦截豁免白名单：
+       ```ts
+       target.closest(".vjs-control-bar") ||
+       target.closest(".vjs-yt-settings-panel") ||
+       target.closest(".vjs-modal-dialog") ||
+       target.closest(".vjs-menu") ||
+       target.closest(".vjs-loading-spinner") ||
+       target.closest(".vjs-button") ||
+       target.closest(".vjs-big-play-button")
+       ```
+     - 点击居中大播放按钮时，完全交由 Video.js 原生底层逻辑稳定驱动起播，`touch-gestures.ts` 绝不二次插手与误暂停；
+     - 视频起播后大三角自动隐藏，用户轻触画面任意空白处立即平滑暂停；暂停后再轻触空白处或控制条播放按钮即刻起播，体验与各大主流移动端流媒体播放器完全一致。
+  2. **全生命周期观看行为即时落盘与双路强效关联（`ScenePlayer.tsx` & `track-activity.ts`）**：
+     - **起播即时写库**：在 `player.on("play")` 中立即同时调用：
+       1. `sceneSaveActivity`：写入 `resume_time = Math.max(1, curTime)`（确保 `resume_time >= 1`，彻底满足 SQLite `CAST(resume_time AS INT) > 0` 判据）；
+       2. `sceneIncrementPlayCount`：立即向 `scenes_view_dates` 插入当前毫秒级时间戳记录，使得 `last_played_at = NOW` 且 `play_count >= 1`，无论看几秒退出，后端数据库都有不可磨灭的真实观看记录！
+     - **全生命周期断点同步**：对 `player.on("pause")`、`player.on("seeked")` 及移动端后台挂起 `document.addEventListener("visibilitychange")` 进行全面监听，实时精确同步最新断点位置至数据库与 `localStorage`；
+     - **NaN 与零除防御（`track-activity.ts`）**：修复短片元数据初加载时 `videoDuration` 处于 `NaN` 导致的条件判断失效，杜绝心跳异常。
+  3. **首页「继续观看」网络策略与排序逻辑重构（`ContinueWatchingRow.tsx`）**：
+     - **统一基准按 `last_played_at DESC` 检索**：`inProgressQuery`（`resume_time > 0`）与 `playedQuery`（`play_count > 0`）均按 `last_played_at DESC` 检索前 20 部；
+     - **强制 `network-only` 与挂载即拉取**：组件初次加载、页面重新对焦、从播放器点击返回时，100% 从服务器拉取最新的观影记录与断点时长，绝不显示停留在过去的旧缓存；
+     - **多维优先级置顶**：优先以本地播放毫秒级时间戳排序，再以服务端断点进度排序，保证刚看过的视频稳稳呈现在「继续观看」第一位。
+
+---
+
+*文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
 
 

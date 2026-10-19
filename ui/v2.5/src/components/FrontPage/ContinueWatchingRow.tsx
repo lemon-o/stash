@@ -34,12 +34,12 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
 
     // 1. Query scenes with in-progress watch (resume_time > 0)
     const inProgressQuery = GQL.useFindScenesQuery({
-      fetchPolicy: "cache-and-network",
+      fetchPolicy: "network-only",
       variables: {
         filter: {
           page: 1,
-          per_page: 15,
-          sort: "updated_at",
+          per_page: 20,
+          sort: "last_played_at",
           direction: GQL.SortDirectionEnum.Desc,
         },
         scene_filter: {
@@ -53,11 +53,11 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
 
     // 2. Query completed/played scenes (play_count > 0)
     const playedQuery = GQL.useFindScenesQuery({
-      fetchPolicy: "cache-and-network",
+      fetchPolicy: "network-only",
       variables: {
         filter: {
           page: 1,
-          per_page: 15,
+          per_page: 20,
           sort: "last_played_at",
           direction: GQL.SortDirectionEnum.Desc,
         },
@@ -75,8 +75,9 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       playedQuery.refetch().catch(() => {});
     }, [inProgressQuery, playedQuery]);
 
-    // Refetch when tab becomes visible or focused
+    // Refetch on mount and when tab becomes visible or focused
     useEffect(() => {
+      refetchAll();
       const handleFocus = () => {
         refetchAll();
       };
@@ -125,7 +126,10 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
         }
         if (aLocal !== undefined) return -1;
         if (bLocal !== undefined) return 1;
-        return 0;
+
+        const aResume = a.resume_time ?? 0;
+        const bResume = b.resume_time ?? 0;
+        return bResume - aResume;
       });
 
       return combined.slice(0, 10);

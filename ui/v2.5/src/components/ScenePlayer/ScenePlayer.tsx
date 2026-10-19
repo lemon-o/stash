@@ -1022,27 +1022,63 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       const handlePlay = () => {
         const curTime = player.currentTime() || 0;
+        const resumeSec = Math.max(1, curTime);
+        recordWatch(curTime);
+
+        // 1. Immediately persist resume_time so continue watching has current position
+        sceneSaveActivity({
+          variables: {
+            id: scene.id,
+            playDuration: 0,
+            resume_time: resumeSec,
+          },
+        }).catch(() => {});
+
+        // 2. Immediately increment play count / record view timestamp in scenes_view_dates
+        // This ensures last_played_at is NOW and play_count >= 1 so continue watching immediately ranks it #1!
+        sceneIncrementPlayCount({
+          variables: {
+            id: scene.id,
+          },
+        }).catch(() => {});
+      };
+
+      const handleSaveProgress = () => {
+        const curTime = player.currentTime() || 0;
+        const resumeSec = Math.max(1, curTime);
         recordWatch(curTime);
         sceneSaveActivity({
           variables: {
             id: scene.id,
             playDuration: 0,
-            resume_time: Math.max(0.1, curTime),
+            resume_time: resumeSec,
           },
         }).catch(() => {});
       };
+
       player.on("play", handlePlay);
+      player.on("pause", handleSaveProgress);
+      player.on("seeked", handleSaveProgress);
+
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "hidden") {
+          handleSaveProgress();
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
 
       async function saveActivity(resumeTime: number, playDuration: number) {
         if (!scene.id) return;
 
         recordWatch(resumeTime);
 
+        const resumeSec =
+          resumeTime > 0 ? Math.max(1, resumeTime) : 0;
         await sceneSaveActivity({
           variables: {
             id: scene.id,
             playDuration,
-            resume_time: resumeTime,
+            resume_time: resumeSec,
           },
         });
       }
@@ -1067,6 +1103,12 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       return () => {
         player.off("play", handlePlay);
+        player.off("pause", handleSaveProgress);
+        player.off("seeked", handleSaveProgress);
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange
+        );
       };
     }, [
       getPlayer,

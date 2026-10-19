@@ -103,8 +103,10 @@ class TrackActivityPlugin extends videojs.getPlugin("plugin") {
     if (this.totalPlayDuration > 0) {
       let resumeTime = this.player?.currentTime() ?? this.lastResumeTime;
       const videoDuration = this.player?.duration() ?? this.lastDuration;
-      const percentCompleted = (100 / videoDuration) * resumeTime;
-      const percentPlayed = (100 / videoDuration) * this.totalPlayDuration;
+      const percentCompleted =
+        videoDuration > 0 ? (100 / videoDuration) * resumeTime : 0;
+      const percentPlayed =
+        videoDuration > 0 ? (100 / videoDuration) * this.totalPlayDuration : 0;
 
       if (
         !this.playCountIncremented &&
@@ -117,6 +119,8 @@ class TrackActivityPlugin extends videojs.getPlugin("plugin") {
       // if video is 98% or more complete then reset resume_time
       if (percentCompleted >= 98) {
         resumeTime = 0;
+      } else if (resumeTime > 0 && resumeTime < 1) {
+        resumeTime = 1;
       }
 
       this.saveActivity(resumeTime, this.currentPlayDuration);
