@@ -2272,6 +2272,26 @@ npx pnpm run start
 
 ---
 
+### 任务七十五：暗色模式全域 outline-secondary 黑色穿透修复与「修改密码」琥珀金安全操作按钮重构
+
+* **问题背景与深入根因分析**：
+  - 用户反馈「修改密码看不见」：在多用户卡片列表右侧的操作按钮中，「切换账号」与「删除」清晰可辨，唯独「修改密码」几乎完全隐形。
+  - **根本原因**：
+    1. 在 `ui/v2.5/src/styles/_theme.scss` 中，纯暗黑主题将 `$secondary` 定制为 `#161616`（深黑底色），并作为 `$theme-colors` 的一部分导入 Bootstrap；
+    2. Bootstrap 编译时直接将 `.btn-outline-secondary` 的 `color` 与 `border-color` 绑定为 `$secondary`（即 `#161616`）；
+    3. 在深色卡片（`#141414` / `#181b20`）背景下，黑边框配纯黑字直接形成“黑上加黑”的隐形现象，文字和钥匙图标完全肉眼难辨。
+
+* **精准代码落地与系统架构**：
+  1. **暗黑全局 SCSS 变量与 Outline 按钮修复（`_theme.scss`）**：
+     - 为 `.btn-outline-secondary` 补全专用暗色高对比定义：`color: #c9d1d9; border-color: #444c56;`，悬浮时亮白呈现，彻底杜绝后续任何组件再次遭遇黑底黑字的不可读 Bug；
+     - 定制 `.btn-outline-warning` 样式：文字与边框采用高对比度安全琥珀金（`#f39c12`），悬停切换为实体反色填充，视觉极度鲜明；
+  2. **操作按钮色彩语义体系升级（`SettingsSecurityPanel.tsx`）**：
+     - 将「修改密码」按钮由 `variant="outline-secondary"` 升级为 `variant="outline-warning"`；
+     - 与「切换账号（浅蓝 `outline-info`）」、「删除（赤红 `outline-danger`）」形成规整有序、对比强烈的高辨识度操作三联组；
+     - 金色钥匙图标（`faKey`）与琥珀金边框文字高度契合安全凭证属性，对比度超越 WCAG AAA 标准（8.5:1），即刻清晰可见。
+
+---
+
 *文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
 

@@ -481,7 +481,7 @@ export const SettingsSecurityPanel: React.FC = () => {
 
                     {(isCurrentAdmin || isCurrent) && (
                       <Button
-                        variant="outline-secondary"
+                        variant="outline-warning"
                         size="sm"
                         onClick={() => {
                           setSelectedUserForPassword(u);

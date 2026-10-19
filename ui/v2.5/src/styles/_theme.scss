@@ -139,6 +139,45 @@ button.minimal,
   }
 }
 
+.btn-outline-secondary {
+  color: #c9d1d9;
+  border-color: #444c56;
+
+  &:hover,
+  &:focus {
+    color: #ffffff;
+    background-color: #22272e;
+    border-color: #768390;
+  }
+
+  &:active,
+  &.active {
+    color: #ffffff;
+    background-color: #2d333b;
+    border-color: #adbac7;
+  }
+}
+
+.btn-outline-warning {
+  color: #f39c12;
+  border-color: #f39c12;
+
+  &:hover,
+  &:focus {
+    color: #0c0c0c;
+    background-color: #f39c12;
+    border-color: #f39c12;
+  }
+
+  &:active,
+  &.active {
+    color: #0c0c0c;
+    background-color: #e67e22;
+    border-color: #e67e22;
+  }
+}
+
+
 .btn-primary {
   background-color: #ffffff;
   border-color: #ffffff;
