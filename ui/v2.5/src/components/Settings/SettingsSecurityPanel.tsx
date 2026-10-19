@@ -14,6 +14,8 @@ import {
   faPlus,
   faTrash,
   faKey,
+  faEye,
+  faEyeSlash,
 } from "@fortawesome/free-solid-svg-icons";
 
 interface IAccountUser {
@@ -57,6 +59,50 @@ function saveLocalCurrentUser(u: IAccountUser | null): void {
     }
   } catch {}
 }
+
+const PasswordInput: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}> = ({ value, onChange, placeholder, required }) => {
+  const [showPassword, setShowPassword] = useState(false);
+
+  return (
+    <div className="position-relative d-flex align-items-center">
+      <Form.Control
+        type={showPassword ? "text" : "password"}
+        required={required}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onChange(e.target.value)
+        }
+        style={{ paddingRight: "40px" }}
+      />
+      <button
+        type="button"
+        className="btn btn-link position-absolute p-0 d-flex align-items-center justify-content-center"
+        style={{
+          right: "12px",
+          top: 0,
+          bottom: 0,
+          zIndex: 5,
+          color: showPassword ? "#ffffff" : "#888888",
+          boxShadow: "none",
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          transition: "color 0.15s ease",
+        }}
+        onClick={() => setShowPassword(!showPassword)}
+        title={showPassword ? "隐藏密码" : "查看密码"}
+      >
+        <Icon icon={showPassword ? faEyeSlash : faEye} />
+      </button>
+    </div>
+  );
+};
 
 export const SettingsSecurityPanel: React.FC = () => {
   const intl = useIntl();
@@ -546,8 +592,7 @@ export const SettingsSecurityPanel: React.FC = () => {
             </Form.Group>
             <Form.Group>
               <Form.Label>登录密码</Form.Label>
-              <Form.Control
-                type="password"
+              <PasswordInput
                 required
                 placeholder={
                   users.length === 0
@@ -555,9 +600,7 @@ export const SettingsSecurityPanel: React.FC = () => {
                     : "请输入新账号密码"
                 }
                 value={newPassword}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setNewPassword(e.target.value)
-                }
+                onChange={setNewPassword}
               />
               <Form.Text className="text-muted mt-2">
                 {users.length === 0
@@ -595,14 +638,11 @@ export const SettingsSecurityPanel: React.FC = () => {
           <Modal.Body>
             <Form.Group>
               <Form.Label>新密码</Form.Label>
-              <Form.Control
-                type="password"
+              <PasswordInput
                 required
                 placeholder="请输入新密码"
                 value={changePassword}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setChangePassword(e.target.value)
-                }
+                onChange={setChangePassword}
               />
             </Form.Group>
           </Modal.Body>
