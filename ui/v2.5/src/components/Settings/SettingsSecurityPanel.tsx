@@ -394,12 +394,8 @@ export const SettingsSecurityPanel: React.FC = () => {
                   key={u.id}
                   className="user-account-item d-flex justify-content-between align-items-center p-3 rounded"
                   style={{
-                    backgroundColor: isCurrent
-                      ? "rgba(41, 128, 185, 0.1)"
-                      : "rgba(255, 255, 255, 0.03)",
-                    border: isCurrent
-                      ? "1px solid rgba(52, 152, 219, 0.4)"
-                      : "1px solid rgba(255, 255, 255, 0.08)",
+                    backgroundColor: "rgba(255, 255, 255, 0.03)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
                     transition: "all 0.15s ease",
                   }}
                 >
@@ -471,7 +467,7 @@ export const SettingsSecurityPanel: React.FC = () => {
                   >
                     {!isCurrent && (
                       <Button
-                        variant="outline-info"
+                        variant="outline-light"
                         size="sm"
                         onClick={() => handleSwitchUser(u)}
                       >
@@ -481,7 +477,7 @@ export const SettingsSecurityPanel: React.FC = () => {
 
                     {(isCurrentAdmin || isCurrent) && (
                       <Button
-                        variant="outline-warning"
+                        variant="outline-light"
                         size="sm"
                         onClick={() => {
                           setSelectedUserForPassword(u);

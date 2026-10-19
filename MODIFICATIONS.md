@@ -2292,6 +2292,24 @@ npx pnpm run start
 
 ---
 
+### 任务七十六：认证设置多账号列表视觉极简黑白化（去管理员蓝框 & 按钮全域纯白 Outline）
+
+* **用户需求与设计理念**：
+  - 用户反馈：“管理员账号不需要蓝框，修改密码和切换账号用白色就行”。
+  - 核心设计意图：回归全域极简纯暗黑（Monochrome Dark）的极简工业质感，避免青蓝、黄色等过多杂色干扰视觉；各账号卡片统一平齐，仅保留删除操作的危险红色警示。
+
+* **精准代码落地与系统架构**：
+  1. **移除卡片蓝框与底色高亮（`SettingsSecurityPanel.tsx`）**：
+     - 去除原先基于 `isCurrent` 的淡蓝背景与发光蓝框（`rgba(52, 152, 219, 0.4)`），所有账号卡片统一采用极简纯暗黑半透底色（`rgba(255, 255, 255, 0.03)`）与雅灰微光边框（`1px solid rgba(255, 255, 255, 0.08)`）；
+     - 当前在线状态完全由卡片内的 `[当前在线]` 胶囊徽章优雅呈现，外框平齐沉稳、毫无突兀感；
+  2. **操作按钮全域纯白 Outline 重构（`_theme.scss` & `SettingsSecurityPanel.tsx`）**：
+     - 在 `_theme.scss` 中专属定制 `.btn-outline-light` 样式：纯白文字（`#ffffff`）、精致雅白边框（`rgba(255, 255, 255, 0.45)`），悬停（Hover）时自然流畅反白为纯白实心底色配黑字（`background-color: #ffffff; color: #0c0c0c;`）；
+     - 将「切换账号」与「修改密码」统一调整为 `variant="outline-light"`；
+     - 钥匙图标 `faKey` 随按钮文字自然呈现纯白，与青蓝/黄色彻底告别，纯净清爽；
+     - 「删除」按钮维持赤红 Outline（`variant="outline-danger"`），明确区分危险动作与日常操作。
+
+---
+
 *文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
 

@@ -177,6 +177,26 @@ button.minimal,
   }
 }
 
+.btn-outline-light {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.45);
+
+  &:hover,
+  &:focus {
+    color: #0c0c0c;
+    background-color: #ffffff;
+    border-color: #ffffff;
+  }
+
+  &:active,
+  &.active {
+    color: #0c0c0c;
+    background-color: #e5e5e5;
+    border-color: #e5e5e5;
+  }
+}
+
+
 
 .btn-primary {
   background-color: #ffffff;
