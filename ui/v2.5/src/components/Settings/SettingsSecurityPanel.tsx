@@ -311,26 +311,28 @@ export const SettingsSecurityPanel: React.FC = () => {
       user.is_admin ||
       (general.username && user.username === general.username);
 
-    const confirmMsg = isPrimaryAdmin
-      ? `确定要删除管理员账号 "${user.username}" 吗？删除后将同时清除系统登录认证凭据，系统将恢复为免登录开放模式。`
-      : `确定要删除账号 "${user.username}" 吗？该账号的所有独立观看记录将被清除。`;
+    if (isPrimaryAdmin) {
+      Toast.error("管理员账号不可删除");
+      return;
+    }
 
-    if (!window.confirm(confirmMsg)) {
+    if (
+      !window.confirm(
+        `确定要删除成员账号 "${user.username}" 吗？该账号的所有独立观看记录将被清除。`
+      )
+    ) {
       return;
     }
 
     try {
-      // 1. Try calling backend REST API
-      try {
-        await fetch(`/api/users/${user.id}`, { method: "DELETE" });
-      } catch {}
-
-      // 2. If admin was deleted, clear username & password in config.yml
-      if (isPrimaryAdmin) {
-        await saveGeneral({ username: "", password: "" });
+      // 1. Call backend REST API to permanently delete from SQLite database
+      const res = await fetch(`/api/users/${user.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || "后端删除失败");
       }
 
-      // 3. Update local state
+      // 2. Update local state and local storage
       const remainingList = users.filter(
         (u) => u.id !== user.id && u.username !== user.username
       );
@@ -343,11 +345,7 @@ export const SettingsSecurityPanel: React.FC = () => {
         saveLocalCurrentUser(fallback);
       }
 
-      if (isPrimaryAdmin && remainingList.length === 0) {
-        Toast.success("管理员账号已删除，系统已恢复为免登录开放模式");
-      } else {
-        Toast.success(`账号 ${user.username} 已成功删除`);
-      }
+      Toast.success(`成员账号 ${user.username} 已成功删除`);
     } catch (err: any) {
       Toast.error(err.message || "删除账号异常");
     }
@@ -559,7 +557,7 @@ export const SettingsSecurityPanel: React.FC = () => {
                       修改密码
                     </Button>
 
-                    {isCurrentAdmin && (
+                    {isCurrentAdmin && !isPrimaryAdmin && (
                       <Button
                         variant="outline-danger"
                         size="sm"

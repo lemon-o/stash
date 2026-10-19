@@ -85,6 +85,9 @@ func (s *UserStore) Create(ctx context.Context, username, password string) (*mod
 }
 
 func (s *UserStore) Delete(ctx context.Context, id int) error {
+	if id == 1 {
+		return errors.New("cannot delete primary administrator account")
+	}
 	_, err := s.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
 	return err
 }
