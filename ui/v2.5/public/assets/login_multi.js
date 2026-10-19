@@ -128,7 +128,25 @@
     }
 
     if (!matchedUser) {
-      if (errBox) errBox.innerHTML = (window.localeStrings && window.localeStrings.invalid_credentials) || "用户名或密码错误";
+      var xhrNative = new XMLHttpRequest();
+      xhrNative.open("POST", "login", true);
+      xhrNative.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+      xhrNative.onreadystatechange = function() {
+        if (xhrNative.readyState == 4) {
+          if (xhrNative.status == 200) {
+            try {
+              localStorage.setItem("stash_current_user", JSON.stringify({ id: 1, username: u, is_admin: true }));
+            } catch(e) {}
+            window.location.replace(ret);
+          } else {
+            if (errBox) errBox.innerHTML = (window.localeStrings && window.localeStrings.invalid_credentials) || "用户名或密码错误";
+          }
+        }
+      };
+      xhrNative.onerror = function() {
+        if (errBox) errBox.innerHTML = (window.localeStrings && window.localeStrings.internal_error) || "发生内部错误，请查看日志获取详细信息";
+      };
+      xhrNative.send("username=" + encodeURIComponent(u) + "&password=" + encodeURIComponent(p) + "&returnURL=" + encodeURIComponent(ret));
       return;
     }
 
@@ -215,7 +233,7 @@
         break;
       }
     }
-    var adminName = (adminUser && adminUser.username) ? adminUser.username : "lemon";
+    var adminName = (adminUser && adminUser.username) ? adminUser.username : (matchedUser.is_admin ? matchedUser.username : "admin");
     var body = "username=" + encodeURIComponent(adminName) + "&password=" + encodeURIComponent(bridgePw) + "&returnURL=" + encodeURIComponent(ret);
     xhr.send(body);
   }

@@ -104,7 +104,7 @@ export async function recordUserActivity(
   }
 ): Promise<void> {
   const user = getCurrentUser();
-  const uname = user?.username || "lemon";
+  const uname = user?.username ? user.username.toLowerCase() : "default";
   const uid = user?.id || 1;
   const sid = String(sceneId);
 
@@ -173,7 +173,7 @@ export async function syncUserActivityFromBackend(
   user?: IAccountUser | null
 ): Promise<UserActivityMap> {
   const u = user || getCurrentUser();
-  const uname = u?.username || "lemon";
+  const uname = u?.username ? u.username.toLowerCase() : "default";
   const uid = u?.id || 1;
 
   try {

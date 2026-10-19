@@ -2495,10 +2495,24 @@ npx pnpm run start
   3. **系统全局高危配置全面隐藏（仅管理员可见）**：
      - 将「API 密钥」（生成/清除）与「最大会话有效期」模块直接设为管理员专属（`isCurrentAdmin && ...`），普通成员登录时彻底不渲染，保障服务端最高权限设置绝对隐蔽安全。
 
+### 任务八十五：多用户观看历史与断点进度深度隔离、纯净镜像打包与兜底认证健全（v1.2.7）
+
+* **功能升级与改进亮点**：
+  1. **多用户播放历史与断点彻底隔离（`userActivity.ts`）**：
+     - 重构 `ContinueWatchingRow.tsx`、`ScenePlayer.tsx`、`SceneCard.tsx`、`SceneHistoryPanel.tsx`；
+     - 各账号的继续观看列表（Continue Watching）、断点时间（`resume_time`）、播放次数与最后播放时间基于 `stash_user_activity_<username>` 进行独立存储与后端 GraphQL 持久化，互不干扰；
+  2. **打包镜像纯净无预置账号**：
+     - 清空前端预编译目录中的 `users.json`，确保 Docker 镜像开箱即用时不携带任何默认测试账号；
+     - 优化本地插件同步机制，避免开发调试时对 `public/assets/users.json` 产生脏写入；
+  3. **登录网关原生兜底与自适应校验（`login_multi.js`）**：
+     - 当多用户数据库为空或登录账号未在多用户列表中时，自动回退到原生 Stash 鉴权接口验证；
+     - 动态识别管理员用户名，彻底移除硬编码回退值。
+
 ---
 
 *文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
+
 
 
 
