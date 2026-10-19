@@ -2246,6 +2246,32 @@ npx pnpm run start
 
 ---
 
+### 任务七十四：认证设置多账号列表重构为自适应独立卡片系统（根治 CSS 右对齐穿透与参差排布）
+
+* **问题背景与深入根因分析**：
+  - 用户反馈「认证设置」多用户管理页面“还是有点乱”：
+    1. **CSS 样式继承穿透污染**：在 `ui/v2.5/src/components/Settings/styles.scss` 中，全局规则 `.setting > div:last-child` 默认被施加了 `text-align: right` 以及 `.btn { margin: 0.25rem; }`。当多用户表格被包裹在 `.setting` 容器中时，表格的 `th`、`td` 单元格文字全部被强行右对齐，导致用户名向右偏移推挤，表头和内容参差错落；
+    2. **传统表格（Table）在多用户场景下的排版弊端**：传统的 `Table` 布局在 2~3 个账号的轻量配置面板中过于空旷僵硬，各列在不同视口宽度下弹性伸缩不稳定，使得文字与操作按钮产生割裂感。
+
+* **精准代码落地与系统架构（`SettingsSecurityPanel.tsx`）**：
+  1. **样式隔离与容器解耦**：
+     - 将多用户管理区域从 `.setting` 容器中剥离，移入独立的 `<div className="content border-bottom" id="user-accounts-setting">`，彻底杜绝 `.setting > div:last-child` 的全局右对齐穿透问题；
+  2. **现代化卡片列表系统（User Account Card List）**：
+     - 彻底摒弃传统的 HTML 表格，采用类似 Stash 刮削器/存储库面板的扁平化卡片列表（`.user-accounts-list`）：
+     - **左侧信息区（Flex Start, Left-Aligned）**：
+       - 圆形徽章头像：主管理员呈现浅绿底高亮盾牌（`faUserShield`），普通成员呈现雅灰底用户（`faUser`）；
+       - 用户名加粗展示（`font-size: 1.05rem`，高对比白字）；
+       - 角色身份胶囊徽标：`[管理员]`（绿色）/ `[普通成员]`（暗灰），规整清晰；
+       - 在线状态标识：当前已登录用户自动打上 `[当前在线]` 浅蓝胶囊。
+     - **右侧操作区（Flex End, d-inline-flex）**：
+       - `gap: 8px` 水平紧密排列操作按钮（`切换账号`、`修改密码`、`删除`），严格防折行；
+     - **当前账号视觉高亮**：
+       - 当前在线账号卡片自带精致的淡蓝微光边框（`rgba(52, 152, 219, 0.4)`）与深蓝渐变底色，激活状态一目了然；
+     - **空状态占位提示**：
+       - 列表为空时展示精致的圆角虚线占位框，引导用户创建首个管理员账号。
+
+---
+
 *文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
 

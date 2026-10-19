@@ -329,7 +329,7 @@ export const SettingsSecurityPanel: React.FC = () => {
   return (
     <SettingSection headingID="config.general.auth.authentication">
       {/* 1. 多账号管理与凭证面板 */}
-      <div className="setting flex-column align-items-stretch" id="user-accounts-setting">
+      <div className="content border-bottom" id="user-accounts-setting">
         <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
           <div>
             <h3>
@@ -371,132 +371,144 @@ export const SettingsSecurityPanel: React.FC = () => {
         </div>
 
         {loadingUsers ? (
-          <div className="py-3 text-center">
+          <div className="py-4 text-center">
             <LoadingIndicator />
           </div>
-        ) : (
+        ) : users.length === 0 ? (
           <div
-            className="table-responsive"
+            className="text-center text-muted py-4 rounded"
             style={{
-              borderRadius: "6px",
-              overflow: "hidden",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
+              backgroundColor: "rgba(255, 255, 255, 0.03)",
+              border: "1px dashed rgba(255, 255, 255, 0.12)",
             }}
           >
-            <Table hover variant="dark" className="user-management-table mb-0">
-              <thead style={{ backgroundColor: "#1e2931" }}>
-                <tr>
-                  <th style={{ width: "35%", minWidth: "150px" }}>账号名称</th>
-                  <th
-                    className="text-center"
-                    style={{ width: "25%", minWidth: "110px" }}
+            暂无账号，点击右上角「+ 新建账号」创建首个管理员账号
+          </div>
+        ) : (
+          <div className="user-accounts-list d-flex flex-column" style={{ gap: "10px" }}>
+            {users.map((u) => {
+              const isPrimaryAdmin = u.id === 1 || u.is_admin;
+              const isCurrent = currentUser?.username === u.username;
+              return (
+                <div
+                  key={u.id}
+                  className="user-account-item d-flex justify-content-between align-items-center p-3 rounded"
+                  style={{
+                    backgroundColor: isCurrent
+                      ? "rgba(41, 128, 185, 0.1)"
+                      : "rgba(255, 255, 255, 0.03)",
+                    border: isCurrent
+                      ? "1px solid rgba(52, 152, 219, 0.4)"
+                      : "1px solid rgba(255, 255, 255, 0.08)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {/* Left: User Avatar + Name + Badges */}
+                  <div
+                    className="d-flex align-items-center flex-wrap"
+                    style={{ gap: "12px", minWidth: 0 }}
                   >
-                    角色身份
-                  </th>
-                  <th
-                    className="text-right"
-                    style={{ width: "40%", minWidth: "220px" }}
+                    <span
+                      className="user-avatar-circle d-inline-flex align-items-center justify-content-center"
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "50%",
+                        backgroundColor: isPrimaryAdmin
+                          ? "rgba(46, 204, 113, 0.16)"
+                          : "rgba(149, 165, 166, 0.16)",
+                        color: isPrimaryAdmin ? "#2ecc71" : "#bdc3c7",
+                        fontSize: "16px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon icon={isPrimaryAdmin ? faUserShield : faUser} />
+                    </span>
+
+                    <span
+                      className="font-weight-bold text-truncate"
+                      style={{ fontSize: "1.05rem", color: "#f5f8fa" }}
+                    >
+                      {u.username}
+                    </span>
+
+                    {isPrimaryAdmin ? (
+                      <Badge
+                        variant="success"
+                        className="px-2 py-1 font-weight-normal"
+                        style={{ fontSize: "0.8rem" }}
+                      >
+                        管理员
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className="px-2 py-1 font-weight-normal"
+                        style={{
+                          fontSize: "0.8rem",
+                          backgroundColor: "#4a5568",
+                        }}
+                      >
+                        普通成员
+                      </Badge>
+                    )}
+
+                    {isCurrent && (
+                      <Badge
+                        variant="info"
+                        className="px-2 py-1 font-weight-normal"
+                        style={{ fontSize: "0.8rem" }}
+                      >
+                        当前在线
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Right: Actions */}
+                  <div
+                    className="d-inline-flex align-items-center flex-shrink-0 ml-3"
+                    style={{ gap: "8px" }}
                   >
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="text-center text-muted py-4">
-                      暂无账号，点击右上角「+ 新建账号」创建首个管理员账号
-                    </td>
-                  </tr>
-                ) : (
-                  users.map((u) => {
-                    const isPrimaryAdmin = u.id === 1 || u.is_admin;
-                    const isCurrent = currentUser?.username === u.username;
-                    return (
-                      <tr key={u.id}>
-                        <td className="align-middle py-2 font-weight-bold">
-                          <span className="user-avatar-badge mr-2 text-info">
-                            <Icon icon={isPrimaryAdmin ? faUserShield : faUser} />
-                          </span>
-                          <span className="align-middle">{u.username}</span>
-                          {isCurrent && (
-                            <Badge
-                              variant="info"
-                              className="ml-2 font-weight-normal align-middle"
-                            >
-                              当前在线
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="align-middle py-2 text-center">
-                          {isPrimaryAdmin ? (
-                            <Badge
-                              variant="success"
-                              className="p-1 px-2 font-weight-normal"
-                            >
-                              管理员
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="secondary"
-                              className="p-1 px-2 font-weight-normal"
-                            >
-                              普通成员
-                            </Badge>
-                          )}
-                        </td>
-                        <td
-                          className="align-middle py-2 text-right"
-                          style={{ whiteSpace: "nowrap" }}
-                        >
-                          <div
-                            className="d-inline-flex align-items-center justify-content-end"
-                            style={{ gap: "6px" }}
-                          >
-                            {!isCurrent && (
-                              <Button
-                                variant="outline-info"
-                                size="sm"
-                                onClick={() => handleSwitchUser(u)}
-                              >
-                                切换
-                              </Button>
-                            )}
+                    {!isCurrent && (
+                      <Button
+                        variant="outline-info"
+                        size="sm"
+                        onClick={() => handleSwitchUser(u)}
+                      >
+                        切换账号
+                      </Button>
+                    )}
 
-                            {(isCurrentAdmin || isCurrent) && (
-                              <Button
-                                variant="outline-secondary"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedUserForPassword(u);
-                                  setChangePassword("");
-                                  setShowPasswordModal(true);
-                                }}
-                              >
-                                <Icon icon={faKey} className="mr-1" />
-                                修改密码
-                              </Button>
-                            )}
+                    {(isCurrentAdmin || isCurrent) && (
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedUserForPassword(u);
+                          setChangePassword("");
+                          setShowPasswordModal(true);
+                        }}
+                      >
+                        <Icon icon={faKey} className="mr-1" />
+                        修改密码
+                      </Button>
+                    )}
 
-                            {isCurrentAdmin && u.id !== 1 && !u.is_admin && (
-                              <Button
-                                variant="outline-danger"
-                                size="sm"
-                                onClick={() => handleDeleteUser(u)}
-                                title="删除此账号"
-                              >
-                                <Icon icon={faTrash} className="mr-1" />
-                                删除
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </Table>
+                    {isCurrentAdmin && u.id !== 1 && !u.is_admin && (
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        onClick={() => handleDeleteUser(u)}
+                        title="删除此账号"
+                      >
+                        <Icon icon={faTrash} className="mr-1" />
+                        删除
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
