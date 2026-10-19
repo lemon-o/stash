@@ -208,14 +208,25 @@ export const SettingsSecurityPanel: React.FC = () => {
       userList = [];
     }
 
-    saveLocalUsers(userList);
-    setUsers(userList);
-
+    // 4. Query server-authoritative current user session
     let cur = getLocalCurrentUser();
+    try {
+      const curRes = await fetch("/api/users/current");
+      if (
+        curRes.ok &&
+        curRes.headers.get("content-type")?.includes("application/json")
+      ) {
+        const curData = await curRes.json();
+        if (curData && curData.username) {
+          cur = curData;
+        }
+      }
+    } catch {}
+
     if (!cur || !userList.some((u) => u.username === cur?.username)) {
       cur = userList[0] ?? null;
-      saveLocalCurrentUser(cur);
     }
+    saveLocalCurrentUser(cur);
     setCurrentUser(cur);
 
     setLoadingUsers(false);
@@ -358,25 +369,51 @@ export const SettingsSecurityPanel: React.FC = () => {
       return;
     }
 
+    const isTargetAdmin =
+      selectedUserForPassword.id === 1 ||
+      selectedUserForPassword.is_admin ||
+      (general.username &&
+        selectedUserForPassword.username.toLowerCase() ===
+          general.username.toLowerCase());
+
+    // 核心安全校验：普通成员绝无权限修改管理员密码
+    if (isTargetAdmin && !isCurrentAdmin) {
+      Toast.error("普通成员无权修改管理员密码");
+      return;
+    }
+
+    // 普通成员仅允许修改自己的密码
+    if (
+      !isCurrentAdmin &&
+      currentUser?.username?.toLowerCase() !==
+        selectedUserForPassword.username.toLowerCase()
+    ) {
+      Toast.error("普通成员无权修改其他账号密码");
+      return;
+    }
+
     setIsChangingPassword(true);
     try {
-      const isPrimaryAdmin =
-        selectedUserForPassword.id === 1 ||
-        selectedUserForPassword.is_admin ||
-        (general.username &&
-          selectedUserForPassword.username === general.username);
-
-      if (isPrimaryAdmin) {
+      // 仅当目标是管理员且当前操作者是管理员时，才同步更新系统全局配置 config.yml
+      if (isTargetAdmin && isCurrentAdmin) {
         await saveGeneral({ password: changePassword });
       }
 
-      try {
-        await fetch(`/api/users/${selectedUserForPassword.id}/password`, {
+      // 同步更新 SQLite 数据库用户表
+      const res = await fetch(
+        `/api/users/${selectedUserForPassword.id}/password`,
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ password: changePassword }),
-        });
-      } catch {}
+        }
+      );
+      if (!res.ok) {
+        const errText = await res.text();
+        if (!isTargetAdmin) {
+          throw new Error(errText || "后端修改密码失败");
+        }
+      }
 
       Toast.success(
         `已成功更新账号 ${selectedUserForPassword.username} 的密码`
@@ -423,8 +460,12 @@ export const SettingsSecurityPanel: React.FC = () => {
 
   const isCurrentAdmin =
     users.length === 0 ||
-    currentUser?.is_admin ||
-    users[0]?.id === currentUser?.id;
+    currentUser?.is_admin === true ||
+    !!(
+      currentUser?.username &&
+      general.username &&
+      currentUser.username.toLowerCase() === general.username.toLowerCase()
+    );
 
   return (
     <SettingSection headingID="config.general.auth.authentication">
@@ -487,8 +528,20 @@ export const SettingsSecurityPanel: React.FC = () => {
         ) : (
           <div className="user-accounts-list d-flex flex-column" style={{ gap: "10px" }}>
             {users.map((u) => {
-              const isPrimaryAdmin = u.id === 1 || u.is_admin;
-              const isCurrent = currentUser?.username === u.username;
+              const isPrimaryAdmin =
+                u.id === 1 ||
+                u.is_admin ||
+                !!(
+                  general.username &&
+                  u.username.toLowerCase() === general.username.toLowerCase()
+                );
+              const isSelf = !!(
+                currentUser?.username &&
+                u.username.toLowerCase() === currentUser.username.toLowerCase()
+              );
+              // 核心权限隔离：管理员可修改任何账号密码；普通成员仅可修改自身密码，绝不可修改管理员密码
+              const canChangePassword =
+                isCurrentAdmin || (!isPrimaryAdmin && isSelf);
               return (
                 <div
                   key={u.id}
@@ -544,18 +597,20 @@ export const SettingsSecurityPanel: React.FC = () => {
                     className="d-inline-flex align-items-center flex-shrink-0 ml-3"
                     style={{ gap: "8px" }}
                   >
-                    <Button
-                      variant="outline-light"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedUserForPassword(u);
-                        setChangePassword("");
-                        setShowPasswordModal(true);
-                      }}
-                    >
-                      <Icon icon={faKey} className="mr-1" />
-                      修改密码
-                    </Button>
+                    {canChangePassword && (
+                      <Button
+                        variant="outline-light"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedUserForPassword(u);
+                          setChangePassword("");
+                          setShowPasswordModal(true);
+                        }}
+                      >
+                        <Icon icon={faKey} className="mr-1" />
+                        修改密码
+                      </Button>
+                    )}
 
                     {isCurrentAdmin && !isPrimaryAdmin && (
                       <Button
@@ -589,7 +644,7 @@ export const SettingsSecurityPanel: React.FC = () => {
         </div>
         <div>
           <Button
-            disabled={!general.username || !general.password}
+            disabled={!isCurrentAdmin || !general.username || !general.password}
             onClick={() => onGenerateAPIKey()}
           >
             {intl.formatMessage({
@@ -597,7 +652,11 @@ export const SettingsSecurityPanel: React.FC = () => {
               defaultMessage: "生成",
             })}
           </Button>
-          <Button variant="danger" onClick={() => onClearAPIKey()}>
+          <Button
+            variant="danger"
+            disabled={!isCurrentAdmin}
+            onClick={() => onClearAPIKey()}
+          >
             {intl.formatMessage({
               id: "config.general.auth.clear_api_key",
               defaultMessage: "清除",
@@ -612,7 +671,7 @@ export const SettingsSecurityPanel: React.FC = () => {
         headingID="config.general.auth.maximum_session_age"
         subHeadingID="config.general.auth.maximum_session_age_desc"
         value={general.maxSessionAge ?? undefined}
-        onChange={(v) => saveGeneral({ maxSessionAge: v })}
+        onChange={(v) => isCurrentAdmin && saveGeneral({ maxSessionAge: v })}
       />
 
       {/* 模态框：新建账号 */}
