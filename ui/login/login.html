@@ -1,89 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <base href="/%BASE_URL%/">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>登录 - Stash</title>
+<base href="/%BASE_URL%/">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>登录 - Stash</title>
 
-    <link rel="shortcut icon" href="data:,">
-    <link rel="stylesheet" href="login/login.css">
-    <link rel="stylesheet" href="css">
+<link rel="shortcut icon" href="data:,">
+<link rel="stylesheet" href="login/login.css">
+<link rel="stylesheet" href="css">
 
-    <!-- load locale -->
-    <script>
-        var localeStrings = {
-            username: "用户名",
-            password: "密码",
-            login: "登录",
-            invalid_credentials: "用户名或密码错误",
-            internal_error: "发生内部错误，请查看日志获取详细信息"
-        };
-    </script>
-    <script src="login/locale"></script>
+<script>
+var localeStrings = {
+username: "用户名",
+password: "密码",
+login: "登录",
+invalid_credentials: "用户名或密码错误",
+internal_error: "发生内部错误，请查看日志获取详细信息"
+};
+</script>
+<script src="login/locale"></script>
 </head>
 
 <script>
-    function login() {
-        var username = document.getElementById("username").value;
-        var password = document.getElementById("password").value;
-        var returnURL = document.getElementById("returnURL").value;
+function login() {
+var username = document.getElementById("username").value;
+var password = document.getElementById("password").value;
+var returnURL = document.getElementById("returnURL").value;
 
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", "login", true);
-        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState == 4) {
-                if (xhr.status == 200) {
-                    window.location.replace(returnURL);
-                } else {
-                    document.getElementsByClassName("login-error")[0].innerHTML = localeStrings.invalid_credentials;
-                }
-            }
-        };
-        xhr.onerror = function() {
-            document.getElementsByClassName("login-error")[0].innerHTML = localeStrings.internal_error;
-        };
-        var body = "username=" + encodeURIComponent(username) + "&password=" + encodeURIComponent(password) + "&returnURL=" + encodeURIComponent(returnURL);
-        xhr.send(body);
-    }
+var xhr = new XMLHttpRequest();
+xhr.open("POST", "login", true);
+xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+xhr.onreadystatechange = function() {
+if (xhr.readyState == 4) {
+if (xhr.status == 200) {
+window.location.replace(returnURL);
+} else {
+document.getElementsByClassName("login-error")[0].innerHTML = localeStrings.invalid_credentials;
+}
+}
+};
+xhr.onerror = function() {
+document.getElementsByClassName("login-error")[0].innerHTML = localeStrings.internal_error;
+};
+var body = "username=" + encodeURIComponent(username) + "&password=" + encodeURIComponent(password) + "&returnURL=" + encodeURIComponent(returnURL);
+xhr.send(body);
+}
 </script>
 
 <body class="login">
-    <div class="dialog">
-        <div class="card">
-            <div class="login-header">
-                <h3 class="login-title">Stash</h3>
-            </div>
-            <form action="login" method="POST" onsubmit="event.preventDefault(); login();">
-                <div class="form-group">
-                    <label for="username"><h6 id="username-heading">用户名</h6></label>
-                    <input class="text-input form-control" id="username" name="username" type="text" placeholder="用户名" autocomplete="username" autofocus />
-                </div>
-                <div class="form-group">
-                    <label for="password"><h6 id="password-heading">密码</h6></label>
-                    <input class="text-input form-control" id="password" name="password" type="password" placeholder="密码" autocomplete="current-password" />
-                </div>
-                <div class="login-error">
-                    {{.Error}}
-                </div>
+<div class="dialog">
+<div class="card">
+<div class="login-header">
+<h3 class="login-title">Stash</h3>
+</div>
+<form action="login" method="POST" onsubmit="event.preventDefault(); login();">
+<div class="form-group">
+<label for="username"><h6 id="username-heading">用户名</h6></label>
+<input class="text-input form-control" id="username" name="username" type="text" placeholder="用户名" autofocus />
+</div>
+<div class="form-group">
+<label for="password"><h6 id="password-heading">密码</h6></label>
+<div style="position:relative;display:flex;align-items:center">
+<input class="text-input form-control" id="password" name="password" type="password" placeholder="密码" style="padding-right:38px" />
+<span id="eye-btn" onclick="var p=document.getElementById('password');if(p.type==='password'){p.type='text';this.style.opacity='1';}else{p.type='password';this.style.opacity='0.4';}" style="position:absolute;right:11px;cursor:pointer;opacity:0.4;display:flex;align-items:center;color:#fff" title="查看密码"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.17 8a13.1 13.1 0 0 1 1.66-2.04C4.12 4.67 5.88 3.5 8 3.5s3.88 1.17 5.17 2.46A13.1 13.1 0 0 1 14.83 8a13.1 13.1 0 0 1-1.66 2.04C11.88 11.33 10.12 12.5 8 12.5s-3.88-1.17-5.17-2.46A13.1 13.1 0 0 1 1.17 8z"/><circle cx="8" cy="8" r="2.5"/></svg></span>
+</div>
+</div>
+<div class="login-error">
+{{.Error}}
+</div>
 
-                <input type="hidden" id="returnURL" name="returnURL" value="{{.URL}}" />
+<input type="hidden" id="returnURL" name="returnURL" value="{{.URL}}" />
 
-                <div class="form-submit">
-                    <input id="login-button" class="btn btn-primary" type="submit" value="登录">
-                </div>
-            </form>
-        </div>
-    </div>
+<div class="form-submit">
+<input id="login-button" class="btn btn-primary" type="submit" value="登录">
+</div>
+</form>
+</div>
+</div>
 
 </body>
 
 <script>
-    document.getElementById("username-heading").innerText = localeStrings.username;
-    document.getElementById("password-heading").innerText = localeStrings.password;
-    document.getElementById("username").placeholder = localeStrings.username;
-    document.getElementById("password").placeholder = localeStrings.password;
-    document.getElementById("login-button").value = localeStrings.login;
+document.getElementById("username-heading").innerText = localeStrings.username;
+document.getElementById("password-heading").innerText = localeStrings.password;
+document.getElementById("username").placeholder = localeStrings.username;
+document.getElementById("password").placeholder = localeStrings.password;
+document.getElementById("login-button").value = localeStrings.login;
 </script>
-</html>
+<!--====--></html>
