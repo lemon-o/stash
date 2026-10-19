@@ -85,74 +85,6 @@
     } catch(e) {}
   }
 
-  function renderJellyfinUserCards() {
-    try {
-      var form = document.querySelector("form");
-      if (!form) return;
-      var existing = document.getElementById("jf-user-cards");
-      if (existing) existing.remove();
-
-      var container = document.createElement("div");
-      container.id = "jf-user-cards";
-      container.style.cssText = "display:flex;justify-content:center;gap:16px;margin-bottom:20px;flex-wrap:wrap;";
-
-      var usernameInput = document.getElementById("username");
-      var currentVal = usernameInput ? usernameInput.value.toLowerCase() : "";
-
-      _serverUsers.forEach(function(u) {
-        var card = document.createElement("div");
-        card.className = "jf-user-card";
-        var isSelected = (currentVal && currentVal === u.username.toLowerCase());
-        card.style.cssText = "display:flex;flex-direction:column;align-items:center;cursor:pointer;padding:8px;border-radius:10px;transition:all 0.2s ease;min-width:64px;" + 
-          (isSelected ? "background:rgba(255,255,255,0.1);border:1px solid #00bcd4;" : "background:transparent;border:1px solid transparent;opacity:0.85;");
-
-        var avatar = document.createElement("div");
-        avatar.style.cssText = "width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px;color:#fff;background:" +
-          (u.is_admin ? "linear-gradient(135deg,#ff9800,#f44336)" : "linear-gradient(135deg,#2196f3,#00bcd4)") +
-          ";box-shadow:0 3px 8px rgba(0,0,0,0.3);position:relative;";
-        avatar.innerText = (u.username[0] || "U").toUpperCase();
-
-        if (u.is_admin) {
-          var crown = document.createElement("span");
-          crown.innerText = "★";
-          crown.style.cssText = "position:absolute;bottom:-2px;right:-2px;font-size:12px;background:#ff9800;color:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;line-height:1;";
-          avatar.appendChild(crown);
-        }
-
-        var label = document.createElement("div");
-        label.style.cssText = "margin-top:6px;font-size:13px;color:#eee;text-align:center;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-        label.innerText = u.username;
-
-        card.appendChild(avatar);
-        card.appendChild(label);
-
-        card.onclick = function() {
-          if (usernameInput) {
-            usernameInput.value = u.username;
-          }
-          var allCards = document.querySelectorAll(".jf-user-card");
-          allCards.forEach(function(c) {
-            c.style.background = "transparent";
-            c.style.border = "1px solid transparent";
-            c.style.opacity = "0.85";
-          });
-          card.style.background = "rgba(255,255,255,0.1)";
-          card.style.border = "1px solid #00bcd4";
-          card.style.opacity = "1";
-          var pwInput = document.getElementById("password");
-          if (pwInput) pwInput.focus();
-        };
-
-        container.appendChild(card);
-      });
-
-      var formGroup = form.querySelector(".form-group");
-      if (formGroup) {
-        form.insertBefore(container, formGroup);
-      }
-    } catch(e) {}
-  }
-
   async function login() {
     var u = (document.getElementById("username").value || "").trim();
     var p = document.getElementById("password").value || "";
@@ -240,12 +172,5 @@
   }
 
   window.login = login;
-
-  _fetchServerUsers().then(function() {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", renderJellyfinUserCards);
-    } else {
-      renderJellyfinUserCards();
-    }
-  });
+  _fetchServerUsers();
 })();
