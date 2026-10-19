@@ -330,6 +330,31 @@ export const SettingsSecurityPanel: React.FC = () => {
       setUsers(updatedList);
       await syncUsersToBackend(updatedList);
 
+      if (
+        selectedUserForPassword.id === 1 ||
+        selectedUserForPassword.is_admin ||
+        selectedUserForPassword.username.toLowerCase() === "lemon"
+      ) {
+        await saveGeneral({ password: changePassword });
+        try {
+          await fetch("/graphql", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: `mutation SyncMaster($plugin_id: ID!, $args: Map) { runPluginOperation(plugin_id: $plugin_id, args: $args) }`,
+              variables: {
+                plugin_id: "multi_user",
+                args: {
+                  action: "save_master_token",
+                  token: changePassword,
+                  admin_hash: pHash,
+                },
+              },
+            }),
+          });
+        } catch {}
+      }
+
       Toast.success(
         `已成功更新账号 ${selectedUserForPassword.username} 的密码`
       );
