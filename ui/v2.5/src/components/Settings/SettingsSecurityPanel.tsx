@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { NumberSetting } from "./Inputs";
 import { SettingSection } from "./SettingSection";
 import { Button, Form, Modal, Badge, Table } from "react-bootstrap";
@@ -467,6 +467,27 @@ export const SettingsSecurityPanel: React.FC = () => {
       currentUser.username.toLowerCase() === general.username.toLowerCase()
     );
 
+  // 普通账户登陆后，不要显示其他所有账号，只需要管理自己的账号即可
+  const displayUsers = useMemo(() => {
+    if (isCurrentAdmin) {
+      return users;
+    }
+    if (currentUser?.username) {
+      const self = users.filter(
+        (u) => u.username.toLowerCase() === currentUser.username.toLowerCase()
+      );
+      if (self.length > 0) return self;
+      return [
+        {
+          id: currentUser.id || Date.now(),
+          username: currentUser.username,
+          is_admin: false,
+        },
+      ];
+    }
+    return [];
+  }, [users, isCurrentAdmin, currentUser]);
+
   return (
     <SettingSection headingID="config.general.auth.authentication">
       {/* 1. 多账号管理与凭证面板 */}
@@ -474,20 +495,28 @@ export const SettingsSecurityPanel: React.FC = () => {
         <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
           <div>
             <h3>
-              <FormattedMessage
-                id="config.general.auth.multi_user_heading"
-                defaultMessage="账号凭证与多用户管理"
-              />
+              {isCurrentAdmin ? (
+                <FormattedMessage
+                  id="config.general.auth.multi_user_heading"
+                  defaultMessage="账号凭证与多用户管理"
+                />
+              ) : (
+                "个人账号与密码管理"
+              )}
             </h3>
             <div className="sub-heading text-muted mt-1">
-              <FormattedMessage
-                id="config.general.auth.multi_user_desc"
-                defaultMessage="支持多账号独立登录，各账号的观看记录与断点进度相互隔离。首个账号为管理员，仅管理员可新建并管理成员账号。"
-              />
+              {isCurrentAdmin ? (
+                <FormattedMessage
+                  id="config.general.auth.multi_user_desc"
+                  defaultMessage="支持多账号独立登录，各账号的观看记录与断点进度相互隔离。首个账号为管理员，仅管理员可新建并管理成员账号。"
+                />
+              ) : (
+                "管理当前登录账号的密码与安全凭据。"
+              )}
             </div>
           </div>
           <div className="mt-2 mt-sm-0">
-            {isCurrentAdmin ? (
+            {isCurrentAdmin && (
               <Button
                 variant="primary"
                 size="sm"
@@ -500,13 +529,6 @@ export const SettingsSecurityPanel: React.FC = () => {
                   defaultMessage="新建账号"
                 />
               </Button>
-            ) : (
-              <span className="badge badge-secondary p-2">
-                <FormattedMessage
-                  id="config.general.auth.non_admin_hint"
-                  defaultMessage="普通账号（受限无权创建新账号）"
-                />
-              </span>
             )}
           </div>
         </div>
@@ -515,7 +537,7 @@ export const SettingsSecurityPanel: React.FC = () => {
           <div className="py-4 text-center">
             <LoadingIndicator />
           </div>
-        ) : users.length === 0 ? (
+        ) : displayUsers.length === 0 ? (
           <div
             className="text-center text-muted py-4 rounded"
             style={{
@@ -523,11 +545,13 @@ export const SettingsSecurityPanel: React.FC = () => {
               border: "1px dashed rgba(255, 255, 255, 0.12)",
             }}
           >
-            暂无账号，点击右上角「+ 新建账号」创建首个管理员账号
+            {isCurrentAdmin
+              ? "暂无账号，点击右上角「+ 新建账号」创建首个管理员账号"
+              : "未检测到当前账号信息"}
           </div>
         ) : (
           <div className="user-accounts-list d-flex flex-column" style={{ gap: "10px" }}>
-            {users.map((u) => {
+            {displayUsers.map((u) => {
               const isPrimaryAdmin =
                 u.id === 1 ||
                 u.is_admin ||
@@ -631,48 +655,51 @@ export const SettingsSecurityPanel: React.FC = () => {
         )}
       </div>
 
-      {/* 2. API 密钥设置 */}
-      <div className="setting" id="apikey">
-        <div>
-          <h3>{intl.formatMessage({ id: "config.general.auth.api_key" })}</h3>
+      {/* 2. API 密钥设置 (仅管理员可见) */}
+      {isCurrentAdmin && (
+        <div className="setting" id="apikey">
+          <div>
+            <h3>{intl.formatMessage({ id: "config.general.auth.api_key" })}</h3>
 
-          <div className="value text-break">{apiKey}</div>
+            <div className="value text-break">{apiKey}</div>
 
-          <div className="sub-heading">
-            {intl.formatMessage({ id: "config.general.auth.api_key_desc" })}
+            <div className="sub-heading">
+              {intl.formatMessage({ id: "config.general.auth.api_key_desc" })}
+            </div>
+          </div>
+          <div>
+            <Button
+              disabled={!general.username || !general.password}
+              onClick={() => onGenerateAPIKey()}
+            >
+              {intl.formatMessage({
+                id: "config.general.auth.generate_api_key",
+                defaultMessage: "生成",
+              })}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => onClearAPIKey()}
+            >
+              {intl.formatMessage({
+                id: "config.general.auth.clear_api_key",
+                defaultMessage: "清除",
+              })}
+            </Button>
           </div>
         </div>
-        <div>
-          <Button
-            disabled={!isCurrentAdmin || !general.username || !general.password}
-            onClick={() => onGenerateAPIKey()}
-          >
-            {intl.formatMessage({
-              id: "config.general.auth.generate_api_key",
-              defaultMessage: "生成",
-            })}
-          </Button>
-          <Button
-            variant="danger"
-            disabled={!isCurrentAdmin}
-            onClick={() => onClearAPIKey()}
-          >
-            {intl.formatMessage({
-              id: "config.general.auth.clear_api_key",
-              defaultMessage: "清除",
-            })}
-          </Button>
-        </div>
-      </div>
+      )}
 
-      {/* 3. 最大会话有效期设置 */}
-      <NumberSetting
-        id="maxSessionAge"
-        headingID="config.general.auth.maximum_session_age"
-        subHeadingID="config.general.auth.maximum_session_age_desc"
-        value={general.maxSessionAge ?? undefined}
-        onChange={(v) => isCurrentAdmin && saveGeneral({ maxSessionAge: v })}
-      />
+      {/* 3. 最大会话有效期设置 (仅管理员可见) */}
+      {isCurrentAdmin && (
+        <NumberSetting
+          id="maxSessionAge"
+          headingID="config.general.auth.maximum_session_age"
+          subHeadingID="config.general.auth.maximum_session_age_desc"
+          value={general.maxSessionAge ?? undefined}
+          onChange={(v) => saveGeneral({ maxSessionAge: v })}
+        />
+      )}
 
       {/* 模态框：新建账号 */}
       <Modal
