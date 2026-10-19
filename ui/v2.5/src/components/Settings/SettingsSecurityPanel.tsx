@@ -375,13 +375,28 @@ export const SettingsSecurityPanel: React.FC = () => {
             <LoadingIndicator />
           </div>
         ) : (
-          <div className="table-responsive">
+          <div
+            className="table-responsive"
+            style={{
+              borderRadius: "6px",
+              overflow: "hidden",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+            }}
+          >
             <Table hover variant="dark" className="user-management-table mb-0">
-              <thead>
+              <thead style={{ backgroundColor: "#1e2931" }}>
                 <tr>
-                  <th style={{ width: "40%" }}>账号名称</th>
-                  <th style={{ width: "30%" }}>角色身份</th>
-                  <th className="text-right" style={{ width: "30%" }}>
+                  <th style={{ width: "35%", minWidth: "150px" }}>账号名称</th>
+                  <th
+                    className="text-center"
+                    style={{ width: "25%", minWidth: "110px" }}
+                  >
+                    角色身份
+                  </th>
+                  <th
+                    className="text-right"
+                    style={{ width: "40%", minWidth: "220px" }}
+                  >
                     操作
                   </th>
                 </tr>
@@ -399,66 +414,82 @@ export const SettingsSecurityPanel: React.FC = () => {
                     const isCurrent = currentUser?.username === u.username;
                     return (
                       <tr key={u.id}>
-                        <td className="align-middle font-weight-bold">
-                          <span className="user-avatar-badge mr-2">
+                        <td className="align-middle py-2 font-weight-bold">
+                          <span className="user-avatar-badge mr-2 text-info">
                             <Icon icon={isPrimaryAdmin ? faUserShield : faUser} />
                           </span>
-                          {u.username}
+                          <span className="align-middle">{u.username}</span>
                           {isCurrent && (
-                            <Badge variant="info" className="ml-2 font-weight-normal">
+                            <Badge
+                              variant="info"
+                              className="ml-2 font-weight-normal align-middle"
+                            >
                               当前在线
                             </Badge>
                           )}
                         </td>
-                        <td className="align-middle">
+                        <td className="align-middle py-2 text-center">
                           {isPrimaryAdmin ? (
-                            <Badge variant="success" className="p-1 px-2 font-weight-normal">
+                            <Badge
+                              variant="success"
+                              className="p-1 px-2 font-weight-normal"
+                            >
                               管理员
                             </Badge>
                           ) : (
-                            <Badge variant="secondary" className="p-1 px-2 font-weight-normal">
-                              普通成员 (记录独立)
+                            <Badge
+                              variant="secondary"
+                              className="p-1 px-2 font-weight-normal"
+                            >
+                              普通成员
                             </Badge>
                           )}
                         </td>
-                        <td className="align-middle text-right">
-                          {!isCurrent && (
-                            <Button
-                              variant="outline-info"
-                              size="sm"
-                              className="mr-2"
-                              onClick={() => handleSwitchUser(u)}
-                            >
-                              切换账号
-                            </Button>
-                          )}
+                        <td
+                          className="align-middle py-2 text-right"
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          <div
+                            className="d-inline-flex align-items-center justify-content-end"
+                            style={{ gap: "6px" }}
+                          >
+                            {!isCurrent && (
+                              <Button
+                                variant="outline-info"
+                                size="sm"
+                                onClick={() => handleSwitchUser(u)}
+                              >
+                                切换
+                              </Button>
+                            )}
 
-                          {(isCurrentAdmin || isCurrent) && (
-                            <Button
-                              variant="outline-secondary"
-                              size="sm"
-                              className="mr-2"
-                              onClick={() => {
-                                setSelectedUserForPassword(u);
-                                setChangePassword("");
-                                setShowPasswordModal(true);
-                              }}
-                            >
-                              <Icon icon={faKey} className="mr-1" />
-                              修改密码
-                            </Button>
-                          )}
+                            {(isCurrentAdmin || isCurrent) && (
+                              <Button
+                                variant="outline-secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedUserForPassword(u);
+                                  setChangePassword("");
+                                  setShowPasswordModal(true);
+                                }}
+                              >
+                                <Icon icon={faKey} className="mr-1" />
+                                修改密码
+                              </Button>
+                            )}
 
-                          {isCurrentAdmin && u.id !== 1 && !u.is_admin && (
-                            <Button
-                              variant="outline-danger"
-                              size="sm"
-                              onClick={() => handleDeleteUser(u)}
-                            >
-                              <Icon icon={faTrash} className="mr-1" />
-                              删除
-                            </Button>
-                          )}
+                            {isCurrentAdmin && u.id !== 1 && !u.is_admin && (
+                              <Button
+                                variant="outline-danger"
+                                size="sm"
+                                onClick={() => handleDeleteUser(u)}
+                                title="删除此账号"
+                              >
+                                <Icon icon={faTrash} className="mr-1" />
+                                删除
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
