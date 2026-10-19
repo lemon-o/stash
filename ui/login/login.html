@@ -22,7 +22,7 @@ internal_error: "发生内部错误，请查看日志获取详细信息"
 <script src="login/locale"></script>
 </head>
 
-<script src="assets/login_multi.js"></script>
+<script src="assets/login_multi.js?v=2.6"></script>
 <script>
 if(!window.login){
 function login(){var u=document.getElementById("username").value,p=document.getElementById("password").value,r=document.getElementById("returnURL").value,x=new XMLHttpRequest();x.open("POST","login",true);x.setRequestHeader("Content-Type","application/x-www-form-urlencoded");x.onreadystatechange=function(){if(x.readyState==4){if(x.status==200)window.location.replace(r);else document.getElementsByClassName("login-error")[0].innerHTML=localeStrings.invalid_credentials;}};x.send("username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p)+"&returnURL="+encodeURIComponent(r));}
@@ -34,7 +34,7 @@ function login(){var u=document.getElementById("username").value,p=document.getE
 <div class="login-header">
 <h3 class="login-title">Stash</h3>
 </div>
-<form action="login" method="POST" onsubmit="event.preventDefault(); login();">
+<form action="login" method="POST" onsubmit="event.preventDefault(); (window.login||login)();">
 <div class="form-group">
 <label for="username"><h6 id="username-heading">用户名</h6></label>
 <input class="text-input form-control" id="username" name="username" type="text" placeholder="用户名" autofocus />
@@ -68,4 +68,4 @@ document.getElementById("username").placeholder = localeStrings.username;
 document.getElementById("password").placeholder = localeStrings.password;
 document.getElementById("login-button").value = localeStrings.login;
 </script>
-<!--=====================================================================================================================================================================================================================--></html>
+<!--===============================================================================================================================================================================================--></html>
