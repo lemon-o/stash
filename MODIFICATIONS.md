@@ -2590,7 +2590,7 @@ npx pnpm run start
 
 * **修复方案与落地实施**：
   1. **补全 Alpine 镜像核心系统级依赖**：
-     - 在 `docker/build/custom/Dockerfile`、`docker/ci/x86_64/Dockerfile`、`docker/build/x86_64/Dockerfile` 的 `apk add --no-cache` 中全面追加 `py3-sqlite3 sqlite sqlite-libs`，彻底消除容器内 Python 对 SQLite 驱动缺失的报错。
+     - 在 `docker/build/custom/Dockerfile`、`docker/ci/x86_64/Dockerfile`、`docker/build/x86_64/Dockerfile` 的 `apk add --no-cache` 中追加 `sqlite sqlite-libs`，确保容器底层具备完整 SQLite C 动态链接库；同时在 `multi_user.py` 内部引入 `ImportError` 弹性降级与服务端原子 JSON 双写引擎。
   2. **服务端双重持久化机制（Dual-Persistence & Fail-Safe Architecture）**：
      - `multi_user.py` 将 `import sqlite3` 纳入 `try ... except ImportError` 容错；
      - 新增向上递归目录自发现与 `config.yml` 数据库路径解析，无论在 Docker 容器（`/root/.stash`）还是本地开发环境，均能秒级定位真实 `stash-go.sqlite`；
