@@ -1,0 +1,10 @@
+name: 多用户认证同步
+description: 多用户账号管理、凭证校验与持久化同步服务
+version: "1.0"
+exec:
+  - python
+  - "{pluginDir}/multi_user.py"
+interface: raw
+tasks:
+  - name: sync_users
+    description: 同步账号配置到静态资源目录

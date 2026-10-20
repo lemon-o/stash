@@ -310,6 +310,10 @@ func (c Cache) RunPlugin(ctx context.Context, pluginID string, args OperationInp
 	// find the plugin
 	plugin := c.getPlugin(pluginID)
 
+	if plugin == nil {
+		return nil, fmt.Errorf("plugin %s not found", pluginID)
+	}
+
 	pluginInput := buildPluginInput(plugin, nil, serverConnection, args)
 
 	pt := pluginTask{
@@ -486,9 +490,9 @@ func getVisitedPluginHookCounts(ctx context.Context) visitedPluginHookCounts {
 }
 
 func (c Cache) getPlugin(pluginID string) *Config {
-	for _, s := range c.plugins {
-		if s.id == pluginID {
-			return &s
+	for i := range c.plugins {
+		if strings.EqualFold(c.plugins[i].id, pluginID) {
+			return &c.plugins[i]
 		}
 	}
 

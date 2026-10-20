@@ -10,7 +10,7 @@ import (
 	"github.com/stashapp/stash/pkg/logger"
 )
 
-//go:embed auto_group/*
+//go:embed auto_group/* multi_user/*
 var BuiltinPlugins embed.FS
 
 // ProvisionDefaultPlugins ensures that built-in plugins (like auto_group)

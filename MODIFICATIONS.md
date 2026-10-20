@@ -2543,3 +2543,30 @@ npx pnpm run start
 
 *文档更新时间：2026-10-20*  
 *维护者：Antigravity & User Pair-Programming*
+
+### 任务八十七：修复 Docker 镜像中内置插件缺失导致的 runPluginOperation 空指针崩溃（nil pointer dereference）（v1.2.9）
+
+* **用户报错现象**：
+  - Docker 构建镜像部署后，后台持续爆出错误：
+    `runPluginOperation: input: runPluginOperation Internal system error. Error <runtime error: invalid memory address or nil pointer dereference>`
+
+* **深度根因排查定位**：
+  1. **构建阶段内置插件遗漏**：此前多用户插件位于开发测试目录 `data/plugins/multi_user/`，而 `data/` 在 `.gitignore` 中被忽略，Docker 构建阶段执行 `COPY ./pkg/plugin/builtin/ /root/.stash/plugins/`，只复制了 `pkg/plugin/builtin/` 中的 `auto_group`，容器内没有 `multi_user` 插件。
+  2. **Go 后端运行态未做判空直接解引用**：`pkg/plugin/plugins.go` 中的 `RunPlugin` 调用 `c.getPlugin(pluginID)` 获取插件配置。当插件不存在时返回 `nil`，后续代码未做判空直接调用 `plugin.getConfigPath()` 与 `pt.createTask()`，导致 Go 运行时触发全局 `invalid memory address or nil pointer dereference` 致命崩溃。
+  3. **数据目录容器环境未自适应**：原脚本写死宿主机相对路径 `../../../data`，容器内实际配置位于 `/root/.stash`，数据库位于 `/root/.stash/stash-go.sqlite`。
+
+* **修复方案与落地实施**：
+  1. **将 multi_user 纳入 Stash 核心内置插件体系**：
+     - 新建 `pkg/plugin/builtin/multi_user/` 目录，存放 `multi_user.py` 与 `multi_user.yml`；
+     - 在 `pkg/plugin/builtin/builtin.go` 中通过 `//go:embed auto_group/* multi_user/*` 将其直接编译固化进 Go 二进制；
+     - 系统启动时由 `builtin.ProvisionDefaultPlugins(path)` 自动提取释放，无论用户挂载空卷还是已有数据卷，插件均确保 100% 存在。
+  2. **Go 后端 RunPlugin 与 getPlugin 严密判空与防崩**：
+     - 在 `pkg/plugin/plugins.go` 的 `RunPlugin` 中增加 `if plugin == nil { return nil, fmt.Errorf("plugin %s not found", pluginID) }` 判空，彻底杜绝 nil 指针 panic；
+     - `getPlugin` 增加忽略大小写安全匹配（`strings.EqualFold`）与安全切片索引寻址。
+  3. **重构 multi_user.py 容器自适应路径解析**：
+     - 优先自适应解析 Stash 传入的 `server_connection.Dir` 与 `STASH_CONFIG_FILE` 环境变量，无论在 Docker 容器（`/root/.stash`）还是 Windows/Linux 本地开发环境（`data`），均能毫秒级精准定位 `stash-go.sqlite` 与 `users.json`。
+
+---
+
+*文档更新时间：2026-10-20*  
+*维护者：Antigravity & User Pair-Programming*
