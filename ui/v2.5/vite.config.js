@@ -16,7 +16,7 @@ export default defineConfig(() => {
     tsconfigPaths(),
     viteCompression({
       algorithm: "gzip",
-      deleteOriginFile: true,
+      deleteOriginFile: false,
       threshold: 0,
       filter: (file) =>
         !file.includes("users.json") &&
