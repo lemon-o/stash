@@ -40,7 +40,7 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       const entries = Object.entries(activities)
         .filter(
           ([_, act]) =>
-            (act.resume_time ?? 0) > 0 || (act.play_count ?? 0) > 0
+            (act.resume_time ?? 0) >= 2 || (act.play_count ?? 0) > 0
         )
         .sort(
           (a, b) =>
@@ -63,7 +63,7 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       },
     });
 
-    // Refetch when tab becomes focused
+    // Refetch when tab becomes focused or when user activity syncs from server
     useEffect(() => {
       const handleFocus = () => {
         refetchActivity();
@@ -71,8 +71,17 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
           refetch().catch(() => {});
         }
       };
+      const handleUpdate = () => {
+        if (watchedIds.length > 0) {
+          refetch().catch(() => {});
+        }
+      };
       window.addEventListener("focus", handleFocus);
-      return () => window.removeEventListener("focus", handleFocus);
+      window.addEventListener("stash:user_activity_updated", handleUpdate);
+      return () => {
+        window.removeEventListener("focus", handleFocus);
+        window.removeEventListener("stash:user_activity_updated", handleUpdate);
+      };
     }, [watchedIds, refetch, refetchActivity]);
 
     const scenes = useMemo(() => {

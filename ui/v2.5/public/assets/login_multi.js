@@ -1,6 +1,5 @@
 // Jellyfin-style Multi-Account Login Controller for Stash
 (function() {
-  try { localStorage.removeItem("stash_current_user"); } catch(e) {}
 
   function sha256Sync(ascii) {
     function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
@@ -166,9 +165,10 @@
           if (activeUser.is_admin) {
             _masterToken = p;
             try {
-              await fetch("graphql", {
+              await fetch("/graphql", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({
                   query: 'mutation SyncToken($plugin_id: ID!, $args: Map) { runPluginOperation(plugin_id: $plugin_id, args: $args) }',
                   variables: {

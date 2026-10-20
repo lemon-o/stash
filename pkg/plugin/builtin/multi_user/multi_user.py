@@ -532,6 +532,7 @@ def main():
             uid = 1
 
         user_acts = {}
+        valid_scene_ids = set()
 
         # 1. Authoritative fetch from SQLite users_scenes_activity
         conn = get_db_connection(db_path)
@@ -540,11 +541,23 @@ def main():
                 conn.execute("PRAGMA foreign_keys = OFF;")
                 c = conn.cursor()
                 init_db_schema(conn)
+
+                # Fetch all existing scene IDs in database to filter out any orphans
+                try:
+                    c.execute("SELECT id FROM scenes")
+                    valid_scene_ids = {str(r[0]) for r in c.fetchall()}
+                    # Clean up any orphaned records
+                    c.execute("DELETE FROM users_scenes_activity WHERE scene_id NOT IN (SELECT id FROM scenes)")
+                    conn.commit()
+                except Exception:
+                    pass
+
                 c.execute("""
-                SELECT scene_id, resume_time, play_duration, play_count, last_played_at
+                SELECT users_scenes_activity.scene_id, users_scenes_activity.resume_time, users_scenes_activity.play_duration, users_scenes_activity.play_count, users_scenes_activity.last_played_at
                 FROM users_scenes_activity
-                WHERE user_id = ?
-                ORDER BY last_played_at DESC
+                INNER JOIN scenes ON scenes.id = users_scenes_activity.scene_id
+                WHERE users_scenes_activity.user_id = ?
+                ORDER BY users_scenes_activity.last_played_at DESC
                 """, (uid,))
                 rows = c.fetchall()
 
@@ -563,10 +576,11 @@ def main():
                             """, (s_row[0], float(s_row[1]), now_ts))
                         conn.commit()
                         c.execute("""
-                        SELECT scene_id, resume_time, play_duration, play_count, last_played_at
+                        SELECT users_scenes_activity.scene_id, users_scenes_activity.resume_time, users_scenes_activity.play_duration, users_scenes_activity.play_count, users_scenes_activity.last_played_at
                         FROM users_scenes_activity
-                        WHERE user_id = 1
-                        ORDER BY last_played_at DESC
+                        INNER JOIN scenes ON scenes.id = users_scenes_activity.scene_id
+                        WHERE users_scenes_activity.user_id = 1
+                        ORDER BY users_scenes_activity.last_played_at DESC
                         """)
                         rows = c.fetchall()
                     except Exception as me:
@@ -588,9 +602,11 @@ def main():
             finally:
                 conn.close()
 
-        # 2. Dual-persistence: Read from server JSON file and merge
+        # 2. Dual-persistence: Read from server JSON file and merge only existing scenes
         file_acts = read_user_activity_file(data_dir, uid)
         for sid_str, f_item in file_acts.items():
+            if valid_scene_ids and sid_str not in valid_scene_ids:
+                continue
             if sid_str not in user_acts:
                 user_acts[sid_str] = f_item
             else:

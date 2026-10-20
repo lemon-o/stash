@@ -58,7 +58,11 @@ import { SceneMergeModal } from "../SceneMergeDialog";
 import { goBackOrReplace } from "src/utils/history";
 import { FormattedDate } from "src/components/Shared/Date";
 import { StudioLogo } from "src/components/Shared/StudioLogo";
-import { useSceneUserResumeTime } from "src/utils/userActivity";
+import {
+  useSceneUserResumeTime,
+  ensureUserActivityLoaded,
+  isUserActivityLoaded,
+} from "src/utils/userActivity";
 import { JobFragment, useMonitorJob } from "src/utils/job";
 import { useScrollToTopOnMount } from "src/hooks/scrollToTop";
 import { getMainVideoFile } from "src/utils/resolution";
@@ -838,15 +842,23 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   const { configuration } = useConfigurationContext();
   const { data, loading, error, refetch } = useFindScene(id);
 
+  const [activityReady, setActivityReady] = useState(() => isUserActivityLoaded());
+  useEffect(() => {
+    if (!activityReady) {
+      ensureUserActivityLoaded().then(() => setActivityReady(true));
+    }
+  }, [activityReady]);
+
   useScrollToTopOnMount();
 
   const [scene, setScene] = useState<GQL.SceneDataFragment>();
 
   const userScene = useMemo(() => {
     if (!scene) return undefined;
+    const effResume = userResume >= 2 ? userResume : (scene.resume_time ?? 0);
     return {
       ...scene,
-      resume_time: userResume > 0 ? userResume : (scene.resume_time ?? 0),
+      resume_time: effResume >= 2 ? effResume : 0,
     };
   }, [scene, userResume]);
 
@@ -1128,8 +1140,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     loadScene(sceneID, autoPlayOnSelected, getScenePage(sceneID));
   }
 
-  if (!scene) {
-    if (loading) return <LoadingIndicator />;
+  if (!scene || !activityReady) {
+    if (loading || !activityReady) return <LoadingIndicator />;
     if (error) return <ErrorMessage error={error.message} />;
     return <ErrorMessage error={`No scene found with id ${id}.`} />;
   }

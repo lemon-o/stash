@@ -157,7 +157,7 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
       return Object.entries(activities)
         .filter(
           ([_, act]) =>
-            (act.resume_time ?? 0) > 0 || (act.play_count ?? 0) > 0
+            (act.resume_time ?? 0) >= 2 || (act.play_count ?? 0) > 0
         )
         .sort(
           (a, b) =>

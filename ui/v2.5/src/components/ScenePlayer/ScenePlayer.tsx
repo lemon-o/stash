@@ -859,13 +859,15 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       const alwaysStartFromBeginning =
         uiConfig?.alwaysStartFromBeginning ?? false;
-      const userResumeTime = getUserResumeTime(scene.id);
+      const userResumeTime =
+        getUserResumeTime(scene.id) || (scene.resume_time ?? 0);
 
       let startPosition = _initialTimestamp;
       if (
         !startPosition &&
         !alwaysStartFromBeginning &&
-        file.duration > userResumeTime
+        file.duration > userResumeTime &&
+        userResumeTime >= 2
       ) {
         startPosition = userResumeTime;
       }
@@ -896,7 +898,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       player.ready(() => {
         player.vttThumbnails().src(scene.paths.vtt ?? null);
 
-        if (startPosition) {
+        if (startPosition >= 2) {
           if (player.readyState() >= 1) {
             player.currentTime(startPosition);
           } else {
@@ -907,9 +909,9 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         } else if (!alwaysStartFromBeginning && !_initialTimestamp) {
           getOrFetchUserResumeTime(scene.id).then((serverResume) => {
             if (
-              serverResume > 0 &&
-              !started.current &&
-              (player.currentTime() || 0) < 1
+              serverResume >= 2 &&
+              (player.currentTime() || 0) < 3 &&
+              file.duration > serverResume
             ) {
               player.currentTime(serverResume);
               setTime(serverResume);

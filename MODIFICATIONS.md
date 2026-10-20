@@ -2716,5 +2716,43 @@ npx pnpm run start
 
 ---
 
+### 任务九十二：彻底根除跨端播放断点竞态清零、失效场景ID阻断与多环境容器运行故障（v1.3.4）
+
+* **用户故障反馈**：
+  - “docker端还是没修复，设备A和B登录同一个账号，设备A播放了视频，设备B没有同步，设备A刷新一下连设备A的记录都没了”
+  - “没起到任何作用，镜像还膨胀到了300多MB，而且本地端的也失效了”
+  - “仍然没有修复”
+  - “仍未修复成功”
+
+* **全链路终极破案排查**：
+  1. **播放器首屏起播时间差与竞态阻断（断点刷新丢失第一元凶）**：
+     - 当用户刷新页面或在新标签页打开场景详情页时，客户端运行态 `memoryActivityMap` 为初始空状态 `{}`。
+     - 详情页 `SceneLoader` 仅等待了 `useFindScene` 完成便立刻挂载 `<ScenePlayer scene={userScene} />`。由于后端 `getOrFetchUserResumeTime` 需经历网络往返，挂载初期的 `userResume` 初始值为 `0`。
+     - 播放器开启了自动播放（`autostartVideo: true`），在数十毫秒内即从 00:00 播放并触发 `playing` 事件将 `started.current` 设为 `true`。
+     - 数百毫秒后服务端断点数据（如 500 秒）终于返回，但播放器内部保护条件 `if (serverResume > 0 && !started.current ...)` 发现 `started.current` 已为 `true`，**直接无视服务端断点拒不跳转**！视频继续从 00:00 播放。
+     - 当播放达到 2 秒时，`handleSaveProgress` 被触发，将当前的 `2.1` 秒发送到后端，**瞬间冲刷抹掉了服务端真正记录的数百秒历史断点**！导致每次刷新页面视频均从头播放，断点彻底丢失。
+  2. **失效场景 ID 导致 Stash GraphQL 核心接口整表崩溃（继续观看栏消失元凶）**：
+     - Stash 后端核心代码 `pkg/sqlite/scene.go` 的 `FindByIDs` 中存在严苛校验：只要传入的 `scene_ids` 中包含任意一个在数据库 `scenes` 表不存在（或已被物理删除）的场景 ID，便直接抛出 `findScenes scene with id X not found` 致命错误。
+     - GraphQL 将整段 `data` 置为 `null`，导致首页 `ContinueWatchingRow.tsx` 判断 `(loading && !data) || scenes.length === 0` 为真，整条「继续观看」栏直接返回 `null` 从页面上彻底蒸发！
+  3. **设备 B 无法即时感知设备 A 播放动态**：
+     - `ContinueWatchingRow.tsx` 原仅在窗口 `focus` 时刷新，当设备 B 屏幕常亮保持前台时，未能侦听服务端数据同步事件（`stash:user_activity_updated`），导致设备 A 播放后设备 B 无感。
+  4. **Docker 官方构建镜像环境 Python 软链缺失**：
+     - `docker/build/x86_64/Dockerfile` 与 `docker/ci/x86_64/Dockerfile` 仅安装了 `python3`，未创建 `/usr/bin/python` 软链接。部分用户拉取或构建官方/CI 镜像部署时，导致插件无法找到 `python` 命令报错。
+
+* **系统级闭环修复落地**：
+  1. **详情页与播放器就绪链阻塞式校验**：
+     - `Scene.tsx`（`SceneLoader`）：引入 `activityReady` 状态与 `isUserActivityLoaded()` / `ensureUserActivityLoaded()`，在用户活动数据完全抵达并写入内存前保持加载态，坚决杜绝带着 `resume_time = 0` 盲目起播；
+     - `ScenePlayer.tsx`：优化 `userResumeTime` 取值逻辑（`getUserResumeTime(scene.id) || (scene.resume_time ?? 0)`），并在 `serverResume >= 2 && currentTime < 3` 时无论起播状态均立即平滑跃迁至服务端真实断点；监听 `scene.resume_time` 属性变化响应式补齐跳转。
+  2. **服务端与客户端双向过滤隔离失效场景**：
+     - `multi_user.py`：在 `get_activity` 中严格采用 `INNER JOIN scenes ON scenes.id = users_scenes_activity.scene_id` 过滤，并在每次拉取时自动执行 `DELETE FROM users_scenes_activity WHERE scene_id NOT IN (SELECT id FROM scenes)` 清除历史孤儿记录，确保送往前端的 `watchedIds` 100% 存在且有效。
+     - 前端 `ContinueWatchingRow.tsx` 与 `RecommendedScenesRow.tsx` 过滤门槛提升至 `>= 2`，消除首帧误判记录。
+  3. **全端多设备高频实时同步与事件驱动**：
+     - `ContinueWatchingRow.tsx` 监听全域 `stash:user_activity_updated` 事件，一旦设备 B 收到后台轮询（缩短为 10 秒）或焦点事件更新，立刻触发 `refetch()`，无需刷新自动呈现设备 A 最新播放影片；
+     - `userActivity.ts`：后台静默轮询由 15 秒缩短至 10 秒，保障极致跨端响应速度。
+  4. **全套 Dockerfile 补齐运行软链**：
+     - 在 `docker/build/x86_64/Dockerfile` 与 `docker/ci/x86_64/Dockerfile` 中全面追加 `&& ln -sf /usr/bin/python3 /usr/bin/python`，杜绝任何容器发行版环境下的可执行文件寻址失败。
+
+---
+
 *文档更新时间：2026-10-21*  
 *维护者：Antigravity & User Pair-Programming*

@@ -61,6 +61,12 @@ export function getCurrentUser(): IAccountUser | null {
   return null;
 }
 
+export function isUserActivityLoaded(): boolean {
+  const user = getCurrentUser();
+  const uid = user?.id || 1;
+  return memoryLoadedUserId === uid && Object.keys(memoryActivityMap).length >= 0 && !fetchPromise;
+}
+
 export async function fetchUserActivityFromServer(
   force = false
 ): Promise<UserActivityMap> {
@@ -392,10 +398,10 @@ if (typeof window !== "undefined") {
   window.addEventListener("focus", handleSyncOnActive);
   document.addEventListener("visibilitychange", handleSyncOnActive);
 
-  // Periodic background polling: Check server every 15 seconds when tab is active
+  // Periodic background polling: Check server every 10 seconds when tab is active
   setInterval(() => {
     if (document.visibilityState === "visible") {
       fetchUserActivityFromServer(true).catch(() => {});
     }
-  }, 15000);
+  }, 10000);
 }
