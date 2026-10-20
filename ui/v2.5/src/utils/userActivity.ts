@@ -210,7 +210,7 @@ export async function recordUserActivity(
     existing.play_count = 0;
     existing.last_played_at = now;
   } else {
-    if (typeof options.resume_time === "number" && options.resume_time > 0) {
+    if (typeof options.resume_time === "number" && options.resume_time >= 2) {
       existing.resume_time = options.resume_time;
     }
     if (options.play_duration && options.play_duration > 0) {
@@ -237,9 +237,9 @@ export async function recordUserActivity(
     const effResume =
       options.reset
         ? 0
-        : typeof options.resume_time === "number" && options.resume_time > 0
+        : typeof options.resume_time === "number" && options.resume_time >= 2
         ? options.resume_time
-        : existing.resume_time > 0
+        : existing.resume_time >= 2
         ? existing.resume_time
         : 0;
 
@@ -286,6 +286,16 @@ export function useSceneUserResumeTime(sceneId: string | number): number {
 
   useEffect(() => {
     let mounted = true;
+
+    // If not already known in memory, fetch authoritative user activity from server
+    if (getUserResumeTime(sceneId) === 0) {
+      getOrFetchUserResumeTime(sceneId).then((time) => {
+        if (mounted && time > 0) {
+          setResumeTime(time);
+        }
+      });
+    }
+
     const handleUpdate = () => {
       if (mounted) {
         setResumeTime(getUserResumeTime(sceneId));

@@ -17,6 +17,7 @@ import {
   faEye,
   faEyeSlash,
 } from "@fortawesome/free-solid-svg-icons";
+import { fetchUserActivityFromServer } from "src/utils/userActivity";
 
 interface IAccountUser {
   id: number;
@@ -197,33 +198,28 @@ export const SettingsSecurityPanel: React.FC = () => {
       }
     } catch {}
 
-    // 2. Fall back to /custom/auth/users.json
+    // 2. Fall back to /login/users.json or /assets/users.json or /users.json
     if (userList.length === 0) {
-      try {
-        const res = await fetch("/custom/auth/users.json?t=" + Date.now());
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.users)) {
-            userList = data.users;
+      for (const ep of [
+        "/login/users.json?t=" + Date.now(),
+        "/assets/users.json?t=" + Date.now(),
+        "/users.json?t=" + Date.now(),
+        "/custom/auth/users.json?t=" + Date.now(),
+      ]) {
+        try {
+          const res = await fetch(ep, { cache: "no-store" });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.users) && data.users.length > 0) {
+              userList = data.users;
+              break;
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
     }
 
-    // 3. Fall back to /assets/users.json
-    if (userList.length === 0) {
-      try {
-        const res = await fetch("/assets/users.json?t=" + Date.now());
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.users)) {
-            userList = data.users;
-          }
-        }
-      } catch {}
-    }
-
-    // 4. Fall back to local storage
+    // 3. Fall back to local storage
     if (userList.length === 0) {
       userList = getLocalUsers();
     } else {
@@ -335,6 +331,7 @@ export const SettingsSecurityPanel: React.FC = () => {
   function handleSwitchUser(user: IAccountUser) {
     setCurrentUser(user);
     saveLocalCurrentUser(user);
+    fetchUserActivityFromServer(true).catch(() => {});
     Toast.success(`已切换至账号: ${user.username}`);
   }
 

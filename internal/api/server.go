@@ -234,7 +234,17 @@ func Initialize() (*Server, error) {
 	r.Get(logoutEndpoint, handleLogout())
 	r.Get(loginLocaleEndpoint, handleLoginLocale(cfg))
 	r.HandleFunc(loginEndpoint+"/*", func(w http.ResponseWriter, r *http.Request) {
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, loginEndpoint)
+		subPath := strings.TrimPrefix(r.URL.Path, loginEndpoint)
+		if subPath == "/users.json" || subPath == "users.json" {
+			usersPath := filepath.Join(cfg.GetConfigPath(), "users.json")
+			if exists, _ := fsutil.FileExists(usersPath); exists {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				http.ServeFile(w, r, usersPath)
+				return
+			}
+		}
+		r.URL.Path = subPath
 		w.Header().Set("Cache-Control", "no-cache")
 		staticLoginUI.ServeHTTP(w, r)
 	})
@@ -284,6 +294,16 @@ func Initialize() (*Server, error) {
 
 			utils.ServeStaticContent(w, r, []byte(indexHtml))
 		} else {
+			if r.URL.Path == "/assets/users.json" || r.URL.Path == "/users.json" {
+				usersPath := filepath.Join(cfg.GetConfigPath(), "users.json")
+				if exists, _ := fsutil.FileExists(usersPath); exists {
+					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+					http.ServeFile(w, r, usersPath)
+					return
+				}
+			}
+
 			isStatic, _ := path.Match("/assets/*", r.URL.Path)
 			if isStatic {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")

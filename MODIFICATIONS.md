@@ -2678,5 +2678,43 @@ npx pnpm run start
 
 ---
 
+### 任务九十一：彻底根除跨设备同步失效、播放刷新断点丢失与账号刷新消失问题（v1.3.3）
+
+* **用户故障反馈**：
+  - “仍然没有修复”
+  - “设备A和B登录同一个账号，设备A播放了视频，设备B没有同步，设备A刷新一下连设备A的记录都没了”
+  - “现在变成了创建一个新账号，刷新网页就消失”
+
+* **全链路致命根因深度排查定位**：
+  1. **`handlePlay` 在视频起播瞬时强制覆写断点为 1 秒（断点丢失元凶）**：
+     - 在 `ScenePlayer.tsx` 中，`player.on("play", handlePlay)` 内部执行了：
+       `recordUserActivity(scene.id, { resume_time: Math.max(1, curTime), play_count_inc: 1 })`
+     - 每次用户点击播放或自动起播时，播放器瞬时时间 `curTime` 为 0，`Math.max(1, 0)` 将 `resume_time: 1` 发送到服务端，**直接将用户原本观看的数百秒进度无情清洗为 1 秒**！刷新页面后由于服务端断点已变成 1 秒，造成断点丢失的假象。
+  2. **`Scene.tsx` 详情页未同步向播放器注入多用户断点**：
+     - 原 `Scene.tsx` 直接将 GraphQL 原生 `scene` 传给 `<ScenePlayer scene={scene} />`，对于非管理员成员，`scene.resume_time` 为 0；
+     - 播放器随后尝试在 `ready` 内部异步调用 `getOrFetchUserResumeTime`，而由于 Stash 开启了 `autostartVideo`，播放器在网络请求返回前已开始从 0 秒播放并设置 `started.current = true`，导致异步回调中的跳转代码被阻断，播放器永远从头播放。
+  3. **Docker 静态内嵌资源空数组回冲覆盖本地账号（账号刷新消失元凶）**：
+     - 在 Docker 容器中，UI 静态资源在编译阶段由 Go 二进制内嵌（`ui.UIBox`），其构建时的 `assets/users.json` 为 `{"users": []}`；
+     - `login_multi.js` 与 `SettingsSecurityPanel.tsx` 在向服务端请求 `assets/users.json` 时接收到了空数组 `[]`，旧逻辑未校验 `length > 0` 便直接将本地 `stash_user_accounts` 覆盖冲刷为空，进而触发管理员账号兜底重置，导致刚创建的成员账号在页面刷新后彻底消失。
+  4. **后端服务端动态拦截缺失与 Alpine 环境 Python 软链缺失**：
+     - Docker 运行时缺少 `/usr/bin/python` 软链接（Alpine 默认仅提供 `python3`）；
+     - `internal/api/server.go` 与 `session.go` 未对 `/users.json` 与 `/login/users.json` 进行动态拦截转发至真实配置目录 `/root/.stash/users.json`，且带有 `Cache-Control: immutable` 缓存头。
+
+* **终极系统级闭环修复方案**：
+  1. **播放器进度采集与防冲刷彻底安全隔离**：
+     - `ScenePlayer.tsx`：`handlePlay` 彻底剥离 `resume_time` 属性，起播事件只维护播放计数；`handleSaveProgress`、`saveActivity` 与组件销毁卸载钩子强制增加 `curTime >= 2` 与 `resumeTime >= 2` 安全防护阈值，在视频缓冲与未播阶段绝不保存微小时间；监听 `player.on("ended")` 在视频完播时精准重置断点；
+     - `Scene.tsx`：在详情页顶层引入 `useSceneUserResumeTime` 监听并构造响应式 `userScene`，同步注入当前登录成员的断点时间至 `ScenePlayer`，还原播放器原生同步首帧起跳逻辑；
+     - `userActivity.ts`：限制仅当 `resume_time >= 2` 时才生效持久化，并在用户切换账号时强制 `fetchUserActivityFromServer(true)` 实时刷新。
+  2. **服务端 SQLite 断点写入原子级双重防护**：
+     - `multi_user.py`：SQLite `save_activity` 的 `ON CONFLICT` 语句升级为：
+       `WHEN excluded.resume_time >= 2.0 THEN excluded.resume_time ELSE users_scenes_activity.resume_time END`
+       任何小于 2 秒的非正常信号在数据库底层直接被拒绝写入，彻底确保多设备断点数据不被脏数据篡改。
+  3. **后端动态凭证路由与防空重置机制**：
+     - `internal/api/server.go` 与 `session.go`：拦截 `/assets/users.json`、`/login/users.json` 及 `/users.json` 请求，直接服务磁盘配置目录中的真实 `users.json` 文件并设置 `no-cache, no-store, must-revalidate` 严格防缓存头；
+     - `login_multi.js` 与 `SettingsSecurityPanel.tsx`：多重端点拉取且强制要求 `data.users.length > 0`，若服务端未提供或提供空列表，坚决保留已有账号，杜绝刷新丢失；
+     - `docker/build/custom/Dockerfile`：增加 `ln -sf /usr/bin/python3 /usr/bin/python`，镜像保持 ~80MB 极致轻量。
+
+---
+
 *文档更新时间：2026-10-21*  
 *维护者：Antigravity & User Pair-Programming*

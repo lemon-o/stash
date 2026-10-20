@@ -334,7 +334,7 @@ def main():
                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(id) DO UPDATE SET
                         username=excluded.username,
-                        password_hash=excluded.password_hash,
+                        password_hash=CASE WHEN excluded.password_hash != '' THEN excluded.password_hash ELSE users.password_hash END,
                         is_admin=excluded.is_admin
                     """, (uid, uname, phash, is_adm))
                 conn.commit()
@@ -387,7 +387,7 @@ def main():
                 "last_played_at": now_ms
             }
         else:
-            eff_resume = req_resume_time if (has_resume_time and req_resume_time > 0) else prev_resume
+            eff_resume = req_resume_time if (has_resume_time and req_resume_time >= 2.0) else prev_resume
             updated_act = {
                 "scene_id": scene_id,
                 "resume_time": eff_resume,
@@ -433,7 +433,7 @@ def main():
                     VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(user_id, scene_id) DO UPDATE SET
                         resume_time = CASE
-                            WHEN excluded.resume_time > 0 THEN excluded.resume_time
+                            WHEN excluded.resume_time >= 2.0 THEN excluded.resume_time
                             ELSE users_scenes_activity.resume_time
                         END,
                         play_duration = users_scenes_activity.play_duration + excluded.play_duration,

@@ -1017,23 +1017,12 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       if (!player) return;
 
       const handlePlay = () => {
-        const curTime = player.currentTime() || 0;
-        const resumeSec = Math.max(1, curTime);
         recordUserActivity(scene.id, {
-          resume_time: resumeSec,
           play_count_inc: 1,
         });
 
         const curUser = getCurrentUser();
         if (curUser?.is_admin) {
-          sceneSaveActivity({
-            variables: {
-              id: scene.id,
-              playDuration: 0,
-              resume_time: resumeSec,
-            },
-          }).catch(() => {});
-
           sceneIncrementPlayCount({
             variables: {
               id: scene.id,
@@ -1044,9 +1033,26 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       const handleSaveProgress = () => {
         const curTime = player.currentTime() || 0;
-        const resumeSec = Math.max(1, curTime);
+        if (curTime >= 2) {
+          recordUserActivity(scene.id, {
+            resume_time: curTime,
+          });
+          const curUser = getCurrentUser();
+          if (curUser?.is_admin) {
+            sceneSaveActivity({
+              variables: {
+                id: scene.id,
+                playDuration: 0,
+                resume_time: curTime,
+              },
+            }).catch(() => {});
+          }
+        }
+      };
+
+      const handleEnded = () => {
         recordUserActivity(scene.id, {
-          resume_time: resumeSec,
+          reset: true,
         });
         const curUser = getCurrentUser();
         if (curUser?.is_admin) {
@@ -1054,7 +1060,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
             variables: {
               id: scene.id,
               playDuration: 0,
-              resume_time: resumeSec,
+              resume_time: 0,
             },
           }).catch(() => {});
         }
@@ -1063,6 +1069,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       player.on("play", handlePlay);
       player.on("pause", handleSaveProgress);
       player.on("seeked", handleSaveProgress);
+      player.on("ended", handleEnded);
 
       const handleVisibilityChange = () => {
         if (document.visibilityState === "hidden") {
@@ -1074,12 +1081,16 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       async function saveActivity(resumeTime: number, playDuration: number) {
         if (!scene.id) return;
 
-        const resumeSec =
-          resumeTime > 0 ? Math.max(1, resumeTime) : 0;
-        recordUserActivity(scene.id, {
-          resume_time: resumeSec,
-          play_duration: playDuration,
-        });
+        if (resumeTime >= 2) {
+          recordUserActivity(scene.id, {
+            resume_time: resumeTime,
+            play_duration: playDuration,
+          });
+        } else if (playDuration > 0) {
+          recordUserActivity(scene.id, {
+            play_duration: playDuration,
+          });
+        }
 
         const curUser = getCurrentUser();
         if (curUser?.is_admin) {
@@ -1087,9 +1098,9 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
             variables: {
               id: scene.id,
               playDuration,
-              resume_time: resumeSec,
+              resume_time: resumeTime >= 2 ? resumeTime : 0,
             },
-          });
+          }).catch(() => {});
         }
       }
 
@@ -1106,7 +1117,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
             variables: {
               id: scene.id,
             },
-          });
+          }).catch(() => {});
         }
       }
 
@@ -1120,7 +1131,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         try {
           if (!player.isDisposed()) {
             const curTime = player.currentTime() || 0;
-            if (curTime > 1) {
+            if (curTime >= 2) {
               recordUserActivity(scene.id, {
                 resume_time: curTime,
               });
@@ -1130,6 +1141,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         player.off("play", handlePlay);
         player.off("pause", handleSaveProgress);
         player.off("seeked", handleSaveProgress);
+        player.off("ended", handleEnded);
         document.removeEventListener(
           "visibilitychange",
           handleVisibilityChange

@@ -58,6 +58,7 @@ import { SceneMergeModal } from "../SceneMergeDialog";
 import { goBackOrReplace } from "src/utils/history";
 import { FormattedDate } from "src/components/Shared/Date";
 import { StudioLogo } from "src/components/Shared/StudioLogo";
+import { useSceneUserResumeTime } from "src/utils/userActivity";
 import { JobFragment, useMonitorJob } from "src/utils/job";
 import { useScrollToTopOnMount } from "src/hooks/scrollToTop";
 import { getMainVideoFile } from "src/utils/resolution";
@@ -833,12 +834,21 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   match,
 }) => {
   const { id } = match.params;
+  const userResume = useSceneUserResumeTime(id);
   const { configuration } = useConfigurationContext();
   const { data, loading, error, refetch } = useFindScene(id);
 
   useScrollToTopOnMount();
 
   const [scene, setScene] = useState<GQL.SceneDataFragment>();
+
+  const userScene = useMemo(() => {
+    if (!scene) return undefined;
+    return {
+      ...scene,
+      resume_time: userResume > 0 ? userResume : (scene.resume_time ?? 0),
+    };
+  }, [scene, userResume]);
 
   const onRefreshScene = useCallback(async () => {
     const result = await refetch();
@@ -1148,7 +1158,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       <div className={`scene-player-container ${collapsed ? "expanded" : ""}`}>
         <ScenePlayer
           key={scene.id}
-          scene={scene}
+          scene={userScene}
           hideScrubberOverride={hideScrubber}
           autoplay={autoplay}
           permitLoop={!continuePlaylist}

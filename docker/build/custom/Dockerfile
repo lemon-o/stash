@@ -78,7 +78,8 @@ RUN apk add --no-cache \
       sqlite-libs \
       ffmpeg \
       tzdata \
-      vips-tools
+      vips-tools \
+    && ln -sf /usr/bin/python3 /usr/bin/python
 
 COPY --from=backend /stash/stash /usr/bin/
 COPY ./pkg/plugin/builtin/ /root/.stash/plugins/

@@ -57,35 +57,28 @@
   var _masterToken = "";
 
   async function _fetchServerUsers() {
-    try {
-      var res = await fetch("custom/auth/users.json?t=" + Date.now(), { cache: "no-store" });
-      if (res.ok) {
-        var data = await res.json();
-        if (data && Array.isArray(data.users) && data.users.length > 0) {
-          _serverUsers = data.users;
-          if (data.master_token) _masterToken = data.master_token;
-          try {
-            localStorage.setItem("stash_user_accounts", JSON.stringify(_serverUsers));
-          } catch(e) {}
-          return;
+    var endpoints = [
+      "login/users.json?t=" + Date.now(),
+      "assets/users.json?t=" + Date.now(),
+      "users.json?t=" + Date.now(),
+      "custom/auth/users.json?t=" + Date.now()
+    ];
+    for (var i = 0; i < endpoints.length; i++) {
+      try {
+        var res = await fetch(endpoints[i], { cache: "no-store" });
+        if (res.ok) {
+          var data = await res.json();
+          if (data && Array.isArray(data.users) && data.users.length > 0) {
+            _serverUsers = data.users;
+            if (data.master_token) _masterToken = data.master_token;
+            try {
+              localStorage.setItem("stash_user_accounts", JSON.stringify(_serverUsers));
+            } catch(e) {}
+            return;
+          }
         }
-      }
-    } catch(e) {}
-
-    try {
-      var res2 = await fetch("assets/users.json?t=" + Date.now(), { cache: "no-store" });
-      if (res2.ok) {
-        var data2 = await res2.json();
-        if (data2 && Array.isArray(data2.users)) {
-          _serverUsers = data2.users;
-          if (data2.master_token) _masterToken = data2.master_token;
-          try {
-            localStorage.setItem("stash_user_accounts", JSON.stringify(_serverUsers));
-          } catch(e) {}
-          return;
-        }
-      }
-    } catch(e) {}
+      } catch(e) {}
+    }
 
     if (!_serverUsers || _serverUsers.length === 0) {
       try {
