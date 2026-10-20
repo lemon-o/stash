@@ -29,7 +29,7 @@ def parse_database_from_config(config_path):
 def get_paths(plugin_input):
     plugin_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 1. Check server_connection from Stash stdin
+    # 1. Check server_connection from Stash stdin (Highest Priority!)
     server_conn = plugin_input.get("server_connection", {})
     server_dir = ""
     if isinstance(server_conn, dict):
@@ -39,75 +39,96 @@ def get_paths(plugin_input):
     env_config = os.environ.get("STASH_CONFIG_FILE", "")
     env_dir = os.path.dirname(os.path.abspath(env_config)) if env_config else ""
 
-    candidates = []
+    primary_candidates = []
     if server_dir and os.path.isdir(server_dir):
-        candidates.append(os.path.abspath(server_dir))
+        primary_candidates.append(os.path.abspath(server_dir))
     if env_dir and os.path.isdir(env_dir):
-        candidates.append(os.path.abspath(env_dir))
+        p = os.path.abspath(env_dir)
+        if p not in primary_candidates:
+            primary_candidates.append(p)
 
     # Candidate: /root/.stash (Standard Docker Stash config & DB directory)
     if os.path.isdir("/root/.stash"):
-        candidates.append("/root/.stash")
+        p = os.path.abspath("/root/.stash")
+        if p not in primary_candidates:
+            primary_candidates.append(p)
 
-    # Walk upwards from plugin directory to discover stash root or data directory
-    cur = plugin_dir
-    for _ in range(6):
-        if cur not in candidates and os.path.isdir(cur):
-            candidates.append(cur)
-            data_sub = os.path.join(cur, "data")
-            if os.path.isdir(data_sub) and data_sub not in candidates:
-                candidates.append(data_sub)
-        parent = os.path.dirname(cur)
-        if parent == cur:
-            break
-        cur = parent
-
-    # Candidate: repo/data (from current working directory)
-    cwd_data = os.path.abspath(os.path.join(os.getcwd(), "data"))
-    if os.path.isdir(cwd_data) and cwd_data not in candidates:
-        candidates.append(cwd_data)
-
-    cwd = os.path.abspath(os.getcwd())
-    if os.path.isdir(cwd) and cwd not in candidates:
-        candidates.append(cwd)
-
-    # First, try to read explicit `database:` setting from config.yml if present
     db_path = None
-    config_candidates = []
-    if env_config and os.path.isfile(env_config):
-        config_candidates.append(env_config)
-    for c in candidates:
-        cfg = os.path.join(c, "config.yml")
-        if os.path.isfile(cfg) and cfg not in config_candidates:
-            config_candidates.append(cfg)
+    data_dir = None
 
-    for cfg in config_candidates:
-        parsed_db = parse_database_from_config(cfg)
-        if parsed_db:
-            if os.path.isfile(parsed_db):
-                db_path = parsed_db
-                data_dir = os.path.dirname(parsed_db)
+    # Step 1: If primary directory (server_dir / env_dir / /root/.stash) is known,
+    # look for config.yml or stash-go.sqlite ONLY in primary candidates first!
+    for p_dir in primary_candidates:
+        cfg = os.path.join(p_dir, "config.yml")
+        if os.path.isfile(cfg):
+            pdb = parse_database_from_config(cfg)
+            if pdb and os.path.isfile(pdb):
+                db_path = pdb
+                data_dir = p_dir
                 break
-            elif not db_path:
-                db_path = parsed_db
+        cand_db = os.path.join(p_dir, "stash-go.sqlite")
+        if os.path.isfile(cand_db):
+            db_path = cand_db
+            data_dir = p_dir
+            break
+        cand_sub_db = os.path.join(p_dir, "data", "stash-go.sqlite")
+        if os.path.isfile(cand_sub_db):
+            db_path = cand_sub_db
+            data_dir = os.path.join(p_dir, "data")
+            break
 
-    # Second, check for stash-go.sqlite existing in candidates
-    data_dir = candidates[0] if candidates else plugin_dir
-    if not db_path or not os.path.isfile(db_path):
-        for c in candidates:
+    # If primary candidate was found but no DB file exists yet, anchor it to primary candidate!
+    if not db_path and primary_candidates:
+        data_dir = primary_candidates[0]
+        db_path = os.path.join(data_dir, "stash-go.sqlite")
+
+    # Step 2: Fallback to searching upward and cwd only if no primary candidate exists!
+    if not db_path:
+        fallback_candidates = []
+        cur = plugin_dir
+        for _ in range(6):
+            if cur not in fallback_candidates and os.path.isdir(cur):
+                fallback_candidates.append(cur)
+                data_sub = os.path.join(cur, "data")
+                if os.path.isdir(data_sub) and data_sub not in fallback_candidates:
+                    fallback_candidates.append(data_sub)
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+
+        cwd_data = os.path.abspath(os.path.join(os.getcwd(), "data"))
+        if os.path.isdir(cwd_data) and cwd_data not in fallback_candidates:
+            fallback_candidates.append(cwd_data)
+        cwd = os.path.abspath(os.getcwd())
+        if os.path.isdir(cwd) and cwd not in fallback_candidates:
+            fallback_candidates.append(cwd)
+
+        for c in fallback_candidates:
+            cfg = os.path.join(c, "config.yml")
+            if os.path.isfile(cfg):
+                pdb = parse_database_from_config(cfg)
+                if pdb and os.path.isfile(pdb):
+                    db_path = pdb
+                    data_dir = c
+                    break
             cand_db = os.path.join(c, "stash-go.sqlite")
             if os.path.isfile(cand_db):
-                data_dir = c
                 db_path = cand_db
+                data_dir = c
                 break
             cand_sub_db = os.path.join(c, "data", "stash-go.sqlite")
             if os.path.isfile(cand_sub_db):
-                data_dir = os.path.join(c, "data")
                 db_path = cand_sub_db
+                data_dir = os.path.join(c, "data")
                 break
 
-    if not db_path:
-        db_path = os.path.join(data_dir, "stash-go.sqlite")
+        if not db_path:
+            data_dir = fallback_candidates[0] if fallback_candidates else plugin_dir
+            db_path = os.path.join(data_dir, "stash-go.sqlite")
+
+    if not data_dir:
+        data_dir = os.path.dirname(os.path.abspath(db_path))
 
     users_file = os.path.join(data_dir, "users.json")
 
@@ -133,9 +154,15 @@ def get_db_connection(db_path):
             parent = os.path.dirname(db_path)
             if not parent or not os.path.exists(parent):
                 return None
-        conn = sqlite3.connect(db_path, timeout=10.0)
+        conn = sqlite3.connect(db_path, timeout=15.0)
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
+        except Exception:
+            pass
+        try:
+            # Disable foreign keys on this connection to ensure users_scenes_activity
+            # updates never fail due to cascade/foreign key constraints in multi-user mode
+            conn.execute("PRAGMA foreign_keys = OFF;")
         except Exception:
             pass
         return conn
@@ -147,6 +174,7 @@ def init_db_schema(conn):
     if not conn:
         return
     try:
+        conn.execute("PRAGMA foreign_keys = OFF;")
         c = conn.cursor()
         c.execute("""
         CREATE TABLE IF NOT EXISTS `users` (
@@ -169,6 +197,8 @@ def init_db_schema(conn):
         )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS `idx_users_scenes_activity_user` ON `users_scenes_activity`(`user_id`, `last_played_at` DESC);")
+        # Ensure default admin user 1 exists so foreign key references never fail
+        c.execute("INSERT OR IGNORE INTO users (id, username, password_hash, is_admin, created_at) VALUES (1, 'admin', '', 1, CURRENT_TIMESTAMP)")
         conn.commit()
     except Exception as e:
         sys.stderr.write(f"init_db_schema notice: {e}\n")
@@ -196,22 +226,19 @@ def read_user_activity_file(data_dir, uid):
 def write_user_activity_file(data_dir, uid, activity_map):
     fpath = get_user_activity_file(data_dir, uid)
     try:
-        tmp_fpath = fpath + f".tmp.{os.getpid()}"
-        with open(tmp_fpath, "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(fpath), exist_ok=True)
+        # Directly write to file to prevent atomic rename issues across filesystem mounts
+        with open(fpath, "w", encoding="utf-8") as f:
             json.dump(activity_map, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_fpath, fpath)
-    except Exception:
-        try:
-            with open(fpath, "w", encoding="utf-8") as f:
-                json.dump(activity_map, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            sys.stderr.write(f"write_user_activity_file notice: {e}\n")
+    except Exception as e:
+        sys.stderr.write(f"write_user_activity_file notice: {e}\n")
 
 def main():
     plugin_input = {}
     if not sys.stdin.isatty():
         try:
-            raw = sys.stdin.read()
+            raw_bytes = sys.stdin.buffer.read()
+            raw = raw_bytes.decode("utf-8", errors="replace")
             if raw.strip():
                 plugin_input = json.loads(raw)
         except Exception as e:
@@ -289,6 +316,7 @@ def main():
         conn = get_db_connection(db_path)
         if conn:
             try:
+                conn.execute("PRAGMA foreign_keys = OFF;")
                 c = conn.cursor()
                 init_db_schema(conn)
                 valid_ids = [int(u["id"]) for u in users if "id" in u and u.get("id") is not None]
@@ -368,19 +396,26 @@ def main():
         conn = get_db_connection(db_path)
         if conn:
             try:
+                conn.execute("PRAGMA foreign_keys = OFF;")
                 c = conn.cursor()
                 init_db_schema(conn)
+
+                # Ensure user exists in users table
+                c.execute("""
+                INSERT OR IGNORE INTO users (id, username, password_hash, is_admin, created_at)
+                VALUES (?, ?, '', ?, CURRENT_TIMESTAMP)
+                """, (uid, uname or f"user_{uid}", 1 if uid == 1 else 0))
+
                 if reset:
                     c.execute("""
-                    UPDATE users_scenes_activity
-                    SET resume_time = 0, play_duration = 0, play_count = 0, last_played_at = ?
-                    WHERE user_id = ? AND scene_id = ?
-                    """, (now_ms, uid, scene_id))
-                    if c.rowcount == 0:
-                        c.execute("""
-                        INSERT INTO users_scenes_activity (user_id, scene_id, resume_time, play_duration, play_count, last_played_at)
-                        VALUES (?, ?, 0, 0, 0, ?)
-                        """, (uid, scene_id, now_ms))
+                    INSERT INTO users_scenes_activity (user_id, scene_id, resume_time, play_duration, play_count, last_played_at)
+                    VALUES (?, ?, 0, 0, 0, ?)
+                    ON CONFLICT(user_id, scene_id) DO UPDATE SET
+                        resume_time = 0,
+                        play_duration = 0,
+                        play_count = 0,
+                        last_played_at = excluded.last_played_at
+                    """, (uid, scene_id, now_ms))
                     updated_act = {
                         "scene_id": scene_id,
                         "resume_time": 0.0,
@@ -442,13 +477,18 @@ def main():
         conn = get_db_connection(db_path)
         if conn and scene_id > 0:
             try:
+                conn.execute("PRAGMA foreign_keys = OFF;")
                 c = conn.cursor()
                 init_db_schema(conn)
                 c.execute("""
-                UPDATE users_scenes_activity
-                SET resume_time = 0, play_duration = 0, play_count = 0, last_played_at = ?
-                WHERE user_id = ? AND scene_id = ?
-                """, (now_ms, uid, scene_id))
+                INSERT INTO users_scenes_activity (user_id, scene_id, resume_time, play_duration, play_count, last_played_at)
+                VALUES (?, ?, 0, 0, 0, ?)
+                ON CONFLICT(user_id, scene_id) DO UPDATE SET
+                    resume_time = 0,
+                    play_duration = 0,
+                    play_count = 0,
+                    last_played_at = excluded.last_played_at
+                """, (uid, scene_id, now_ms))
                 if uid == 1:
                     try:
                         c.execute("UPDATE scenes SET resume_time = 0 WHERE id = ?", (scene_id,))
@@ -490,6 +530,7 @@ def main():
         conn = get_db_connection(db_path)
         if conn:
             try:
+                conn.execute("PRAGMA foreign_keys = OFF;")
                 c = conn.cursor()
                 init_db_schema(conn)
                 c.execute("""
@@ -550,7 +591,30 @@ def main():
                 if f_item.get("last_played_at", 0) > u_item.get("last_played_at", 0):
                     user_acts[sid_str] = f_item
 
-        # 3. Build sorted continue_watching and history lists from merged user_acts
+        # 3. Bidirectional self-healing: if file had records missing in SQLite, sync them to SQLite
+        if file_acts and db_path:
+            sync_conn = get_db_connection(db_path)
+            if sync_conn:
+                try:
+                    sync_conn.execute("PRAGMA foreign_keys = OFF;")
+                    sc = sync_conn.cursor()
+                    for sid_str, act_data in file_acts.items():
+                        sc.execute("""
+                        INSERT INTO users_scenes_activity (user_id, scene_id, resume_time, play_duration, play_count, last_played_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(user_id, scene_id) DO UPDATE SET
+                            resume_time = MAX(users_scenes_activity.resume_time, excluded.resume_time),
+                            play_duration = MAX(users_scenes_activity.play_duration, excluded.play_duration),
+                            play_count = MAX(users_scenes_activity.play_count, excluded.play_count),
+                            last_played_at = MAX(users_scenes_activity.last_played_at, excluded.last_played_at)
+                        """, (uid, int(sid_str), float(act_data.get("resume_time", 0.0)), float(act_data.get("play_duration", 0.0)), int(act_data.get("play_count", 0)), int(act_data.get("last_played_at", 0))))
+                    sync_conn.commit()
+                except Exception:
+                    pass
+                finally:
+                    sync_conn.close()
+
+        # 4. Build sorted continue_watching and history lists from merged user_acts
         sorted_acts = sorted(
             user_acts.values(),
             key=lambda x: x.get("last_played_at", 0),
@@ -576,6 +640,7 @@ def main():
     conn = get_db_connection(db_path)
     if conn:
         try:
+            conn.execute("PRAGMA foreign_keys = OFF;")
             c = conn.cursor()
             init_db_schema(conn)
             c.execute("SELECT id, username, password_hash, is_admin, created_at FROM users ORDER BY id ASC")

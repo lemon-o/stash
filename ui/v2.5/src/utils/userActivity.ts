@@ -106,6 +106,9 @@ export async function fetchUserActivityFromServer(
 
       if (res.ok) {
         const data = await res.json();
+        if (data?.errors && data.errors.length > 0) {
+          console.error("[userActivity] GraphQL errors fetching activity:", data.errors);
+        }
         const serverAct: UserActivityMap =
           data?.data?.runPluginOperation?.activity;
         if (serverAct && typeof serverAct === "object" && currentSeq === fetchSeq) {
@@ -119,6 +122,8 @@ export async function fetchUserActivityFromServer(
             );
           }
         }
+      } else {
+        console.error("[userActivity] HTTP error fetching activity:", res.status);
       }
     } catch (e) {
       console.warn("[userActivity] Failed to fetch server activity:", e);
@@ -229,7 +234,7 @@ export async function recordUserActivity(
 
   // 2. Persist to authoritative SQLite backend database
   try {
-    await fetch("/graphql", {
+    const res = await fetch("/graphql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       keepalive: true,
@@ -252,6 +257,14 @@ export async function recordUserActivity(
         },
       }),
     });
+    if (!res.ok) {
+      console.error("[userActivity] HTTP error saving activity:", res.status);
+    } else {
+      const respData = await res.json();
+      if (respData?.errors && respData.errors.length > 0) {
+        console.error("[userActivity] GraphQL errors saving activity:", respData.errors);
+      }
+    }
   } catch (e) {
     console.error("[userActivity] Failed to persist activity to server:", e);
   }

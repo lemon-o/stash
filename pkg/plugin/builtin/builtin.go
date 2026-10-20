@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"bytes"
 	"embed"
 	"io/fs"
 	"os"
@@ -45,9 +46,9 @@ func ProvisionDefaultPlugins(pluginsDir string) error {
 			return err
 		}
 
-		// If file exists with same size, skip writing to avoid unnecessary I/O
-		if info, err := os.Stat(targetPath); err == nil {
-			if info.Size() == int64(len(data)) {
+		// Check if existing file content is already identical to embedded version
+		if existing, err := os.ReadFile(targetPath); err == nil {
+			if bytes.Equal(existing, data) {
 				return nil
 			}
 		}

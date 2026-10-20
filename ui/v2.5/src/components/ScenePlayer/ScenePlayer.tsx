@@ -911,8 +911,17 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               !started.current &&
               (player.currentTime() || 0) < 1
             ) {
-              player.currentTime(serverResume);
-              setTime(serverResume);
+              if (player.readyState() >= 1) {
+                player.currentTime(serverResume);
+                setTime(serverResume);
+              } else {
+                player.one("loadedmetadata", () => {
+                  if (!started.current && (player.currentTime() || 0) < 1) {
+                    player.currentTime(serverResume);
+                    setTime(serverResume);
+                  }
+                });
+              }
             }
           });
         }

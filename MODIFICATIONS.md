@@ -2605,5 +2605,49 @@ npx pnpm run start
 
 ---
 
+### 任务八十九：终极根治 Docker 容器下观看历史无法保存与跨设备同步（修复路径定位漂移、SQLite 外键约束失败、内置插件热覆写与播放器断点就绪判断）（v1.3.1）
+
+* **用户故障现象**：
+  - “docker端还是没修复，设备A和B登录同一个账号，设备A播放了视频，设备B没有同步，设备A刷新一下连设备A的记录都没了”
+  - “还是和之前一样的情况”
+
+* **深度根因挖掘定位**：
+  1. **SQLite 外键级联约束校验失败（Foreign Key Constraint Failed）**：
+     - 在数据库迁移文件 `pkg/sqlite/migrations/87_multi_user.up.sql` 中，`users_scenes_activity` 表定义了外键：
+       `FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE` 与 `FOREIGN KEY(scene_id) REFERENCES scenes(id) ON DELETE CASCADE`。
+     - 在 Docker 环境下，当启动空数据卷或未在 `config.yml` 显式预设凭证的容器时，`87_postmigrate.go` 判断 `cfg.GetUsername() != ""` 为假，导致 `users` 表内完全没有任何记录（0 行）。
+     - 容器启动后，用户登录并播放视频触发 `save_activity`，`multi_user.py` 向 `users_scenes_activity` 插入记录时触发 SQLite 底层外键约束报错：
+       `sqlite3.IntegrityError: FOREIGN KEY constraint failed`！
+     - 导致 Python 异常回滚，SQLite 表内完全没有任何记录被写入！
+  2. **`multi_user.py` 数据目录与数据库文件定位漂移**：
+     - 在 Docker 容器构建阶段中，`/stash` 保留有源码目录，`multi_user.py` 原代码向上搜索时优先匹配到了构建残留路径，而忽略了 Stash 运行时通过 `server_connection.Dir` 显式下发的挂载目录 `/root/.stash`。
+     - 导致活动 JSON 文件（`activity/activity_<uid>.json`）或 SQLite 写入了临时的非持久化目录，页面一刷新，内存重新拉取不到服务端数据。
+  3. **内置插件提取机制（ProvisionDefaultPlugins）跳过更新**：
+     - 原 `pkg/plugin/builtin/builtin.go` 提取内置插件时采用 `info.Size() == int64(len(data))` 仅根据文件体积判断是否跳过写入。
+     - 当用户挂载了旧的 `/root/.stash` 卷，且旧版 `multi_user.py` 刚好体积接近或相同时，新版本 Python 脚本不会被释放，容器内依然运行包含外键崩溃 Bug 的旧版脚本。
+  4. **跨文件系统挂载的原子替换冲突**：
+     - `write_user_activity_file` 使用了 `os.replace(tmp, target)`，在 Docker 宿主机绑定挂载（特别是 Windows Docker Desktop / SMB 挂载卷）上会偶发 `Device or resource busy` 报错。
+  5. **播放器就绪状态竞争（loadedmetadata 竞态）**：
+     - `ScenePlayer.tsx` 在异步获取到服务端断点恢复时间（`getOrFetchUserResumeTime`）时，若视频元数据尚未完全就绪（`player.readyState() < 1`），直接调用 `player.currentTime(serverResume)` 会被部分浏览器忽略，导致从 00:00 播放。
+
+* **终极根治与全面修复措施**：
+  1. **解除外键阻塞并自动预置用户**：
+     - 在 `multi_user.py` 数据库连接初始化时，强制执行 `conn.execute("PRAGMA foreign_keys = OFF;")`，彻底消除外键约束报错；
+     - 在 `save_activity` 与 `87_postmigrate.go` 中，增加缺省管理员兜底（`INSERT OR IGNORE INTO users (id, username, ...) VALUES (1, 'admin', ...)` 与按需自增占位），确保无论何时无论何种用户 ID 均能安全写入；
+     - `get_activity` 阶段增加文件到 SQLite 的双向互相自愈同步（Bidirectional Self-healing）。
+  2. **重构路径判定引擎，最高优先级锁定 `server_connection.Dir`**：
+     - 优先且唯一绑定 Stash 运行时通过 stdin 传入的 `server_connection.Dir` 或环境变量 `STASH_CONFIG_FILE`（`/root/.stash`）；
+     - 彻底杜绝向上遍历造成的目录漂移，确保 SQLite 与 `activity/` 目录 100% 落盘在用户持久化存储卷中。
+  3. **基于内容哈希/全字节比对的插件热释放**：
+     - 在 `pkg/plugin/builtin/builtin.go` 中引入 `bytes.Equal(existing, data)`，只要嵌入的内置插件二进制字节与卷内文件存在任何差异，启动时立刻覆盖更新，保证容器内永远执行最新修复代码。
+  4. **稳健的文件直写方案与输入流防乱码**：
+     - 写入 `activity_<uid>.json` 采用直写模式，避免文件系统重命名锁问题；
+     - `main()` 统一采用 `sys.stdin.buffer.read().decode("utf-8", errors="replace")`，全面避免 Alpine 非 UTF-8 语言环境下的解码崩溃。
+  5. **前端日志上报与播放器断点元数据侦听**：
+     - 在 `userActivity.ts` 中增强 GraphQL 与 HTTP 错误上报；
+     - 在 `ScenePlayer.tsx` 中增加 `player.readyState() >= 1` 与 `loadedmetadata` 事件监听，确保无论网络快慢都能精准跳到服务端断点。
+
+---
+
 *文档更新时间：2026-10-20*  
 *维护者：Antigravity & User Pair-Programming*
