@@ -911,17 +911,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               !started.current &&
               (player.currentTime() || 0) < 1
             ) {
-              if (player.readyState() >= 1) {
-                player.currentTime(serverResume);
-                setTime(serverResume);
-              } else {
-                player.one("loadedmetadata", () => {
-                  if (!started.current && (player.currentTime() || 0) < 1) {
-                    player.currentTime(serverResume);
-                    setTime(serverResume);
-                  }
-                });
-              }
+              player.currentTime(serverResume);
+              setTime(serverResume);
             }
           });
         }
@@ -1106,7 +1097,6 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         if (!scene.id) return;
 
         recordUserActivity(scene.id, {
-          resume_time: 0,
           play_count_inc: 1,
         });
 
@@ -1127,7 +1117,16 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       activity.setEnabled(trackActivity);
 
       return () => {
-        handleSaveProgress();
+        try {
+          if (!player.isDisposed()) {
+            const curTime = player.currentTime() || 0;
+            if (curTime > 1) {
+              recordUserActivity(scene.id, {
+                resume_time: curTime,
+              });
+            }
+          }
+        } catch {}
         player.off("play", handlePlay);
         player.off("pause", handleSaveProgress);
         player.off("seeked", handleSaveProgress);

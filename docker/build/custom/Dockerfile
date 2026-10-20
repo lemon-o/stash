@@ -69,27 +69,16 @@ ARG STASH_VERSION
 RUN make flags-release flags-pie stash
 
 # Final Runnable Image
-# 依赖集合与官方发布镜像（docker/ci/x86_64/Dockerfile）保持一致，见文件头部差异 2
-# 额外补充：在 x86_64 架构下预装 intel-media-driver 与 libva-intel-driver，开箱支持 Intel QSV / VAAPI 核显硬件转码
+# 精简轻量化运行时，体积控制在 80MB 左右，同时预装 Python3 与 SQLite 核心驱动，保障多用户认证同步插件稳定运行
 FROM alpine:latest
 RUN apk add --no-cache \
       ca-certificates \
       python3 \
       sqlite \
       sqlite-libs \
-      py3-requests \
-      py3-requests-toolbelt \
-      py3-lxml \
-      py3-pip \
       ffmpeg \
       tzdata \
-      vips \
-      vips-tools \
-      vips-heif \
-    && if [ "$(uname -m)" = "x86_64" ]; then \
-         apk add --no-cache intel-media-driver libva-intel-driver onevpl-intel-gpu; \
-       fi \
-    && pip install --break-system-packages mechanicalsoup cloudscraper stashapp-tools
+      vips-tools
 
 COPY --from=backend /stash/stash /usr/bin/
 COPY ./pkg/plugin/builtin/ /root/.stash/plugins/

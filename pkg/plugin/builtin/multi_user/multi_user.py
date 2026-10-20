@@ -362,7 +362,8 @@ def main():
             print(json.dumps({"output": {"status": "error", "message": "invalid scene_id"}}))
             return
 
-        resume_time = float(args.get("resume_time", 0.0))
+        has_resume_time = "resume_time" in args and args["resume_time"] is not None
+        req_resume_time = float(args["resume_time"]) if has_resume_time else 0.0
         play_duration = float(args.get("play_duration", 0.0))
         play_count_inc = int(args.get("play_count_inc", 0))
         reset = bool(args.get("reset", False))
@@ -373,6 +374,10 @@ def main():
         current_file_acts = read_user_activity_file(data_dir, uid)
         cur_act = current_file_acts.get(str(scene_id), {})
 
+        prev_resume = float(cur_act.get("resume_time", 0.0))
+        prev_dur = float(cur_act.get("play_duration", 0.0))
+        prev_cnt = int(cur_act.get("play_count", 0))
+
         if reset:
             updated_act = {
                 "scene_id": scene_id,
@@ -382,11 +387,10 @@ def main():
                 "last_played_at": now_ms
             }
         else:
-            prev_dur = float(cur_act.get("play_duration", 0.0))
-            prev_cnt = int(cur_act.get("play_count", 0))
+            eff_resume = req_resume_time if (has_resume_time and req_resume_time > 0) else prev_resume
             updated_act = {
                 "scene_id": scene_id,
-                "resume_time": resume_time,
+                "resume_time": eff_resume,
                 "play_duration": prev_dur + play_duration,
                 "play_count": prev_cnt + play_count_inc,
                 "last_played_at": now_ms
@@ -428,11 +432,14 @@ def main():
                     INSERT INTO users_scenes_activity (user_id, scene_id, resume_time, play_duration, play_count, last_played_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(user_id, scene_id) DO UPDATE SET
-                        resume_time = excluded.resume_time,
-                        play_duration = play_duration + excluded.play_duration,
-                        play_count = play_count + excluded.play_count,
+                        resume_time = CASE
+                            WHEN excluded.resume_time > 0 THEN excluded.resume_time
+                            ELSE users_scenes_activity.resume_time
+                        END,
+                        play_duration = users_scenes_activity.play_duration + excluded.play_duration,
+                        play_count = users_scenes_activity.play_count + excluded.play_count,
                         last_played_at = excluded.last_played_at
-                    """, (uid, scene_id, resume_time, play_duration, play_count_inc, now_ms))
+                    """, (uid, scene_id, req_resume_time, play_duration, play_count_inc, now_ms))
 
                     c.execute("SELECT resume_time, play_duration, play_count, last_played_at FROM users_scenes_activity WHERE user_id = ? AND scene_id = ?", (uid, scene_id))
                     row = c.fetchone()
@@ -450,8 +457,8 @@ def main():
                     try:
                         if reset:
                             c.execute("UPDATE scenes SET resume_time = 0 WHERE id = ?", (scene_id,))
-                        elif resume_time > 0:
-                            c.execute("UPDATE scenes SET resume_time = ? WHERE id = ?", (resume_time, scene_id))
+                        elif req_resume_time > 0:
+                            c.execute("UPDATE scenes SET resume_time = ? WHERE id = ?", (req_resume_time, scene_id))
                     except Exception:
                         pass
 

@@ -210,8 +210,8 @@ export async function recordUserActivity(
     existing.play_count = 0;
     existing.last_played_at = now;
   } else {
-    if (typeof options.resume_time === "number") {
-      existing.resume_time = Math.max(0, options.resume_time);
+    if (typeof options.resume_time === "number" && options.resume_time > 0) {
+      existing.resume_time = options.resume_time;
     }
     if (options.play_duration && options.play_duration > 0) {
       existing.play_duration =
@@ -234,6 +234,15 @@ export async function recordUserActivity(
 
   // 2. Persist to authoritative SQLite backend database
   try {
+    const effResume =
+      options.reset
+        ? 0
+        : typeof options.resume_time === "number" && options.resume_time > 0
+        ? options.resume_time
+        : existing.resume_time > 0
+        ? existing.resume_time
+        : 0;
+
     const res = await fetch("/graphql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -249,7 +258,7 @@ export async function recordUserActivity(
             user_id: uid,
             username: uname,
             scene_id: parseInt(sid, 10),
-            resume_time: options.resume_time ?? existing.resume_time,
+            resume_time: effResume,
             play_duration: options.play_duration ?? 0,
             play_count_inc: options.play_count_inc ?? 0,
             reset: !!options.reset,
