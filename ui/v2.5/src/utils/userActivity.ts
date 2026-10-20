@@ -25,6 +25,7 @@ const STORAGE_KEY_USERS = "stash_user_accounts";
 let memoryActivityMap: UserActivityMap = {};
 let memoryLoadedUserId: number | null = null;
 let fetchPromise: Promise<UserActivityMap> | null = null;
+let fetchSeq = 0;
 
 // Purge any legacy client localStorage activity keys
 try {
@@ -67,13 +68,21 @@ export async function fetchUserActivityFromServer(
   const uid = user?.id || 1;
   const uname = user?.username ? user.username.toLowerCase() : "default";
 
+  // Account switched: invalidate previous user's activity cache
+  if (memoryLoadedUserId !== uid) {
+    memoryActivityMap = {};
+    memoryLoadedUserId = null;
+  }
+
   if (!force && memoryLoadedUserId === uid && Object.keys(memoryActivityMap).length > 0) {
     return memoryActivityMap;
   }
 
-  if (fetchPromise) {
+  if (!force && fetchPromise) {
     return fetchPromise;
   }
+
+  const currentSeq = ++fetchSeq;
 
   fetchPromise = (async () => {
     try {
@@ -99,13 +108,13 @@ export async function fetchUserActivityFromServer(
         const data = await res.json();
         const serverAct: UserActivityMap =
           data?.data?.runPluginOperation?.activity;
-        if (serverAct && typeof serverAct === "object") {
+        if (serverAct && typeof serverAct === "object" && currentSeq === fetchSeq) {
           memoryActivityMap = serverAct;
           memoryLoadedUserId = uid;
           if (typeof window !== "undefined") {
             window.dispatchEvent(
               new CustomEvent("stash:user_activity_updated", {
-                detail: { user_id: uid, username: uname },
+                detail: { user_id: uid, username: uname, source: "server" },
               })
             );
           }
@@ -114,7 +123,9 @@ export async function fetchUserActivityFromServer(
     } catch (e) {
       console.warn("[userActivity] Failed to fetch server activity:", e);
     } finally {
-      fetchPromise = null;
+      if (currentSeq === fetchSeq) {
+        fetchPromise = null;
+      }
     }
     return memoryActivityMap;
   })();
@@ -221,6 +232,7 @@ export async function recordUserActivity(
     await fetch("/graphql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      keepalive: true,
       body: JSON.stringify({
         query: `mutation SaveActivity($plugin_id: ID!, $args: Map) {
           runPluginOperation(plugin_id: $plugin_id, args: $args)
@@ -335,7 +347,23 @@ export function useUserActivity() {
   };
 }
 
-// Initialise background server prefetch as soon as JS bundle is loaded
+// Initialise background server prefetch and real-time cross-device sync listeners
 if (typeof window !== "undefined") {
   fetchUserActivityFromServer().catch(() => {});
+
+  // Cross-device sync: Immediately refresh on window focus or tab visibility change
+  const handleSyncOnActive = () => {
+    if (document.visibilityState === "visible") {
+      fetchUserActivityFromServer(true).catch(() => {});
+    }
+  };
+  window.addEventListener("focus", handleSyncOnActive);
+  document.addEventListener("visibilitychange", handleSyncOnActive);
+
+  // Periodic background polling: Check server every 15 seconds when tab is active
+  setInterval(() => {
+    if (document.visibilityState === "visible") {
+      fetchUserActivityFromServer(true).catch(() => {});
+    }
+  }, 15000);
 }

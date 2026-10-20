@@ -2,8 +2,29 @@ import sys
 import os
 import json
 import gzip
-import sqlite3
 import time
+
+try:
+    import sqlite3
+except ImportError:
+    sqlite3 = None
+
+def parse_database_from_config(config_path):
+    if not config_path or not os.path.isfile(config_path):
+        return None
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("database:"):
+                    val = line.split(":", 1)[1].strip().strip("\"'")
+                    if val:
+                        if not os.path.isabs(val):
+                            val = os.path.normpath(os.path.join(os.path.dirname(config_path), val))
+                        return val
+    except Exception:
+        pass
+    return None
 
 def get_paths(plugin_input):
     plugin_dir = os.path.dirname(os.path.abspath(__file__))
@@ -24,38 +45,66 @@ def get_paths(plugin_input):
     if env_dir and os.path.isdir(env_dir):
         candidates.append(os.path.abspath(env_dir))
 
-    # Candidate: ../.. from plugin_dir (e.g. /root/.stash/plugins/multi_user -> /root/.stash)
-    p_parent = os.path.abspath(os.path.join(plugin_dir, "..", ".."))
-    if os.path.isdir(p_parent):
-        candidates.append(p_parent)
+    # Candidate: /root/.stash (Standard Docker Stash config & DB directory)
+    if os.path.isdir("/root/.stash"):
+        candidates.append("/root/.stash")
 
-    # Candidate: ../../../data (e.g. repo/data/plugins/multi_user -> repo/data)
-    repo_data = os.path.abspath(os.path.join(plugin_dir, "..", "..", "..", "data"))
-    if os.path.isdir(repo_data):
-        candidates.append(repo_data)
+    # Walk upwards from plugin directory to discover stash root or data directory
+    cur = plugin_dir
+    for _ in range(6):
+        if cur not in candidates and os.path.isdir(cur):
+            candidates.append(cur)
+            data_sub = os.path.join(cur, "data")
+            if os.path.isdir(data_sub) and data_sub not in candidates:
+                candidates.append(data_sub)
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
 
     # Candidate: repo/data (from current working directory)
     cwd_data = os.path.abspath(os.path.join(os.getcwd(), "data"))
-    if os.path.isdir(cwd_data):
+    if os.path.isdir(cwd_data) and cwd_data not in candidates:
         candidates.append(cwd_data)
 
     cwd = os.path.abspath(os.getcwd())
-    if os.path.isdir(cwd):
+    if os.path.isdir(cwd) and cwd not in candidates:
         candidates.append(cwd)
 
-    data_dir = candidates[0] if candidates else plugin_dir
+    # First, try to read explicit `database:` setting from config.yml if present
     db_path = None
+    config_candidates = []
+    if env_config and os.path.isfile(env_config):
+        config_candidates.append(env_config)
     for c in candidates:
-        cand_db = os.path.join(c, "stash-go.sqlite")
-        if os.path.isfile(cand_db):
-            data_dir = c
-            db_path = cand_db
-            break
-        cand_sub_db = os.path.join(c, "data", "stash-go.sqlite")
-        if os.path.isfile(cand_sub_db):
-            data_dir = os.path.join(c, "data")
-            db_path = cand_sub_db
-            break
+        cfg = os.path.join(c, "config.yml")
+        if os.path.isfile(cfg) and cfg not in config_candidates:
+            config_candidates.append(cfg)
+
+    for cfg in config_candidates:
+        parsed_db = parse_database_from_config(cfg)
+        if parsed_db:
+            if os.path.isfile(parsed_db):
+                db_path = parsed_db
+                data_dir = os.path.dirname(parsed_db)
+                break
+            elif not db_path:
+                db_path = parsed_db
+
+    # Second, check for stash-go.sqlite existing in candidates
+    data_dir = candidates[0] if candidates else plugin_dir
+    if not db_path or not os.path.isfile(db_path):
+        for c in candidates:
+            cand_db = os.path.join(c, "stash-go.sqlite")
+            if os.path.isfile(cand_db):
+                data_dir = c
+                db_path = cand_db
+                break
+            cand_sub_db = os.path.join(c, "data", "stash-go.sqlite")
+            if os.path.isfile(cand_sub_db):
+                data_dir = os.path.join(c, "data")
+                db_path = cand_sub_db
+                break
 
     if not db_path:
         db_path = os.path.join(data_dir, "stash-go.sqlite")
@@ -75,41 +124,88 @@ def get_paths(plugin_input):
     return db_path, data_dir, users_file, extra_asset_files
 
 def get_db_connection(db_path):
-    if os.path.exists(db_path):
+    if not sqlite3:
+        return None
+    if not db_path:
+        return None
+    try:
+        if not os.path.exists(db_path):
+            parent = os.path.dirname(db_path)
+            if not parent or not os.path.exists(parent):
+                return None
         conn = sqlite3.connect(db_path, timeout=10.0)
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
         except Exception:
             pass
         return conn
-    return None
+    except Exception as e:
+        sys.stderr.write(f"SQLite connection notice ({db_path}): {e}\n")
+        return None
 
 def init_db_schema(conn):
     if not conn:
         return
-    c = conn.cursor()
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS `users` (
-      `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-      `username` VARCHAR(255) NOT NULL UNIQUE,
-      `password_hash` VARCHAR(255) NOT NULL,
-      `is_admin` BOOLEAN NOT NULL DEFAULT 0,
-      `created_at` DATETIME NOT NULL
-    )
-    """)
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS `users_scenes_activity` (
-      `user_id` INTEGER NOT NULL,
-      `scene_id` INTEGER NOT NULL,
-      `resume_time` REAL NOT NULL DEFAULT 0,
-      `play_duration` REAL NOT NULL DEFAULT 0,
-      `play_count` INTEGER NOT NULL DEFAULT 0,
-      `last_played_at` INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (`user_id`, `scene_id`)
-    )
-    """)
-    c.execute("CREATE INDEX IF NOT EXISTS `idx_users_scenes_activity_user` ON `users_scenes_activity`(`user_id`, `last_played_at` DESC);")
-    conn.commit()
+    try:
+        c = conn.cursor()
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS `users` (
+          `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+          `username` VARCHAR(255) NOT NULL UNIQUE,
+          `password_hash` VARCHAR(255) NOT NULL,
+          `is_admin` BOOLEAN NOT NULL DEFAULT 0,
+          `created_at` DATETIME NOT NULL
+        )
+        """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS `users_scenes_activity` (
+          `user_id` INTEGER NOT NULL,
+          `scene_id` INTEGER NOT NULL,
+          `resume_time` REAL NOT NULL DEFAULT 0,
+          `play_duration` REAL NOT NULL DEFAULT 0,
+          `play_count` INTEGER NOT NULL DEFAULT 0,
+          `last_played_at` INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (`user_id`, `scene_id`)
+        )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS `idx_users_scenes_activity_user` ON `users_scenes_activity`(`user_id`, `last_played_at` DESC);")
+        conn.commit()
+    except Exception as e:
+        sys.stderr.write(f"init_db_schema notice: {e}\n")
+
+def get_user_activity_file(data_dir, uid):
+    act_dir = os.path.join(data_dir, "activity")
+    try:
+        os.makedirs(act_dir, exist_ok=True)
+    except Exception:
+        pass
+    return os.path.join(act_dir, f"activity_{uid}.json")
+
+def read_user_activity_file(data_dir, uid):
+    fpath = get_user_activity_file(data_dir, uid)
+    if os.path.isfile(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if isinstance(d, dict):
+                    return d
+        except Exception:
+            pass
+    return {}
+
+def write_user_activity_file(data_dir, uid, activity_map):
+    fpath = get_user_activity_file(data_dir, uid)
+    try:
+        tmp_fpath = fpath + f".tmp.{os.getpid()}"
+        with open(tmp_fpath, "w", encoding="utf-8") as f:
+            json.dump(activity_map, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_fpath, fpath)
+    except Exception:
+        try:
+            with open(fpath, "w", encoding="utf-8") as f:
+                json.dump(activity_map, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            sys.stderr.write(f"write_user_activity_file notice: {e}\n")
 
 def main():
     plugin_input = {}
@@ -139,7 +235,7 @@ def main():
         except Exception:
             pass
 
-    # Ensure database schema is ready
+    # Ensure database schema is ready if DB exists
     conn = get_db_connection(db_path)
     if conn:
         try:
@@ -244,14 +340,31 @@ def main():
         reset = bool(args.get("reset", False))
 
         now_ms = int(time.time() * 1000)
-        updated_act = {
-            "resume_time": 0.0 if reset else resume_time,
-            "play_duration": 0.0 if reset else play_duration,
-            "play_count": 0 if reset else play_count_inc,
-            "last_played_at": now_ms
-        }
 
-        # 1. Authoritative write to SQLite users_scenes_activity
+        # Read existing record from server file
+        current_file_acts = read_user_activity_file(data_dir, uid)
+        cur_act = current_file_acts.get(str(scene_id), {})
+
+        if reset:
+            updated_act = {
+                "scene_id": scene_id,
+                "resume_time": 0.0,
+                "play_duration": 0.0,
+                "play_count": 0,
+                "last_played_at": now_ms
+            }
+        else:
+            prev_dur = float(cur_act.get("play_duration", 0.0))
+            prev_cnt = int(cur_act.get("play_count", 0))
+            updated_act = {
+                "scene_id": scene_id,
+                "resume_time": resume_time,
+                "play_duration": prev_dur + play_duration,
+                "play_count": prev_cnt + play_count_inc,
+                "last_played_at": now_ms
+            }
+
+        # 1. Authoritative write to SQLite users_scenes_activity (if available)
         conn = get_db_connection(db_path)
         if conn:
             try:
@@ -269,6 +382,7 @@ def main():
                         VALUES (?, ?, 0, 0, 0, ?)
                         """, (uid, scene_id, now_ms))
                     updated_act = {
+                        "scene_id": scene_id,
                         "resume_time": 0.0,
                         "play_duration": 0.0,
                         "play_count": 0,
@@ -289,6 +403,7 @@ def main():
                     row = c.fetchone()
                     if row:
                         updated_act = {
+                            "scene_id": scene_id,
                             "resume_time": float(row[0]),
                             "play_duration": float(row[1]),
                             "play_count": int(row[2]),
@@ -307,27 +422,13 @@ def main():
 
                 conn.commit()
             except Exception as e:
-                sys.stderr.write(f"SQLite save_activity error: {e}\n")
+                sys.stderr.write(f"SQLite save_activity notice: {e}\n")
             finally:
                 conn.close()
 
-        # 2. Backup to server data directory: activity/activity_{uid}.json
-        activity_dir = os.path.join(data_dir, "activity")
-        os.makedirs(activity_dir, exist_ok=True)
-        act_file = os.path.join(activity_dir, f"activity_{uid}.json")
-        user_acts = {}
-        if os.path.exists(act_file):
-            try:
-                with open(act_file, "r", encoding="utf-8") as f:
-                    user_acts = json.load(f)
-            except Exception:
-                pass
-        user_acts[str(scene_id)] = updated_act
-        try:
-            with open(act_file, "w", encoding="utf-8") as f:
-                json.dump(user_acts, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        # 2. Dual-persistence: ALWAYS write to server JSON file
+        current_file_acts[str(scene_id)] = updated_act
+        write_user_activity_file(data_dir, uid, current_file_acts)
 
         print(json.dumps({"output": {"status": "ok", "user_id": uid, "scene_id": scene_id, "activity": updated_act}}))
         return
@@ -336,6 +437,8 @@ def main():
         uid = args.get("user_id") or 1
         scene_id = int(args.get("scene_id", 0))
         now_ms = int(time.time() * 1000)
+
+        # 1. Update SQLite
         conn = get_db_connection(db_path)
         if conn and scene_id > 0:
             try:
@@ -347,12 +450,25 @@ def main():
                 WHERE user_id = ? AND scene_id = ?
                 """, (now_ms, uid, scene_id))
                 if uid == 1:
-                    c.execute("UPDATE scenes SET resume_time = 0 WHERE id = ?", (scene_id,))
+                    try:
+                        c.execute("UPDATE scenes SET resume_time = 0 WHERE id = ?", (scene_id,))
+                    except Exception:
+                        pass
                 conn.commit()
             except Exception as e:
-                sys.stderr.write(f"SQLite reset_activity error: {e}\n")
+                sys.stderr.write(f"SQLite reset_activity notice: {e}\n")
             finally:
                 conn.close()
+
+        # 2. Update server JSON file
+        file_acts = read_user_activity_file(data_dir, uid)
+        sid_str = str(scene_id)
+        if sid_str in file_acts:
+            file_acts[sid_str]["resume_time"] = 0.0
+            file_acts[sid_str]["play_duration"] = 0.0
+            file_acts[sid_str]["play_count"] = 0
+            file_acts[sid_str]["last_played_at"] = now_ms
+            write_user_activity_file(data_dir, uid, file_acts)
 
         print(json.dumps({"output": {"status": "ok", "user_id": uid, "scene_id": scene_id}}))
         return
@@ -369,8 +485,6 @@ def main():
             uid = 1
 
         user_acts = {}
-        cw_list = []
-        hist_list = []
 
         # 1. Authoritative fetch from SQLite users_scenes_activity
         conn = get_db_connection(db_path)
@@ -393,14 +507,12 @@ def main():
                         legacy_scenes = c.fetchall()
                         now_ts = int(time.time() * 1000)
                         for s_row in legacy_scenes:
-                            sid_s = str(s_row[0])
-                            r_time = float(s_row[1])
                             c.execute("""
                             INSERT INTO users_scenes_activity (user_id, scene_id, resume_time, play_duration, play_count, last_played_at)
                             VALUES (1, ?, ?, 0.0, 1, ?)
                             ON CONFLICT(user_id, scene_id) DO UPDATE SET
                                 resume_time = excluded.resume_time
-                            """, (s_row[0], r_time, now_ts))
+                            """, (s_row[0], float(s_row[1]), now_ts))
                         conn.commit()
                         c.execute("""
                         SELECT scene_id, resume_time, play_duration, play_count, last_played_at
@@ -412,48 +524,41 @@ def main():
                     except Exception as me:
                         sys.stderr.write(f"Migration notice: {me}\n")
 
-                # Verify each scene_id actually exists in scenes table to prevent GraphQL query errors
-                cand_ids = [r[0] for r in rows if r[0] > 0]
-                valid_ids = set()
-                if cand_ids:
-                    pl = ",".join("?" for _ in cand_ids)
-                    c.execute(f"SELECT id FROM scenes WHERE id IN ({pl})", cand_ids)
-                    valid_ids = {r[0] for r in c.fetchall()}
-
                 for row in rows:
                     sid = row[0]
-                    if sid not in valid_ids:
-                        continue
                     sid_str = str(sid)
-                    item = {
+                    user_acts[sid_str] = {
                         "scene_id": sid,
                         "resume_time": float(row[1]),
                         "play_duration": float(row[2]),
                         "play_count": int(row[3]),
                         "last_played_at": int(row[4]) if str(row[4]).isdigit() else int(time.time() * 1000)
                     }
-                    user_acts[sid_str] = item
-                    hist_list.append(item)
-                    if float(row[1]) > 0:
-                        cw_list.append(item)
 
             except Exception as e:
-                sys.stderr.write(f"SQLite get_activity error: {e}\n")
+                sys.stderr.write(f"SQLite get_activity notice: {e}\n")
             finally:
                 conn.close()
 
-        # Fallback to server JSON file if SQLite had no rows (e.g. freshly created)
-        if not user_acts:
-            activity_dir = os.path.join(data_dir, "activity")
-            act_file = os.path.join(activity_dir, f"activity_{uid}.json")
-            if os.path.exists(act_file):
-                try:
-                    with open(act_file, "r", encoding="utf-8") as f:
-                        file_acts = json.load(f)
-                        if isinstance(file_acts, dict):
-                            user_acts = file_acts
-                except Exception:
-                    pass
+        # 2. Dual-persistence: Read from server JSON file and merge
+        file_acts = read_user_activity_file(data_dir, uid)
+        for sid_str, f_item in file_acts.items():
+            if sid_str not in user_acts:
+                user_acts[sid_str] = f_item
+            else:
+                u_item = user_acts[sid_str]
+                if f_item.get("last_played_at", 0) > u_item.get("last_played_at", 0):
+                    user_acts[sid_str] = f_item
+
+        # 3. Build sorted continue_watching and history lists from merged user_acts
+        sorted_acts = sorted(
+            user_acts.values(),
+            key=lambda x: x.get("last_played_at", 0),
+            reverse=True
+        )
+
+        cw_list = [a for a in sorted_acts if float(a.get("resume_time", 0.0)) > 0]
+        hist_list = [a for a in sorted_acts if (float(a.get("play_duration", 0.0)) > 0 or int(a.get("play_count", 0)) > 0 or float(a.get("resume_time", 0.0)) > 0)]
 
         print(json.dumps({
             "output": {

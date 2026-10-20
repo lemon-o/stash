@@ -2570,3 +2570,40 @@ npx pnpm run start
 
 *文档更新时间：2026-10-20*  
 *维护者：Antigravity & User Pair-Programming*
+
+
+### 任务八十八：彻底修复 Docker 容器内观看记录无法持久化及跨设备实时同步（添加 Alpine py3-sqlite3 核心依赖、服务端双重持久化防丢保全机制与跨端实时心跳同步）（v1.3.0）
+
+* **用户故障现象**：
+  - “Docker 端还是没修复，设备 A 和 B 登录同一个账号，设备 A 播放了视频，设备 B 没有同步，设备 A 刷新一下连设备 A 的记录都没了”
+
+* **深度根因排查定位**：
+  1. **Alpine Linux 基础镜像缺少 Python sqlite3 C 扩展模块（致命原因）**：
+     - 在 `docker/build/custom/Dockerfile`（及 `docker/ci/x86_64/Dockerfile`）中，构建阶段通过 `apk add --no-cache python3 py3-requests ...` 安装 Python。然而在 Alpine Linux 发行版中，Python 的 SQLite 驱动 `_sqlite3.so` 并未包含在 `python3` 主包内，而是独立分包为 **`py3-sqlite3`**、**`sqlite`** 和 **`sqlite-libs`**！
+     - 当容器内执行 `multi_user.py` 时，第一行 `import sqlite3` 直接报 `ModuleNotFoundError: No module named '_sqlite3'`，Python 进程异常退出状态码 1。
+     - 导致所有的 `save_activity`、`get_activity` 后端 GraphQL 插件调用全部报错失败。因此设备 A 播放时进度根本未存入服务端磁盘，页面一刷新，内存缓存重置，设备 A 记录全部丢失！
+  2. **Python 脚本缺乏优雅降级与兜底双重持久化**：
+     - 原脚本若找不到 SQLite 驱动或遇到并发读写锁时会直接抛错退出，没有把用户播放记录同时备份保全到服务端独立 JSON 文件（`activity/activity_<uid>.json`）。
+  3. **前端缺少多端实时心跳与焦点激活拉取（Cross-Device Sync）**：
+     - 设备 B 保持打开时，前端仅在初次加载时拉取一次历史，后续没有窗口激活（`focus` / `visibilitychange`）强制刷新，也没有周期性心跳轮询，导致设备 A 播放后设备 B 无法感知。
+     - 且 `ContinueWatchingRow.tsx` 在窗口聚焦时只重新查询了场景列表（`useFindScenesQuery`），未先重新拉取最新的 `userActivity` 映射表。
+
+* **修复方案与落地实施**：
+  1. **补全 Alpine 镜像核心系统级依赖**：
+     - 在 `docker/build/custom/Dockerfile`、`docker/ci/x86_64/Dockerfile`、`docker/build/x86_64/Dockerfile` 的 `apk add --no-cache` 中全面追加 `py3-sqlite3 sqlite sqlite-libs`，彻底消除容器内 Python 对 SQLite 驱动缺失的报错。
+  2. **服务端双重持久化机制（Dual-Persistence & Fail-Safe Architecture）**：
+     - `multi_user.py` 将 `import sqlite3` 纳入 `try ... except ImportError` 容错；
+     - 新增向上递归目录自发现与 `config.yml` 数据库路径解析，无论在 Docker 容器（`/root/.stash`）还是本地开发环境，均能秒级定位真实 `stash-go.sqlite`；
+     - 引入文件原子替换写入（`tmp` -> `replace`）机制：每次 `save_activity` 时，既权威更新 SQLite `users_scenes_activity` 表，又必定同时写入服务端数据目录 `activity/activity_<uid>.json`；
+     - `get_activity` 时将 SQLite 表记录与 JSON 文件智能合并（取最新 `last_played_at`），即使数据库迁移或锁死，用户观看记录也绝对不会丢失。
+  3. **前端多设备实时同步引擎（Real-time Cross-Device Sync）**：
+     - 重构 `userActivity.ts`：增加请求序列号管理，防止异步网络响应时序颠倒；
+     - 增加跨设备状态同步监听：当用户在设备 B 切换/点亮屏幕（`window.addEventListener("focus")` / `visibilitychange`）时，立即调用 `fetchUserActivityFromServer(true)` 穿透缓存拉取服务端最新进度；
+     - 增加后台活跃心跳（每 15 秒在页面处于前台时轮询一次最新服务端记录）；
+     - 在 `recordUserActivity` 的 GraphQL 请求中增加 `keepalive: true`，确保设备 A 在刷新或关闭网页的瞬间，浏览器也能完整将断点进度送达服务端；
+     - 在 `ContinueWatchingRow.tsx` 的聚焦回调中加入 `refetchActivity()`，使得设备 B 一聚焦即可立即呈现设备 A 新看影片的继续观看卡片。
+
+---
+
+*文档更新时间：2026-10-20*  
+*维护者：Antigravity & User Pair-Programming*

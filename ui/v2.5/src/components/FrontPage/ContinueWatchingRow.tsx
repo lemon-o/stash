@@ -33,7 +33,7 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
 
-    const { activities } = useUserActivity();
+    const { activities, refetch: refetchActivity } = useUserActivity();
 
     // Extract scene IDs that THIS user has watched or has progress on
     const watchedIds = useMemo(() => {
@@ -66,13 +66,14 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
     // Refetch when tab becomes focused
     useEffect(() => {
       const handleFocus = () => {
+        refetchActivity();
         if (watchedIds.length > 0) {
           refetch().catch(() => {});
         }
       };
       window.addEventListener("focus", handleFocus);
       return () => window.removeEventListener("focus", handleFocus);
-    }, [watchedIds, refetch]);
+    }, [watchedIds, refetch, refetchActivity]);
 
     const scenes = useMemo(() => {
       if (watchedIds.length === 0) return [];
