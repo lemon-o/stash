@@ -57,7 +57,12 @@ import chromecast from "@silvermine/videojs-chromecast";
 import abLoopPlugin from "videojs-abloop";
 import ScreenUtils from "src/utils/screen";
 import { PatchComponent } from "src/patch";
-import { getUserResumeTime, recordUserActivity } from "src/utils/userActivity";
+import {
+  getUserResumeTime,
+  getOrFetchUserResumeTime,
+  recordUserActivity,
+  getCurrentUser,
+} from "src/utils/userActivity";
 
 // register videojs plugins
 airplay(videojs);
@@ -899,6 +904,17 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               player.currentTime(startPosition);
             });
           }
+        } else if (!alwaysStartFromBeginning && !_initialTimestamp) {
+          getOrFetchUserResumeTime(scene.id).then((serverResume) => {
+            if (
+              serverResume > 0 &&
+              !started.current &&
+              (player.currentTime() || 0) < 1
+            ) {
+              player.currentTime(serverResume);
+              setTime(serverResume);
+            }
+          });
         }
       });
 
@@ -1000,68 +1016,48 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const player = getPlayer();
       if (!player) return;
 
-      const recordWatch = (resumeTime?: number) => {
-        if (!scene.id) return;
-        try {
-          const raw = localStorage.getItem("stash_recent_watched_scenes");
-          let list: Array<{ id: string; time: number; resumeTime?: number }> = raw
-            ? JSON.parse(raw)
-            : [];
-          list = list.filter((item) => item.id !== scene.id);
-          list.unshift({
-            id: scene.id,
-            time: Date.now(),
-            resumeTime,
-          });
-          if (list.length > 30) list = list.slice(0, 30);
-          localStorage.setItem(
-            "stash_recent_watched_scenes",
-            JSON.stringify(list)
-          );
-        } catch {}
-      };
-
       const handlePlay = () => {
         const curTime = player.currentTime() || 0;
         const resumeSec = Math.max(1, curTime);
-        recordWatch(curTime);
         recordUserActivity(scene.id, {
           resume_time: resumeSec,
           play_count_inc: 1,
         });
 
-        // 1. Immediately persist resume_time so continue watching has current position
-        sceneSaveActivity({
-          variables: {
-            id: scene.id,
-            playDuration: 0,
-            resume_time: resumeSec,
-          },
-        }).catch(() => {});
+        const curUser = getCurrentUser();
+        if (curUser?.is_admin) {
+          sceneSaveActivity({
+            variables: {
+              id: scene.id,
+              playDuration: 0,
+              resume_time: resumeSec,
+            },
+          }).catch(() => {});
 
-        // 2. Immediately increment play count / record view timestamp in scenes_view_dates
-        // This ensures last_played_at is NOW and play_count >= 1 so continue watching immediately ranks it #1!
-        sceneIncrementPlayCount({
-          variables: {
-            id: scene.id,
-          },
-        }).catch(() => {});
+          sceneIncrementPlayCount({
+            variables: {
+              id: scene.id,
+            },
+          }).catch(() => {});
+        }
       };
 
       const handleSaveProgress = () => {
         const curTime = player.currentTime() || 0;
         const resumeSec = Math.max(1, curTime);
-        recordWatch(curTime);
         recordUserActivity(scene.id, {
           resume_time: resumeSec,
         });
-        sceneSaveActivity({
-          variables: {
-            id: scene.id,
-            playDuration: 0,
-            resume_time: resumeSec,
-          },
-        }).catch(() => {});
+        const curUser = getCurrentUser();
+        if (curUser?.is_admin) {
+          sceneSaveActivity({
+            variables: {
+              id: scene.id,
+              playDuration: 0,
+              resume_time: resumeSec,
+            },
+          }).catch(() => {});
+        }
       };
 
       player.on("play", handlePlay);
@@ -1078,8 +1074,6 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       async function saveActivity(resumeTime: number, playDuration: number) {
         if (!scene.id) return;
 
-        recordWatch(resumeTime);
-
         const resumeSec =
           resumeTime > 0 ? Math.max(1, resumeTime) : 0;
         recordUserActivity(scene.id, {
@@ -1087,29 +1081,34 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           play_duration: playDuration,
         });
 
-        await sceneSaveActivity({
-          variables: {
-            id: scene.id,
-            playDuration,
-            resume_time: resumeSec,
-          },
-        });
+        const curUser = getCurrentUser();
+        if (curUser?.is_admin) {
+          await sceneSaveActivity({
+            variables: {
+              id: scene.id,
+              playDuration,
+              resume_time: resumeSec,
+            },
+          });
+        }
       }
 
       async function incrementPlayCount() {
         if (!scene.id) return;
 
-        recordWatch(0);
         recordUserActivity(scene.id, {
           resume_time: 0,
           play_count_inc: 1,
         });
 
-        await sceneIncrementPlayCount({
-          variables: {
-            id: scene.id,
-          },
-        });
+        const curUser = getCurrentUser();
+        if (curUser?.is_admin) {
+          await sceneIncrementPlayCount({
+            variables: {
+              id: scene.id,
+            },
+          });
+        }
       }
 
       const activity = player.trackActivity();
@@ -1119,6 +1118,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       activity.setEnabled(trackActivity);
 
       return () => {
+        handleSaveProgress();
         player.off("play", handlePlay);
         player.off("pause", handleSaveProgress);
         player.off("seeked", handleSaveProgress);

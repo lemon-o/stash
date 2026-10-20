@@ -2513,11 +2513,33 @@ npx pnpm run start
 *文档更新时间：2026-10-19*  
 *维护者：Antigravity & User Pair-Programming*
 
+### 任务八十六：彻底服务端化多用户观看历史、断点进度与个性化推荐（100% Jellyfin 服务端数据库架构，彻底摒弃客户端 localStorage 存储）（v1.2.8）
 
+* **用户需求背景**：
+  - 用户明确要求：“观看历史记录怎么变成存储在客户端里的浏览器里了，所有账号服务都要在服务端！”
+  - 必须完全对标 Jellyfin / Emby / Plex 的多用户架构：服务端数据库（`stash-go.sqlite`）为唯一真理数据源（Single Source of Truth），前端浏览器决不可将观看历史、断点等核心账号数据存入客户端 `localStorage`。
 
+* **功能升级与改进亮点**：
+  1. **观看历史与播放进度 100% 服务端数据库持有（`stash-go.sqlite`）**：
+     - 服务端数据库表 `users_scenes_activity` 权威保存每个用户的 `scene_id`、`resume_time`、`play_duration`、`play_count`、`last_played_at`，建立 `(user_id, last_played_at DESC)` 专属复合索引；
+     - 插件端 `multi_user.py` 直接操作 SQLite WAL 高并发连接，在接口层自动通过 `SELECT id FROM scenes` 剔除失效影片 ID，杜绝 Stash GraphQL 报出场景不存在错误；
+     - 提供权威的 `get_activity`、`save_activity`、`reset_activity` 接口，支持直接返回用户排序后的 `continue_watching` 和 `history` 列表。
+  2. **彻底摒弃浏览器客户端 `localStorage` 缓存**：
+     - 重构 `userActivity.ts`：完全移除 `localStorage.setItem("stash_user_activity_*")` 与读取逻辑；
+     - 重构 `login_multi.js`：彻底移除登录后向客户端 `localStorage` 灌入历史记录的旧逻辑；
+     - 重构 `ScenePlayer.tsx`：彻底移除旧版遗留的 `stash_recent_watched_scenes` 客户端本地数组；
+     - 设立自动清理机制：前端模块加载与登录初始化时，自动清理客户端浏览器可能遗留的旧版 `stash_user_activity_*` 和 `stash_recent_watched_scenes` 键值。
+  3. **内存级运行态即时响应架构（In-Memory Server-Backed State）**：
+     - 前端仅在内存生命周期内维护运行态 Map，首屏极速发起后台静默预取与同步；
+     - 播放器播放、暂停、跳转、页面切换（`visibilitychange` / `unmount`）时，直接向服务端 GraphQL 发送状态保存，同时触发内存态自定义事件更新 UI；
+     - 用户在任意新设备、不同浏览器或无痕模式（Incognito）下登录时，所有历史进度与断点直接从服务端数据库实时拉取呈现，无缝跨端漫游。
+  4. **多账号播放状态彻底解耦，防止污染全局场景**：
+     - 普通子账号播放时不调用 Stash 原生 `sceneSaveActivity` / `sceneIncrementPlayCount` 全局变更，避免污染管理员与其他账号全局 `scenes` 表；
+     - 单个场景的「重置断点时间」按当前登录账号在服务端隔离执行。
+  5. **个性化推荐深度结合服务端历史**：
+     - `RecommendedScenesRow.tsx` 动态提取当前用户在服务端的真实观看喜好偏向，为不同账号提供精准定制的个性化推荐视频流。
 
+---
 
-
-
-
-
+*文档更新时间：2026-10-20*  
+*维护者：Antigravity & User Pair-Programming*

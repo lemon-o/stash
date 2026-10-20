@@ -191,28 +191,11 @@
             } catch(e) {}
           }
 
-          // Pre-fetch user activity into localStorage before redirecting
+          // Pure server-authoritative watch history: clean up any legacy client localStorage
           try {
-            var actRes = await fetch("graphql", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                query: 'mutation Act($plugin_id: ID!, $args: Map) { runPluginOperation(plugin_id: $plugin_id, args: $args) }',
-                variables: {
-                  plugin_id: "multi_user",
-                  args: {
-                    action: "get_activity",
-                    user_id: activeUser.id,
-                    username: activeUser.username
-                  }
-                }
-              })
-            });
-            if (actRes.ok) {
-              var actData = await actRes.json();
-              var actObj = actData && actData.data && actData.data.runPluginOperation && actData.data.runPluginOperation.activity;
-              if (actObj) {
-                localStorage.setItem("stash_user_activity_" + activeUser.username.toLowerCase(), JSON.stringify(actObj));
+            for (var k in localStorage) {
+              if (k && k.indexOf("stash_user_activity_") === 0) {
+                localStorage.removeItem(k);
               }
             }
           } catch(e) {}

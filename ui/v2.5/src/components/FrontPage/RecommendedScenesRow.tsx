@@ -12,6 +12,7 @@ import { ListFilterModel } from "src/models/list-filter/filter";
 import { useConfigurationContext } from "src/hooks/Config";
 import { Icon } from "../Shared/Icon";
 import { faSyncAlt } from "@fortawesome/free-solid-svg-icons";
+import { useUserActivity } from "src/utils/userActivity";
 
 /**
  * Calculates a deterministic daily seed based on local date (YYYY-MM-DD).
@@ -151,27 +152,31 @@ export const RecommendedScenesRow: React.FC<IRecommendedScenesRowProps> =
       return getDailySeed(d, salt);
     }, [todayStr, salt]);
 
-    // 3. Query recently/frequently played scenes to understand user taste
+    const { activities } = useUserActivity();
+    const userWatchedIds = useMemo(() => {
+      return Object.entries(activities)
+        .filter(
+          ([_, act]) =>
+            (act.resume_time ?? 0) > 0 || (act.play_count ?? 0) > 0
+        )
+        .sort(
+          (a, b) =>
+            (b[1].last_played_at || 0) - (a[1].last_played_at || 0)
+        )
+        .map(([id]) => parseInt(id, 10))
+        .filter((id) => !isNaN(id) && id > 0)
+        .slice(0, 40);
+    }, [activities]);
+
+    // 3. Query recently/frequently played scenes based on user's server watch history
     const playedResult = GQL.useFindScenesQuery({
+      skip: userWatchedIds.length === 0,
       variables: {
         filter: {
           page: 1,
           per_page: 40,
-          sort: "last_played_at",
-          direction: GQL.SortDirectionEnum.Desc,
         },
-        scene_filter: {
-          OR: {
-            play_count: {
-              value: 0,
-              modifier: GQL.CriterionModifier.GreaterThan,
-            },
-            resume_time: {
-              value: 0,
-              modifier: GQL.CriterionModifier.GreaterThan,
-            },
-          },
-        },
+        scene_ids: userWatchedIds.length > 0 ? userWatchedIds : undefined,
       },
     });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export interface IAccountUser {
   id: number;
@@ -9,6 +9,7 @@ export interface IAccountUser {
 }
 
 export interface IUserSceneActivity {
+  scene_id?: number;
   resume_time: number;
   play_duration?: number;
   play_count?: number;
@@ -20,6 +21,23 @@ export type UserActivityMap = Record<string, IUserSceneActivity>;
 const STORAGE_KEY_CURRENT_USER = "stash_current_user";
 const STORAGE_KEY_USERS = "stash_user_accounts";
 
+// Authoritative in-memory state: 100% server-driven, zero watch history in localStorage
+let memoryActivityMap: UserActivityMap = {};
+let memoryLoadedUserId: number | null = null;
+let fetchPromise: Promise<UserActivityMap> | null = null;
+
+// Purge any legacy client localStorage activity keys
+try {
+  if (typeof window !== "undefined" && window.localStorage) {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("stash_user_activity_")) {
+        localStorage.removeItem(key);
+      }
+    }
+  }
+} catch {}
+
 export function getCurrentUser(): IAccountUser | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
@@ -29,7 +47,6 @@ export function getCurrentUser(): IAccountUser | null {
     }
   } catch {}
 
-  // Fallback: check saved accounts and default to admin or first account
   try {
     const rawUsers = localStorage.getItem(STORAGE_KEY_USERS);
     if (rawUsers) {
@@ -43,55 +60,108 @@ export function getCurrentUser(): IAccountUser | null {
   return null;
 }
 
-export function getUserActivityStorageKey(user?: IAccountUser | null): string {
-  const u = user || getCurrentUser();
-  const uname = u?.username ? u.username.toLowerCase() : "default";
-  return `stash_user_activity_${uname}`;
+export async function fetchUserActivityFromServer(
+  force = false
+): Promise<UserActivityMap> {
+  const user = getCurrentUser();
+  const uid = user?.id || 1;
+  const uname = user?.username ? user.username.toLowerCase() : "default";
+
+  if (!force && memoryLoadedUserId === uid && Object.keys(memoryActivityMap).length > 0) {
+    return memoryActivityMap;
+  }
+
+  if (fetchPromise) {
+    return fetchPromise;
+  }
+
+  fetchPromise = (async () => {
+    try {
+      const res = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `mutation GetActivity($plugin_id: ID!, $args: Map) {
+            runPluginOperation(plugin_id: $plugin_id, args: $args)
+          }`,
+          variables: {
+            plugin_id: "multi_user",
+            args: {
+              action: "get_activity",
+              user_id: uid,
+              username: uname,
+            },
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const serverAct: UserActivityMap =
+          data?.data?.runPluginOperation?.activity;
+        if (serverAct && typeof serverAct === "object") {
+          memoryActivityMap = serverAct;
+          memoryLoadedUserId = uid;
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("stash:user_activity_updated", {
+                detail: { user_id: uid, username: uname },
+              })
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[userActivity] Failed to fetch server activity:", e);
+    } finally {
+      fetchPromise = null;
+    }
+    return memoryActivityMap;
+  })();
+
+  return fetchPromise;
 }
 
-export function getUserActivityMap(user?: IAccountUser | null): UserActivityMap {
-  try {
-    const key = getUserActivityStorageKey(user);
-    const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-}
-
-export function saveUserActivityMap(
-  map: UserActivityMap,
-  user?: IAccountUser | null
-): void {
-  try {
-    const u = user || getCurrentUser();
-    const key = getUserActivityStorageKey(u);
-    localStorage.setItem(key, JSON.stringify(map));
-    window.dispatchEvent(
-      new CustomEvent("stash:user_activity_updated", {
-        detail: { key, username: u?.username },
-      })
-    );
-  } catch {}
+export async function ensureUserActivityLoaded(): Promise<UserActivityMap> {
+  const user = getCurrentUser();
+  const uid = user?.id || 1;
+  if (memoryLoadedUserId === uid && Object.keys(memoryActivityMap).length > 0) {
+    return memoryActivityMap;
+  }
+  return fetchUserActivityFromServer();
 }
 
 export function getUserResumeTime(sceneId: string | number): number {
-  const map = getUserActivityMap();
   const sid = String(sceneId);
-  const act = map[sid];
+  const act = memoryActivityMap[sid];
   if (act && typeof act.resume_time === "number" && act.resume_time > 0) {
     return act.resume_time;
   }
   return 0;
 }
 
-export function getUserPlayCount(sceneId: string | number): number {
-  const map = getUserActivityMap();
+export async function getOrFetchUserResumeTime(
+  sceneId: string | number
+): Promise<number> {
   const sid = String(sceneId);
-  const act = map[sid];
+  if (memoryActivityMap[sid] !== undefined) {
+    return memoryActivityMap[sid].resume_time || 0;
+  }
+  await ensureUserActivityLoaded();
+  return memoryActivityMap[sid]?.resume_time || 0;
+}
+
+export function getUserPlayCount(sceneId: string | number): number {
+  const sid = String(sceneId);
+  const act = memoryActivityMap[sid];
   if (act && typeof act.play_count === "number") {
     return act.play_count;
   }
   return 0;
+}
+
+export function getUserActivityMap(): UserActivityMap {
+  return { ...memoryActivityMap };
 }
 
 export async function recordUserActivity(
@@ -107,11 +177,11 @@ export async function recordUserActivity(
   const uname = user?.username ? user.username.toLowerCase() : "default";
   const uid = user?.id || 1;
   const sid = String(sceneId);
-
-  // 1. Instantly update localStorage
-  const map = getUserActivityMap(user);
   const now = Date.now();
-  const existing = map[sid] || {
+
+  // 1. Instantly update in-memory runtime cache for responsive UI
+  const existing = memoryActivityMap[sid] || {
+    scene_id: parseInt(sid, 10),
     resume_time: 0,
     play_duration: 0,
     play_count: 0,
@@ -137,10 +207,16 @@ export async function recordUserActivity(
     existing.last_played_at = now;
   }
 
-  map[sid] = existing;
-  saveUserActivityMap(map, user);
+  memoryActivityMap[sid] = existing;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("stash:user_activity_updated", {
+        detail: { user_id: uid, username: uname, scene_id: sid },
+      })
+    );
+  }
 
-  // 2. Persist to backend
+  // 2. Persist to authoritative SQLite backend database
   try {
     await fetch("/graphql", {
       method: "POST",
@@ -165,92 +241,83 @@ export async function recordUserActivity(
       }),
     });
   } catch (e) {
-    console.error("Failed to sync activity to backend:", e);
+    console.error("[userActivity] Failed to persist activity to server:", e);
   }
 }
 
-export async function syncUserActivityFromBackend(
-  user?: IAccountUser | null
-): Promise<UserActivityMap> {
-  const u = user || getCurrentUser();
-  const uname = u?.username ? u.username.toLowerCase() : "default";
-  const uid = u?.id || 1;
+export function useSceneUserResumeTime(sceneId: string | number): number {
+  const [resumeTime, setResumeTime] = useState<number>(() =>
+    getUserResumeTime(sceneId)
+  );
 
-  try {
-    const res = await fetch("/graphql", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `mutation GetActivity($plugin_id: ID!, $args: Map) {
-          runPluginOperation(plugin_id: $plugin_id, args: $args)
-        }`,
-        variables: {
-          plugin_id: "multi_user",
-          args: {
-            action: "get_activity",
-            user_id: uid,
-            username: uname,
-          },
-        },
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const serverAct: UserActivityMap =
-        data?.data?.runPluginOperation?.activity;
-      if (serverAct && typeof serverAct === "object") {
-        const local = getUserActivityMap(u);
-        const merged: UserActivityMap = { ...local };
-        for (const [id, sAct] of Object.entries(serverAct)) {
-          const lAct = local[id];
-          if (!lAct || (sAct.last_played_at || 0) >= (lAct.last_played_at || 0)) {
-            merged[id] = sAct;
-          }
-        }
-        saveUserActivityMap(merged, u);
-        return merged;
+  useEffect(() => {
+    let mounted = true;
+    const handleUpdate = () => {
+      if (mounted) {
+        setResumeTime(getUserResumeTime(sceneId));
       }
-    }
-  } catch (e) {
-    console.warn("Failed to fetch activity from backend:", e);
-  }
+    };
 
-  return getUserActivityMap(u);
+    window.addEventListener("stash:user_activity_updated", handleUpdate);
+    return () => {
+      mounted = false;
+      window.removeEventListener("stash:user_activity_updated", handleUpdate);
+    };
+  }, [sceneId]);
+
+  return resumeTime;
 }
 
 export function useUserActivity() {
   const [currentUser, setCurrentUser] = useState<IAccountUser | null>(() =>
     getCurrentUser()
   );
-  const [activities, setActivities] = useState<UserActivityMap>(() =>
-    getUserActivityMap(currentUser)
+  const [activities, setActivities] = useState<UserActivityMap>(() => ({
+    ...memoryActivityMap,
+  }));
+  const [loading, setLoading] = useState<boolean>(
+    () => memoryLoadedUserId !== currentUser?.id
   );
+
+  const refresh = useCallback(() => {
+    const cur = getCurrentUser();
+    setCurrentUser(cur);
+    setLoading(true);
+    fetchUserActivityFromServer(true).then((synced) => {
+      setActivities({ ...synced });
+      setLoading(false);
+    });
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    syncUserActivityFromBackend(currentUser).then((synced) => {
-      if (mounted) setActivities(synced);
+    const cur = getCurrentUser();
+    setCurrentUser(cur);
+
+    fetchUserActivityFromServer().then((synced) => {
+      if (mounted) {
+        setActivities({ ...synced });
+        setLoading(false);
+      }
     });
 
     const handleUpdate = () => {
-      const cur = getCurrentUser();
-      setCurrentUser(cur);
-      setActivities(getUserActivityMap(cur));
+      if (mounted) {
+        setActivities({ ...memoryActivityMap });
+      }
     };
 
     window.addEventListener("stash:user_activity_updated", handleUpdate);
-    window.addEventListener("storage", handleUpdate);
     return () => {
       mounted = false;
       window.removeEventListener("stash:user_activity_updated", handleUpdate);
-      window.removeEventListener("storage", handleUpdate);
     };
   }, [currentUser?.username]);
 
   return {
     currentUser,
     activities,
+    loading,
     getResumeTime: (sceneId: string | number) => {
       const act = activities[String(sceneId)];
       return act?.resume_time ?? 0;
@@ -264,5 +331,11 @@ export function useUserActivity() {
         reset?: boolean;
       }
     ) => recordUserActivity(sceneId, options),
+    refetch: refresh,
   };
+}
+
+// Initialise background server prefetch as soon as JS bundle is loaded
+if (typeof window !== "undefined") {
+  fetchUserActivityFromServer().catch(() => {});
 }

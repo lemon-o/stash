@@ -32,7 +32,10 @@ import { FileSize } from "../Shared/FileSize";
 import { OCounterButton } from "../Shared/CountButton";
 import { defaultPreviewVolume } from "src/core/config";
 import { getSceneHoverVideoSource } from "src/utils/wallPreview";
-import { getUserResumeTime } from "src/utils/userActivity";
+import {
+  getUserResumeTime,
+  useSceneUserResumeTime,
+} from "src/utils/userActivity";
 
 interface IScenePreviewProps {
   isPortrait: boolean;
@@ -490,6 +493,8 @@ export const SceneCard = React.memo(
         })
       : `/scenes/${props.scene.id}`;
 
+    const userResume = useSceneUserResumeTime(props.scene.id);
+
     return (
       <GridCard
         className={`scene-card ${zoomIndex()} ${filelessClass()}`}
@@ -498,7 +503,7 @@ export const SceneCard = React.memo(
         width={props.width}
         linkClassName="scene-card-link"
         thumbnailSectionClassName="video-section"
-        resumeTime={getUserResumeTime(props.scene.id) || undefined}
+        resumeTime={userResume || undefined}
         duration={file?.duration ?? undefined}
         interactiveHeatmap={
           props.scene.interactive_speed
