@@ -19,6 +19,13 @@ def parse_database_from_config(config_path):
                 if line.startswith("database:"):
                     val = line.split(":", 1)[1].strip().strip("\"'")
                     if val:
+                        # Linux / Docker cross-platform compatibility:
+                        # If a Windows config with drive letter (e.g. D:\...) is mounted into Linux container,
+                        # it cannot exist on Linux, so return None to allow default fallback.
+                        if os.name != "nt":
+                            if len(val) >= 2 and val[0].isalpha() and val[1] == ":":
+                                return None
+                            val = val.replace("\\", "/")
                         if not os.path.isabs(val):
                             val = os.path.normpath(os.path.join(os.path.dirname(config_path), val))
                         return val
@@ -204,6 +211,10 @@ def init_db_schema(conn):
         sys.stderr.write(f"init_db_schema notice: {e}\n")
 
 def get_user_activity_file(data_dir, uid):
+    try:
+        uid = int(float(uid))
+    except (ValueError, TypeError):
+        uid = 1
     act_dir = os.path.join(data_dir, "activity")
     try:
         os.makedirs(act_dir, exist_ok=True)
@@ -347,12 +358,19 @@ def main():
         return
 
     if action == "save_activity":
-        uid = args.get("user_id")
+        uid_raw = args.get("user_id")
+        try:
+            uid = int(float(uid_raw)) if uid_raw is not None else 0
+        except (ValueError, TypeError):
+            uid = 0
         uname = args.get("username", "")
         if not uid and uname:
             for u in existing_users:
                 if u.get("username", "").lower() == uname.lower():
-                    uid = u.get("id")
+                    try:
+                        uid = int(u.get("id"))
+                    except (ValueError, TypeError):
+                        pass
                     break
         if not uid:
             uid = 1
@@ -452,13 +470,15 @@ def main():
                             "last_played_at": int(row[3])
                         }
 
-                # If admin user (uid == 1), keep Stash core scenes.resume_time synchronized
+                # If admin user (uid == 1), keep Stash core scenes.resume_time and play_count synchronized
                 if uid == 1:
                     try:
                         if reset:
                             c.execute("UPDATE scenes SET resume_time = 0 WHERE id = ?", (scene_id,))
                         elif req_resume_time > 0:
                             c.execute("UPDATE scenes SET resume_time = ? WHERE id = ?", (req_resume_time, scene_id))
+                        if play_count_inc > 0:
+                            c.execute("UPDATE scenes SET play_count = COALESCE(play_count, 0) + ? WHERE id = ?", (play_count_inc, scene_id))
                     except Exception:
                         pass
 
@@ -476,7 +496,11 @@ def main():
         return
 
     if action == "reset_activity":
-        uid = args.get("user_id") or 1
+        uid_raw = args.get("user_id")
+        try:
+            uid = int(float(uid_raw)) if uid_raw is not None else 1
+        except (ValueError, TypeError):
+            uid = 1
         scene_id = int(args.get("scene_id", 0))
         now_ms = int(time.time() * 1000)
 
@@ -521,12 +545,19 @@ def main():
         return
 
     if action == "get_activity":
-        uid = args.get("user_id")
+        uid_raw = args.get("user_id")
+        try:
+            uid = int(float(uid_raw)) if uid_raw is not None else 0
+        except (ValueError, TypeError):
+            uid = 0
         uname = args.get("username", "")
         if not uid and uname:
             for u in existing_users:
                 if u.get("username", "").lower() == uname.lower():
-                    uid = u.get("id")
+                    try:
+                        uid = int(u.get("id"))
+                    except (ValueError, TypeError):
+                        pass
                     break
         if not uid:
             uid = 1

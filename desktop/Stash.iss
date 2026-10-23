@@ -21,7 +21,7 @@
 #define MyAppPublisher "lemon-o"
 #define MyAppURL "https://github.com/lemon-o/stash"
 #define MyAppExeName "stash.exe"
-#define MyAppVersion "1.1.5"
+#define MyAppVersion "1.3.5"
 #define StageDir "..\dist\package"
 #define DataDir "{localappdata}\Stash"
 
