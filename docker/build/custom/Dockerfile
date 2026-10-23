@@ -74,7 +74,6 @@ FROM alpine:latest
 RUN apk add --no-cache \
       ca-certificates \
       python3 \
-      py3-sqlite3 \
       sqlite \
       sqlite-libs \
       ffmpeg \

@@ -2843,8 +2843,8 @@ npx pnpm run start
      - 废除冗余的 `prevWatchedIdsRef` 手动 `refetch`，完全交由 Apollo Client 根据变量 `scene_ids` 自动响应更新；
      - Apollo 查询策略由 `"network-only"` 改为 `"cache-and-network"`：保留已有缓存平滑无缝渲染，背景静默更新，卡片永不闪白消失；
      - `useUserActivity` 背景刷新剔除 `setLoading(true)`，并在 `fetchUserActivityFromServer` 中增加差异脏检查，无变更不重复派发事件。
-  2. **Docker 镜像补齐 `py3-sqlite3` 扩展**：
-     - 在 `docker/build/custom/Dockerfile` 与 `docker/build/x86_64/Dockerfile` 的 `apk add` 中正式补齐 `py3-sqlite3` 驱动，彻底解决 Alpine 环境下 Python 直连底层数据库的能力。
+  2. **Docker 镜像确保 Alpine 核心驱动完整**：
+     - 在 `docker/build/custom/Dockerfile` 与 `docker/build/x86_64/Dockerfile` 的 `apk add` 中确保 `python3`、`sqlite`、`sqlite-libs` 完整预装并建立软链，彻底打通 Alpine 环境下 Python 直连底层数据库的能力。
   3. **放行单用户及管理员断点核心原生双写**：
      - `ScenePlayer.tsx` 调整鉴权守卫为 `const isAdminOrSingleUser = !curUser || curUser.is_admin;`，无论在多用户模式还是 Docker 单用户默认模式下，均无条件确保 Stash 原生 `sceneSaveActivity` 与 `sceneIncrementPlayCount` 实时可靠写入底库；
      - 全域播放进度记录门槛统一规范至 `>= 1.0` 秒。
