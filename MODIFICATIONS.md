@@ -2770,9 +2770,9 @@ npx pnpm run start
      - 用户将包含 Windows 格式路径（如 `database: D:\...` 或反斜杠 `\`）的配置直接挂载至 Docker Linux 容器时，Linux 无法将反斜杠和驱动器盘符识别为有效路径，导致 `parse_database_from_config` 解析异常。
 
 * **系统级闭环修复落地**：
-  1. **全套 Dockerfile 补齐 `py3-sqlite3` 核心依赖**：
-     - 在 `docker/build/custom/Dockerfile`、`docker/build/x86_64/Dockerfile`、`docker/ci/x86_64/Dockerfile` 的 Alpine 基础镜像依赖中增加 `py3-sqlite3`，包体积仅增加 ~150KB，完美维持 ~80MB 极致轻量镜像；
-     - 容器启动后 Python 可无缝加载 SQLite C 扩展，打通高并发 WAL 读写底层数据库 `stash-go.sqlite`。
+  1. **全套 Dockerfile 校验并修正 Alpine 基础运行依赖**：
+     - 在 `docker/build/custom/Dockerfile`、`docker/build/x86_64/Dockerfile`、`docker/ci/x86_64/Dockerfile` 的 Alpine 基础镜像依赖中移除不存在的 `py3-sqlite3` 包声明，确保 `python3`、`sqlite`、`sqlite-libs` 正确安装；
+     - 容器启动后 Python 可无缝加载 SQLite C 扩展，打通高并发 WAL 读写底层数据库 `stash-go.sqlite`，完美维持 ~80MB 极致轻量镜像。
   2. **`multi_user.py` 全局严格整数标准化与 Windows 跨平台兼容增强**：
      - `save_activity`、`reset_activity`、`get_activity` 与 `get_user_activity_file` 全面加入 `uid = int(float(uid))` 校验转换，彻底杜绝文件名与数据库查询类型漂移；
      - `parse_database_from_config` 增加非 NT 平台检测，对包含 Windows 盘符的路径自动规避并回退至容器内标准挂载目录，且统一将反斜杠替换为正斜杠。

@@ -12,7 +12,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm/v6" ];   then BIN=stash-linux-arm32v6; \
 FROM --platform=$TARGETPLATFORM alpine:latest AS app
 COPY --from=binary /stash /usr/bin/
 
-RUN apk add --no-cache ca-certificates python3 py3-sqlite3 sqlite sqlite-libs py3-requests py3-requests-toolbelt py3-lxml py3-pip ffmpeg tzdata vips vips-tools vips-heif \
+RUN apk add --no-cache ca-certificates python3 sqlite sqlite-libs py3-requests py3-requests-toolbelt py3-lxml py3-pip ffmpeg tzdata vips vips-tools vips-heif \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && pip install --break-system-packages mechanicalsoup cloudscraper stashapp-tools
 ENV STASH_CONFIG_FILE=/root/.stash/config.yml
