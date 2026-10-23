@@ -3,11 +3,32 @@ import os
 import json
 import gzip
 import time
+import datetime
 
 try:
     import sqlite3
 except ImportError:
     sqlite3 = None
+
+def parse_last_played_at(val):
+    if not val:
+        return 0
+    if isinstance(val, (int, float)):
+        return int(val)
+    s = str(val).strip()
+    if s.isdigit():
+        return int(s)
+    try:
+        return int(float(s))
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
+        try:
+            dt = datetime.datetime.strptime(s.split("+")[0].split("Z")[0].strip(), fmt.replace("Z", ""))
+            return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+        except Exception:
+            pass
+    return 0
 
 def parse_database_from_config(config_path):
     if not config_path or not os.path.isfile(config_path):
@@ -43,11 +64,14 @@ def get_paths(plugin_input):
         server_dir = server_conn.get("Dir") or server_conn.get("dir") or ""
         # Authoritative database path provided directly by Stash server
         db_file_from_conn = server_conn.get("DatabaseFile") or server_conn.get("database_file") or ""
-        if db_file_from_conn and os.path.isfile(db_file_from_conn):
-            db_path = os.path.abspath(db_file_from_conn)
-            data_dir = os.path.dirname(db_path)
-            users_file = os.path.join(data_dir, "users.json")
-            return db_path, data_dir, users_file, []
+        if db_file_from_conn:
+            if not os.path.isabs(db_file_from_conn) and server_dir:
+                db_file_from_conn = os.path.normpath(os.path.join(server_dir, db_file_from_conn))
+            if os.path.isfile(db_file_from_conn):
+                db_path = os.path.abspath(db_file_from_conn)
+                data_dir = os.path.dirname(db_path)
+                users_file = os.path.join(data_dir, "users.json")
+                return db_path, data_dir, users_file, []
 
     # 2. Check STASH_CONFIG_FILE environment variable
     env_config = os.environ.get("STASH_CONFIG_FILE", "")
@@ -419,7 +443,7 @@ def main():
                 "last_played_at": now_ms
             }
         else:
-            eff_resume = req_resume_time if (has_resume_time and req_resume_time >= 2.0) else prev_resume
+            eff_resume = req_resume_time if (has_resume_time and req_resume_time >= 1.0) else prev_resume
             updated_act = {
                 "scene_id": scene_id,
                 "resume_time": eff_resume,
@@ -465,7 +489,7 @@ def main():
                     VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(user_id, scene_id) DO UPDATE SET
                         resume_time = CASE
-                            WHEN excluded.resume_time >= 2.0 THEN excluded.resume_time
+                            WHEN excluded.resume_time >= 1.0 THEN excluded.resume_time
                             ELSE users_scenes_activity.resume_time
                         END,
                         play_duration = users_scenes_activity.play_duration + excluded.play_duration,
@@ -489,7 +513,7 @@ def main():
                     try:
                         if reset:
                             c.execute("UPDATE scenes SET resume_time = 0 WHERE id = ?", (scene_id,))
-                        elif req_resume_time > 0:
+                        elif req_resume_time >= 1.0:
                             c.execute("UPDATE scenes SET resume_time = ? WHERE id = ?", (req_resume_time, scene_id))
                         if play_count_inc > 0:
                             c.execute("UPDATE scenes SET play_count = COALESCE(play_count, 0) + ? WHERE id = ?", (play_count_inc, scene_id))
@@ -639,8 +663,31 @@ def main():
                         "resume_time": float(row[1]),
                         "play_duration": float(row[2]),
                         "play_count": int(row[3]),
-                        "last_played_at": int(row[4]) if str(row[4]).isdigit() else int(time.time() * 1000)
+                        "last_played_at": parse_last_played_at(row[4])
                     }
+
+                # Self-healing: if admin/primary user (uid == 1), synchronize any scenes with resume_time >= 1.0
+                if uid == 1:
+                    try:
+                        c.execute("SELECT id, resume_time, play_count, updated_at FROM scenes WHERE resume_time >= 1.0")
+                        for s_row in c.fetchall():
+                            s_id = str(s_row[0])
+                            s_resume = float(s_row[1])
+                            s_cnt = int(s_row[2]) if s_row[2] else 0
+                            s_ts = parse_last_played_at(s_row[3])
+                            if s_id not in user_acts:
+                                user_acts[s_id] = {
+                                    "scene_id": int(s_id),
+                                    "resume_time": s_resume,
+                                    "play_duration": 0.0,
+                                    "play_count": s_cnt,
+                                    "last_played_at": s_ts
+                                }
+                            else:
+                                if s_resume > user_acts[s_id].get("resume_time", 0.0):
+                                    user_acts[s_id]["resume_time"] = s_resume
+                    except Exception as me:
+                        sys.stderr.write(f"Sync scenes to activity notice: {me}\n")
 
             except Exception as e:
                 sys.stderr.write(f"SQLite get_activity notice: {e}\n")

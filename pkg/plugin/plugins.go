@@ -250,13 +250,18 @@ func buildPluginInput(plugin *Config, operation *OperationConfig, serverConnecti
 func (c Cache) makeServerConnection(ctx context.Context) common.StashServerConnection {
 	cookie := c.sessionStore.MakePluginCookie(ctx)
 
+	dbPath := c.config.GetDatabasePath()
+	if dbPath != "" && !filepath.IsAbs(dbPath) {
+		dbPath = filepath.Join(c.config.GetConfigPathAbs(), dbPath)
+	}
+
 	serverConnection := common.StashServerConnection{
 		Scheme:        "http",
 		Host:          c.config.GetHost(),
 		Port:          c.config.GetPort(),
 		SessionCookie: cookie,
 		Dir:           c.config.GetConfigPathAbs(),
-		DatabaseFile:  c.config.GetDatabasePath(),
+		DatabaseFile:  dbPath,
 	}
 
 	if c.config.HasTLSConfig() {

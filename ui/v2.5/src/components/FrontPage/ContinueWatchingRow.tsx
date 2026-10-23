@@ -40,7 +40,7 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       const entries = Object.entries(activities)
         .filter(
           ([_, act]) =>
-            (act.resume_time ?? 0) >= 2 || (act.play_count ?? 0) > 0
+            (act.resume_time ?? 0) >= 1 || (act.play_count ?? 0) > 0
         )
         .sort(
           (a, b) =>
@@ -51,8 +51,8 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       return entries.slice(0, 20);
     }, [activities]);
 
-    const { data, loading, refetch } = GQL.useFindScenesQuery({
-      fetchPolicy: "network-only",
+    const { data, loading } = GQL.useFindScenesQuery({
+      fetchPolicy: "cache-and-network",
       skip: watchedIds.length === 0,
       variables: {
         filter: {
@@ -63,30 +63,14 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       },
     });
 
-    const prevWatchedIdsRef = useRef<string>("");
+    // Refetch activity when tab becomes focused (useUserActivity handles its own update listeners)
     useEffect(() => {
-      const currentKey = watchedIds.join(",");
-      if (currentKey !== prevWatchedIdsRef.current) {
-        prevWatchedIdsRef.current = currentKey;
-        if (watchedIds.length > 0) {
-          refetch({
-            filter: { page: 1, per_page: 20 },
-            scene_ids: watchedIds,
-          }).catch(() => {});
-        }
-      }
-    }, [watchedIds, refetch]);
-
-    // Refetch when tab becomes focused or when user activity syncs from server
-    useEffect(() => {
-      const handleSync = () => {
+      const handleFocus = () => {
         refetchActivity();
       };
-      window.addEventListener("focus", handleSync);
-      window.addEventListener("stash:user_activity_updated", handleSync);
+      window.addEventListener("focus", handleFocus);
       return () => {
-        window.removeEventListener("focus", handleSync);
-        window.removeEventListener("stash:user_activity_updated", handleSync);
+        window.removeEventListener("focus", handleFocus);
       };
     }, [refetchActivity]);
 

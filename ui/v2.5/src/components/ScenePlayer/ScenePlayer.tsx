@@ -1036,7 +1036,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         });
 
         const curUser = getCurrentUser();
-        if (curUser?.is_admin) {
+        const isAdminOrSingleUser = !curUser || curUser.is_admin;
+        if (isAdminOrSingleUser) {
           sceneIncrementPlayCount({
             variables: {
               id: scene.id,
@@ -1052,7 +1053,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
             resume_time: curTime,
           });
           const curUser = getCurrentUser();
-          if (curUser?.is_admin) {
+          const isAdminOrSingleUser = !curUser || curUser.is_admin;
+          if (isAdminOrSingleUser) {
             sceneSaveActivity({
               variables: {
                 id: scene.id,
@@ -1069,7 +1071,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           reset: true,
         });
         const curUser = getCurrentUser();
-        if (curUser?.is_admin) {
+        const isAdminOrSingleUser = !curUser || curUser.is_admin;
+        if (isAdminOrSingleUser) {
           sceneSaveActivity({
             variables: {
               id: scene.id,
@@ -1110,7 +1113,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       async function saveActivity(resumeTime: number, playDuration: number) {
         if (!scene.id) return;
 
-        if (resumeTime >= 2) {
+        if (resumeTime >= 1) {
           recordUserActivity(scene.id, {
             resume_time: resumeTime,
             play_duration: playDuration,
@@ -1122,12 +1125,13 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         }
 
         const curUser = getCurrentUser();
-        if (curUser?.is_admin) {
+        const isAdminOrSingleUser = !curUser || curUser.is_admin;
+        if (isAdminOrSingleUser) {
           await sceneSaveActivity({
             variables: {
               id: scene.id,
               playDuration,
-              resume_time: resumeTime >= 2 ? resumeTime : 0,
+              resume_time: resumeTime >= 1 ? resumeTime : 0,
             },
           }).catch(() => {});
         }
@@ -1141,7 +1145,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         });
 
         const curUser = getCurrentUser();
-        if (curUser?.is_admin) {
+        const isAdminOrSingleUser = !curUser || curUser.is_admin;
+        if (isAdminOrSingleUser) {
           await sceneIncrementPlayCount({
             variables: {
               id: scene.id,
@@ -1160,7 +1165,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         try {
           if (!player.isDisposed()) {
             const curTime = player.currentTime() || 0;
-            if (curTime >= 2) {
+            if (curTime >= 1) {
               recordUserActivity(scene.id, {
                 resume_time: curTime,
               });

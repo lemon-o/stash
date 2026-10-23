@@ -116,9 +116,30 @@ export async function fetchUserActivityFromServer(
         const serverAct: UserActivityMap =
           data?.data?.runPluginOperation?.activity;
         if (serverAct && typeof serverAct === "object") {
+          let hasDiff = false;
+          const oldKeys = Object.keys(memoryActivityMap);
+          const newKeys = Object.keys(serverAct);
+          if (oldKeys.length !== newKeys.length) {
+            hasDiff = true;
+          } else {
+            for (const k of newKeys) {
+              const oldItem = memoryActivityMap[k];
+              const newItem = serverAct[k];
+              if (
+                !oldItem ||
+                Math.abs((oldItem.resume_time || 0) - (newItem.resume_time || 0)) > 0.5 ||
+                (oldItem.play_count || 0) !== (newItem.play_count || 0)
+              ) {
+                hasDiff = true;
+                break;
+              }
+            }
+          }
+
           memoryActivityMap = { ...serverAct };
           memoryLoadedUserId = uid;
-          if (typeof window !== "undefined") {
+
+          if (hasDiff && typeof window !== "undefined") {
             window.dispatchEvent(
               new CustomEvent("stash:user_activity_updated", {
                 detail: { user_id: uid, username: uname, source: "server" },
@@ -215,7 +236,7 @@ export async function recordUserActivity(
     existing.play_count = 0;
     existing.last_played_at = now;
   } else {
-    if (typeof options.resume_time === "number" && options.resume_time >= 2) {
+    if (typeof options.resume_time === "number" && options.resume_time >= 1) {
       existing.resume_time = options.resume_time;
     }
     if (options.play_duration && options.play_duration > 0) {
@@ -242,9 +263,9 @@ export async function recordUserActivity(
     const effResume =
       options.reset
         ? 0
-        : typeof options.resume_time === "number" && options.resume_time >= 2
+        : typeof options.resume_time === "number" && options.resume_time >= 1
         ? options.resume_time
-        : existing.resume_time >= 2
+        : existing.resume_time >= 1
         ? existing.resume_time
         : 0;
 
@@ -332,10 +353,9 @@ export function useUserActivity() {
   const refresh = useCallback(() => {
     const cur = getCurrentUser();
     setCurrentUser(cur);
-    setLoading(true);
+    // Background refresh must not flicker UI with loading = true
     fetchUserActivityFromServer(true).then((synced) => {
       setActivities({ ...synced });
-      setLoading(false);
     });
   }, []);
 

@@ -2819,5 +2819,41 @@ npx pnpm run start
 
 ---
 
+### 任务九十五：根治首页【继续观看】一直消失出现重复闪烁 Bug 与 Docker 端刷新后继续观看丢失（双重根因彻底击穿）（v1.3.7）
+
+* **用户故障反馈**：
+  - “仍未修复，而且产生了新bug，首页【继续观看】一直消失出现重复”
+  - “docker端继续观看，播放一个视频后会增加到继续观看，但是刷新网页后，新增的继续观看视频就消失了，本地端没有这个bug”
+
+* **核心根因深度穿透分析**：
+  1. **首页【继续观看】死循环无限闪烁（消失出现重复）的直接根因**：
+     - **事件递归死循环（Event Loop Ping-Pong）**：`ContinueWatchingRow.tsx` 中注册了 `window.addEventListener("stash:user_activity_updated", handleSync)`，监听到更新时触发 `refetchActivity()`。而 `refetchActivity()` 调用了 `fetchUserActivityFromServer(true)`，服务端返回数据后又立即向全域派发 `stash:user_activity_updated` 事件！从而导致 `handleSync` 再次触发，陷入每 50ms 一次的无限自我递归！
+     - **`useUserActivity` 误置全局 Loading**：在 `refresh()` 触发时执行了 `setLoading(true)`，破坏了挂载 UI 的平稳状态；
+     - **Apollo `fetchPolicy: "network-only"` 与条件守卫击穿**：`ContinueWatchingRow` 的守卫逻辑为 `if ((loading && !data) || scenes.length === 0) return null;`。采用 `network-only` 时每次重新发起请求会清空当前 `data`，导致组件在 `return null`（隐藏）与渲染卡片之间高频切换闪烁，肉眼呈现“一直消失出现重复”的严重闪烁 Bug！
+  2. **Docker 端播放视频后刷新网页记录消失的直接根因**：
+     - **Alpine Linux 基础镜像缺失 Python SQLite 核心驱动扩展（致命缺失）**：官方 Alpine `python3` 基础包不内置 `_sqlite3.so` 原生 C 扩展。当容器运行 Python 插件时 `import sqlite3` 直接报 `ModuleNotFoundError`。虽然脚本包裹了 `try...except` 避免进程崩溃，但导致 SQLite 底层连接降级为 `None`，断点数据无法落盘到 SQLite！
+     - **`ScenePlayer.tsx` 鉴权守卫屏蔽单用户/默认登录**：在 `ScenePlayer.tsx` 中，调用 Stash 原生 GraphQL 接口 `sceneSaveActivity` 与 `sceneIncrementPlayCount` 时原先使用了严格守卫 `if (curUser?.is_admin)`。在 Docker 环境初次访问或未在多用户弹窗内登录时，`getCurrentUser()` 返回 `null`，导致该条件恒为假！不仅多用户插件因为驱动缺失无法落盘，Stash 核心的原生断点保存接口也被完全拦截跳过！
+     - **相对路径与进程工作目录歧义**：Docker 容器运行进程的 `cwd` 为根目录 `/`。当服务端返回的数据库文件为相对路径 `stash-go.sqlite` 时，Python 检查 `os.path.isfile("stash-go.sqlite")` 指向 `/stash-go.sqlite` 判定为不存在；
+     - **`last_played_at` 字符格式与 UNIX 时间戳冲突**：Go 后端在 SQLite 中写入的 `last_played_at` 为 ISO8601 时间字符串（`CURRENT_TIMESTAMP`），而 Python 端旧逻辑采用 `str(row[4]).isdigit()`，非纯数字直接 fallback 为 `int(time.time() * 1000)`（当前毫秒时间），导致所有历史记录在每次查询时全部被刷新成“最新播放”，新播放的影片被老记录反向挤出列表前列；
+     - **断点记录门槛不一致**：部分地方校验 `>= 2`，而起播记录为 `>= 1`，导致 1~2 秒内的播放产生丢弃。
+
+* **彻底根治与修复落地**：
+  1. **彻底消除事件递归循环与首页闪烁**：
+     - 移除 `ContinueWatchingRow.tsx` 中对 `stash:user_activity_updated` 的监听，保留 `useUserActivity` 的内置状态驱动即可；
+     - 废除冗余的 `prevWatchedIdsRef` 手动 `refetch`，完全交由 Apollo Client 根据变量 `scene_ids` 自动响应更新；
+     - Apollo 查询策略由 `"network-only"` 改为 `"cache-and-network"`：保留已有缓存平滑无缝渲染，背景静默更新，卡片永不闪白消失；
+     - `useUserActivity` 背景刷新剔除 `setLoading(true)`，并在 `fetchUserActivityFromServer` 中增加差异脏检查，无变更不重复派发事件。
+  2. **Docker 镜像补齐 `py3-sqlite3` 扩展**：
+     - 在 `docker/build/custom/Dockerfile` 与 `docker/build/x86_64/Dockerfile` 的 `apk add` 中正式补齐 `py3-sqlite3` 驱动，彻底解决 Alpine 环境下 Python 直连底层数据库的能力。
+  3. **放行单用户及管理员断点核心原生双写**：
+     - `ScenePlayer.tsx` 调整鉴权守卫为 `const isAdminOrSingleUser = !curUser || curUser.is_admin;`，无论在多用户模式还是 Docker 单用户默认模式下，均无条件确保 Stash 原生 `sceneSaveActivity` 与 `sceneIncrementPlayCount` 实时可靠写入底库；
+     - 全域播放进度记录门槛统一规范至 `>= 1.0` 秒。
+  4. **全绝对路径下发与时间戳智能解析**：
+     - Go 服务端构造 `StashServerConnection` 时自动将 `DatabaseFile` 转换为权威绝对路径；
+     - Python 端新增 `parse_last_played_at()` 智能解析器，精准识别 UNIX 毫秒戳与 ISO8601/SQLite 字符串；
+     - 增加 `scenes` 核心表断点反向自愈合机制，保证 Stash 核心表断点实时映射至多用户活动字典中。
+
+---
+
 *文档更新时间：2026-10-23*  
 *维护者：Antigravity & User Pair-Programming*
