@@ -96,8 +96,20 @@ func (r *queryResolver) FindScenes(
 		result := &models.SceneQueryResult{}
 
 		if len(sceneIDs) > 0 {
-			scenes, err = r.repository.Scene.FindMany(ctx, sceneIDs)
-			if err == nil {
+			unsorted, findErr := r.repository.Scene.FindByIDs(ctx, sceneIDs)
+			if findErr == nil {
+				sceneMap := make(map[int]*models.Scene, len(unsorted))
+				for _, s := range unsorted {
+					if s != nil {
+						sceneMap[s.ID] = s
+					}
+				}
+				scenes = make([]*models.Scene, 0, len(unsorted))
+				for _, id := range sceneIDs {
+					if s, ok := sceneMap[id]; ok {
+						scenes = append(scenes, s)
+					}
+				}
 				result.Count = len(scenes)
 				for _, s := range scenes {
 					if err = s.LoadPrimaryFile(ctx, r.repository.File); err != nil {
@@ -110,9 +122,10 @@ func (r *queryResolver) FindScenes(
 					}
 
 					result.TotalDuration += f.Duration
-
 					result.TotalSize += float64(f.Size)
 				}
+			} else {
+				err = findErr
 			}
 		} else {
 			result, err = r.repository.Scene.Query(ctx, models.SceneQueryOptions{

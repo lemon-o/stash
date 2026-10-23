@@ -41,6 +41,13 @@ def get_paths(plugin_input):
     server_dir = ""
     if isinstance(server_conn, dict):
         server_dir = server_conn.get("Dir") or server_conn.get("dir") or ""
+        # Authoritative database path provided directly by Stash server
+        db_file_from_conn = server_conn.get("DatabaseFile") or server_conn.get("database_file") or ""
+        if db_file_from_conn and os.path.isfile(db_file_from_conn):
+            db_path = os.path.abspath(db_file_from_conn)
+            data_dir = os.path.dirname(db_path)
+            users_file = os.path.join(data_dir, "users.json")
+            return db_path, data_dir, users_file, []
 
     # 2. Check STASH_CONFIG_FILE environment variable
     env_config = os.environ.get("STASH_CONFIG_FILE", "")
@@ -278,6 +285,13 @@ def main():
     if conn:
         try:
             init_db_schema(conn)
+            if not existing_users:
+                c = conn.cursor()
+                c.execute("SELECT id, username, is_admin FROM users")
+                for r in c.fetchall():
+                    existing_users.append({"id": r[0], "username": r[1], "is_admin": bool(r[2])})
+        except Exception:
+            pass
         finally:
             conn.close()
 

@@ -466,6 +466,16 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       // Video player destructor
       return () => {
+        try {
+          if (!vjs.isDisposed()) {
+            const curTime = vjs.currentTime() || 0;
+            if (curTime >= 1 && scene?.id) {
+              recordUserActivity(scene.id, {
+                resume_time: curTime,
+              });
+            }
+          }
+        } catch {}
         vjs.dispose();
         videoEl.remove();
         setPlayer(undefined);
@@ -1019,7 +1029,9 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       if (!player) return;
 
       const handlePlay = () => {
+        const curTime = player.currentTime() || 0;
         recordUserActivity(scene.id, {
+          resume_time: curTime >= 1 ? curTime : undefined,
           play_count_inc: 1,
         });
 
@@ -1035,7 +1047,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       const handleSaveProgress = () => {
         const curTime = player.currentTime() || 0;
-        if (curTime >= 2) {
+        if (curTime >= 1) {
           recordUserActivity(scene.id, {
             resume_time: curTime,
           });
@@ -1079,6 +1091,21 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         }
       };
       document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      const handlePageUnload = () => {
+        try {
+          if (!player.isDisposed()) {
+            const curTime = player.currentTime() || 0;
+            if (curTime >= 1) {
+              recordUserActivity(scene.id, {
+                resume_time: curTime,
+              });
+            }
+          }
+        } catch {}
+      };
+      window.addEventListener("pagehide", handlePageUnload);
+      window.addEventListener("beforeunload", handlePageUnload);
 
       async function saveActivity(resumeTime: number, playDuration: number) {
         if (!scene.id) return;
@@ -1148,6 +1175,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           "visibilitychange",
           handleVisibilityChange
         );
+        window.removeEventListener("pagehide", handlePageUnload);
+        window.removeEventListener("beforeunload", handlePageUnload);
       };
     }, [
       getPlayer,

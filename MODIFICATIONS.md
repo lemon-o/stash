@@ -2781,5 +2781,43 @@ npx pnpm run start
 
 ---
 
+### 任务九十四：根治 Docker 端继续观看刷新丢失与跨设备同步（修复 FindScenes 单 ID 缺失整查崩溃、并发序列检查丢包、数据库直通传参与卸载即时刷盘）（v1.3.6）
+
+* **用户故障反馈**：
+  - “docker端继续观看，播放一个视频后会增加到继续观看，但是刷新网页后，新增的继续观看视频就消失了，本地端没有这个bug”
+  - “设备A和B登录同一个账号，设备A播放了视频，设备B没有同步，设备A刷新一下连设备A的记录都没了”
+  - “仍未修复”
+
+* **核心根因穿透分析**：
+  1. **Go 后端 `FindScenes` 遇到单个缺失或孤儿 ID 抛出致命错误使整行查询崩溃（核心元凶）**：
+     - 在 `internal/api/resolver_query_find_scene.go` 中，当传入 `scene_ids` 列表时，旧逻辑调用了 `r.repository.Scene.FindMany(ctx, sceneIDs)`；
+     - `FindMany` 在 `pkg/sqlite/scene.go:520` 中存在极严格断言：只要 `scene_ids` 中包含任意一个在当前 SQLite 数据库中已被删除或不存在的场景 ID，立即抛出 `fmt.Errorf("scene with id %d not found")`；
+     - 这一错误导致整个 GraphQL `FindScenes` 请求失败并返回 `null`，前端 `ContinueWatchingRow.tsx` 因收到空数据判定整行不渲染，导致刷新网页后整个“继续观看”彻底消失！
+  2. **前端 `fetchUserActivityFromServer` 序列竞态丢包（Race Condition）**：
+     - 在 `userActivity.ts` 中，旧逻辑采用了 `currentSeq === fetchSeq` 校验机制；
+     - 网页初次加载（seq=1）与页面聚焦 focus/可见性变更（seq=2）在毫秒级内并发触发两次请求；
+     - 当初次请求完成时 `currentSeq(1) === fetchSeq(2)` 判定为假，导致服务端返回的有效用户活动数据被直接丢弃，同时 `fetchPromise` 未被重置，组件拿到的始终是空字典 `{}`；
+  3. **`ScenePlayer.tsx` 页面刷新/关闭即时刷盘缺失与卸载顺序逆序**：
+     - 原逻辑未监听 `pagehide` 与 `beforeunload`，当用户按 F5 刷新网页或关闭标签页时，浏览器直接销毁上下文，正在播放的断点进度无法送出；
+     - 组件卸载时，首个 `useEffect` 优先执行了 `vjs.dispose()`，后续清理钩子无法读取销毁后播放器的 `currentTime()`；
+  4. **Stash 核心直通数据库路径下发（Zero-Guessing Database Resolution）**：
+     - 在多平台容器或宿主机目录挂载时，Python 脚本通过文本猜测 `config.yml` 路径偶发出现解析差异；应由 Stash Go 服务端在下发插件执行上下文时，直接将权威数据库路径传达给插件。
+
+* **彻底根治与修复落地**：
+  1. **重构 `resolver_query_find_scene.go`：优雅容错缺失 ID 并保序返回**：
+     - 改用 `r.repository.Scene.FindByIDs(ctx, sceneIDs)`，建立 ID 映射表，仅提取实际存在的有效场景，按 `scene_ids` 原始排序输出，彻底消除单场景失效导致整组崩溃的问题。
+  2. **彻底根除 `fetchUserActivityFromServer` 竞态丢包**：
+     - 废除脆弱的 `fetchSeq` 序列比对机制，引入 `inFlightPromise` 全局共享请求合并模式；
+     - 所有 GraphQL 请求补齐 `credentials: "include"`，数据到达时严格可靠地更新内存活动并派发更新事件。
+  3. **`ContinueWatchingRow.tsx` 响应式侦听与自动补拉**：
+     - 增加 `prevWatchedIdsRef` 深度侦听 `watchedIds` 变动，一旦用户播放或跨设备同步拉取到新增影片，立即自动触发 `refetch({ scene_ids: watchedIds })`，彻底解决设备 B 无感同步与设备 A 刷新丢失。
+  4. **`ScenePlayer.tsx` 卸载与刷新即时刷盘保障**：
+     - 在 `vjs.dispose()` 析构前精准拦截并持久化 `currentTime`；
+     - 注册 `pagehide` 与 `beforeunload` 监听器，并在起播 `handlePlay` 时携带有效断点，配合 `keepalive: true` 确保即使瞬间刷新也绝不丢失任何 1 秒播放进度。
+  5. **服务端直通传参权威数据库文件**：
+     - `StashServerConnection` 结构增加 `DatabaseFile` 字段，服务端自动装配 `c.config.GetDatabasePath()`，`multi_user.py` 优先使用该路径直接直连底层 SQLite，实现零误差绝对一致性。
+
+---
+
 *文档更新时间：2026-10-23*  
 *维护者：Antigravity & User Pair-Programming*

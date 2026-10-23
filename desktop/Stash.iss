@@ -1,4 +1,4 @@
-﻿; Stash · Windows 安装包脚本
+; Stash · Windows 安装包脚本
 ;
 ; 由 打包stash.py 回填 MyAppVersion 后调用 ISCC.exe 编译，产物落在 dist\ 与桌面。
 ; 输入为打包暂存目录 dist\package\：stash.exe + ui\build + LICENSE
@@ -21,7 +21,7 @@
 #define MyAppPublisher "lemon-o"
 #define MyAppURL "https://github.com/lemon-o/stash"
 #define MyAppExeName "stash.exe"
-#define MyAppVersion "1.3.5"
+#define MyAppVersion "1.3.6"
 #define StageDir "..\dist\package"
 #define DataDir "{localappdata}\Stash"
 

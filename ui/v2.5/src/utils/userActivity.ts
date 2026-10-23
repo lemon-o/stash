@@ -24,8 +24,7 @@ const STORAGE_KEY_USERS = "stash_user_accounts";
 // Authoritative in-memory state: 100% server-driven, zero watch history in localStorage
 let memoryActivityMap: UserActivityMap = {};
 let memoryLoadedUserId: number | null = null;
-let fetchPromise: Promise<UserActivityMap> | null = null;
-let fetchSeq = 0;
+let inFlightPromise: Promise<UserActivityMap> | null = null;
 
 // Purge any legacy client localStorage activity keys
 try {
@@ -64,7 +63,7 @@ export function getCurrentUser(): IAccountUser | null {
 export function isUserActivityLoaded(): boolean {
   const user = getCurrentUser();
   const uid = user?.id || 1;
-  return memoryLoadedUserId === uid && Object.keys(memoryActivityMap).length >= 0 && !fetchPromise;
+  return memoryLoadedUserId === uid && Object.keys(memoryActivityMap).length >= 0 && !inFlightPromise;
 }
 
 export async function fetchUserActivityFromServer(
@@ -84,17 +83,16 @@ export async function fetchUserActivityFromServer(
     return memoryActivityMap;
   }
 
-  if (!force && fetchPromise) {
-    return fetchPromise;
+  if (!force && inFlightPromise) {
+    return inFlightPromise;
   }
 
-  const currentSeq = ++fetchSeq;
-
-  fetchPromise = (async () => {
+  const p = (async () => {
     try {
       const res = await fetch("/graphql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           query: `mutation GetActivity($plugin_id: ID!, $args: Map) {
             runPluginOperation(plugin_id: $plugin_id, args: $args)
@@ -117,8 +115,8 @@ export async function fetchUserActivityFromServer(
         }
         const serverAct: UserActivityMap =
           data?.data?.runPluginOperation?.activity;
-        if (serverAct && typeof serverAct === "object" && currentSeq === fetchSeq) {
-          memoryActivityMap = serverAct;
+        if (serverAct && typeof serverAct === "object") {
+          memoryActivityMap = { ...serverAct };
           memoryLoadedUserId = uid;
           if (typeof window !== "undefined") {
             window.dispatchEvent(
@@ -134,14 +132,15 @@ export async function fetchUserActivityFromServer(
     } catch (e) {
       console.warn("[userActivity] Failed to fetch server activity:", e);
     } finally {
-      if (currentSeq === fetchSeq) {
-        fetchPromise = null;
+      if (inFlightPromise === p) {
+        inFlightPromise = null;
       }
     }
     return memoryActivityMap;
   })();
 
-  return fetchPromise;
+  inFlightPromise = p;
+  return p;
 }
 
 export async function ensureUserActivityLoaded(): Promise<UserActivityMap> {
@@ -252,6 +251,7 @@ export async function recordUserActivity(
     const res = await fetch("/graphql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       keepalive: true,
       body: JSON.stringify({
         query: `mutation SaveActivity($plugin_id: ID!, $args: Map) {

@@ -93,6 +93,7 @@ type ServerConfig interface {
 	GetHost() string
 	GetPort() int
 	GetConfigPathAbs() string
+	GetDatabasePath() string
 	HasTLSConfig() bool
 	GetPluginsPath() string
 	GetDisabledPlugins() []string
@@ -255,6 +256,7 @@ func (c Cache) makeServerConnection(ctx context.Context) common.StashServerConne
 		Port:          c.config.GetPort(),
 		SessionCookie: cookie,
 		Dir:           c.config.GetConfigPathAbs(),
+		DatabaseFile:  c.config.GetDatabasePath(),
 	}
 
 	if c.config.HasTLSConfig() {

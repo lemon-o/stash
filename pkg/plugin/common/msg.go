@@ -24,6 +24,9 @@ type StashServerConnection struct {
 	// PluginDir specifies the directory containing the plugin configuration
 	// file.
 	PluginDir string
+
+	// DatabaseFile specifies the exact path of the SQLite database used by Stash
+	DatabaseFile string `json:"DatabaseFile,omitempty"`
 }
 
 // PluginArgValue represents a single value parameter for plugin operations.

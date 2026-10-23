@@ -63,26 +63,32 @@ export const ContinueWatchingRow: React.FC = PatchComponent(
       },
     });
 
+    const prevWatchedIdsRef = useRef<string>("");
+    useEffect(() => {
+      const currentKey = watchedIds.join(",");
+      if (currentKey !== prevWatchedIdsRef.current) {
+        prevWatchedIdsRef.current = currentKey;
+        if (watchedIds.length > 0) {
+          refetch({
+            filter: { page: 1, per_page: 20 },
+            scene_ids: watchedIds,
+          }).catch(() => {});
+        }
+      }
+    }, [watchedIds, refetch]);
+
     // Refetch when tab becomes focused or when user activity syncs from server
     useEffect(() => {
-      const handleFocus = () => {
+      const handleSync = () => {
         refetchActivity();
-        if (watchedIds.length > 0) {
-          refetch().catch(() => {});
-        }
       };
-      const handleUpdate = () => {
-        if (watchedIds.length > 0) {
-          refetch().catch(() => {});
-        }
-      };
-      window.addEventListener("focus", handleFocus);
-      window.addEventListener("stash:user_activity_updated", handleUpdate);
+      window.addEventListener("focus", handleSync);
+      window.addEventListener("stash:user_activity_updated", handleSync);
       return () => {
-        window.removeEventListener("focus", handleFocus);
-        window.removeEventListener("stash:user_activity_updated", handleUpdate);
+        window.removeEventListener("focus", handleSync);
+        window.removeEventListener("stash:user_activity_updated", handleSync);
       };
-    }, [watchedIds, refetch, refetchActivity]);
+    }, [refetchActivity]);
 
     const scenes = useMemo(() => {
       if (watchedIds.length === 0) return [];
